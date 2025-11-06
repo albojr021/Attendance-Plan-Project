@@ -20,13 +20,15 @@
   let pendingEmployeeInfoChanges = {}; // Key: oldPersonnelId, Value: {id, name, position, area}
   // ---------------------------------------------
 
-
   const fixedStatusOptions = [
     { value: 'RD', label: 'Rest Day (RD)', color: 'status-rd text-red-700' },
     { value: 'RH', label: 'Regular Holiday (RH)', color: 'status-rh text-blue-700' },
     { value: 'SH', label: 'Special Holiday (SH)', color: 'status-sh text-yellow-700' },
     { value: '', label: 'Clear/Blank (Work Schedule)', color: 'bg-gray-200 text-gray-700' },
   ];
+  
+  // NEW: Global variable para sa validation (HH:MM-HH:MM)
+  const TIME_FORMAT_REGEX = /^([01]?[0-9]|2[0-3]):[0-5][0-9]-([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
   // ---------------------------------------------
 
 
@@ -119,7 +121,6 @@
     document.getElementById('agency').textContent = contract.agency;
     document.getElementById('service-type').textContent = contract.serviceType;
     document.getElementById('head-count').textContent = contract.headCount;
-    // Removed: document.getElementById('head-count-limit').textContent = contract.headCount; 
     
     document.getElementById('contract-details-area').classList.remove('hidden');
     document.getElementById('planning-area').classList.remove('hidden');
@@ -333,7 +334,7 @@
     tableContainer.appendChild(table);
   }
 
-  // --- EMPLOYEE FORM HANDLERS (REMOVED: Clear form, Save Employee) ---
+  // --- EMPLOYEE INFO HANDLERS (Manual Save) ---
   
   // *** NEW: Track Personnel Info Changes (No Save) ***
   function handlePersonnelInfoChange(event, employee) {
@@ -360,8 +361,13 @@
           // This is critical for tracking changes in other fields later
           input.closest('tr').querySelectorAll('.personnel-info-input').forEach(otherInput => {
               if (otherInput !== input) {
-                  otherInput.dataset.oldPersonnelId = pendingChange.id; // Use new ID as the 'new' old ID
+                  // Use the new ID value as the 'new' old ID for tracking other fields
+                  otherInput.dataset.oldPersonnelId = newValue.trim(); 
               }
+          });
+          // Update the personnel ID in all attendance cells of the row to reflect the pending ID change
+          input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
+              cell.dataset.personnelId = newValue.trim();
           });
       }
       
@@ -378,16 +384,8 @@
           // If reverted back to original, remove from pending changes
           delete pendingEmployeeInfoChanges[oldPersonnelId];
       }
-      
-      // Update the personnel ID in all attendance cells of the row to reflect the pending ID change
-      if(field === 'id') {
-          input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
-              cell.dataset.personnelId = newValue.trim();
-          });
-      }
-
-      // Update the UI to show the new value immediately (already done by input element)
   }
+
 
   // --- ATTENDANCE PLAN HANDLERS (Manual Save) ---
 
@@ -441,10 +439,12 @@
     const dayKey = targetCell.dataset.dayKey;
     const shiftKey = targetCell.dataset.shiftKey;
     
-    if (!personnelId) {
-        showNotification('Cannot edit: Personnel ID is empty. Please fill in the ID first.', false);
+    // --- EDITED: Check if both current ID (personnelId) and original ID (originalId) are empty ---
+    if (!personnelId && !originalId) { 
+        showNotification('Cannot edit: Personnel ID is empty. Please fill in the ID field first.', false);
         return;
     }
+    // --- END EDITED ---
 
     const planKey = `${personnelId}_${dayKey}_${shiftKey}`;
     
@@ -507,39 +507,49 @@
   function saveSchedule(event, schedule) {
     document.getElementById('floating-status-modal').classList.add('hidden');
     
-    if (!selectedCellData.personnelId || !selectedCellData.dayKey) return;
-    
+    if (!selectedCellData.personnelId && !selectedCellData.originalId) return; // Basic check
+
+    const { personnelId, originalId, dayKey, shiftKey, cellElement } = selectedCellData;
+
     // If the user clicked a fixed status button, use that status. 
     // Otherwise, use the time input value.
     const finalStatus = event.type === 'click' && event.target.closest('#fixed-status-options-container') 
         ? schedule 
         : document.getElementById('schedule-input-time').value.trim();
+    
+    // Check if the user is trying to save a plan for a row without a Personnel ID (even if temporary/new)
+    if (!personnelId) {
+        showNotification('Cannot save plan: Personnel ID is missing for this row.', false);
+        return;
+    }
 
     if (!finalStatus && !fixedStatusCodes.includes(finalStatus)) {
       showNotification('Input must not be empty.', false);
       return;
     }
     
-    // Time format validation
-    const timePattern = /^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/;
+    // --- EDITED: Time format validation ---
+    // Check if the status is NOT a fixed code (i.e., it must be a time schedule)
     if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
-        if (!timePattern.test(finalStatus)) {
-            showNotification('Invalid time format. Please use HH:MM-HH:MM (e.g., 9:00-18:00).', false);
+        // Use the refined regex for HH:MM-HH:MM (e.g., 08:00-19:00 or 8:00-19:00)
+        if (!TIME_FORMAT_REGEX.test(finalStatus)) {
+            showNotification('Invalid schedule format. Please use HH:MM-HH:MM (e.g., 08:00-19:00).', false);
             // Re-open modal
             setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
             return;
         }
     }
+    // --- END EDITED ---
 
-
-    const { personnelId, originalId, dayKey, shiftKey, cellElement } = selectedCellData;
 
     // 1. Update local state and pending changes (NO auto-save to Sheets)
     const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
     const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
 
     // Check if change is from original state
-    if (currentContract.planMap[originalPlanKey] !== finalStatus) {
+    const originalStatus = currentContract.planMap[originalPlanKey] || '';
+
+    if (originalStatus !== finalStatus) {
         pendingAttendanceChanges[currentPlanKey] = finalStatus;
     } else {
         // If reverted back to original, remove from pending changes
@@ -563,6 +573,13 @@
 
     if (empChanges.length === 0 && attChanges.length === 0) {
         showNotification('No changes detected to save.', false);
+        return;
+    }
+    
+    // Final check for incomplete new rows that might have plans but no name/id
+    const incompleteEmpChanges = Object.values(pendingEmployeeInfoChanges).filter(e => e.isNew && (e.id.trim() === '' || e.name.trim() === ''));
+    if (incompleteEmpChanges.length > 0) {
+        showNotification('Cannot save: New employee rows require both Personnel ID and Personnel Name.', false);
         return;
     }
 
