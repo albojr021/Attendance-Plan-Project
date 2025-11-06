@@ -2,6 +2,8 @@
   // Global state variables
   let contractList = [];
   let currentContract = null;
+  const CONTRACT_ID_CACHE_KEY = 'current_contract_id'; // NEW: Dedicated cache key
+  
   // *** DATE NAVIGATION VARIABLE ***
   let currentPlanningDate = new Date(); // Default: Current Month/Year
   // Ang status codes
@@ -109,10 +111,13 @@
       document.getElementById('plan-action-area').classList.add('hidden'); // HIDE NEW SECTION
       document.getElementById('initial-placeholder').classList.remove('hidden');
       currentContract = null;
+      sessionStorage.removeItem(CONTRACT_ID_CACHE_KEY); // Clear cache
       return;
     }
 
     currentContract = contractList.find(c => c.id === contractId);
+    sessionStorage.setItem(CONTRACT_ID_CACHE_KEY, currentContract.id); // Set cache
+    
     if (currentContract) {
       displayContractDetails(currentContract);
       
@@ -152,20 +157,46 @@ function handlePlanExistence(exists) {
     const actionArea = document.getElementById('plan-action-area');
     const createBtn = document.getElementById('create-plan-btn');
     const statusText = document.getElementById('plan-status-text');
+    const cachedId = sessionStorage.getItem(CONTRACT_ID_CACHE_KEY);
 
     if (exists) {
         statusText.textContent = 'Attendance Plan Status: Plan Ready. Click to Load.';
         createBtn.textContent = 'Load/Edit Plan';
         // NEW: Load the data when button is clicked
-        createBtn.onclick = () => fetchAttendanceData(currentContract.id); 
+        createBtn.onclick = () => fetchAttendanceData(cachedId); 
         planArea.classList.add('hidden');
     } else {
         statusText.textContent = 'Attendance Plan Status: No Plan Found. Click to Create.';
         createBtn.textContent = 'Create Attendance Plan';
-        // NEW: Create and Load when button is clicked
-        createBtn.onclick = () => createAndFetchPlan(currentContract.id); 
+        // NEW WORKFLOW: Call showBlankPlan()
+        createBtn.onclick = () => showBlankPlan(); 
         planArea.classList.add('hidden');
     }
+}
+
+// NEW WORKFLOW: Show blank plan (No server call)
+function showBlankPlan() {
+    // CRITICAL FIX: Ensure currentContract is properly initialized for rendering
+    if (!currentContract) {
+        showNotification('Please select a Contract Group ID first.', false);
+        return;
+    }
+    
+    currentContract.employees = []; // Start with no employees loaded
+    currentContract.planMap = {}; // Start with no plan data
+    
+    // Update the action button status
+    const statusText = document.getElementById('plan-status-text');
+    const createBtn = document.getElementById('create-plan-btn');
+    statusText.textContent = 'Attendance Plan Status: Creating New Plan...';
+    createBtn.textContent = 'Load/Edit Plan';
+    
+    // Show planning area and render table
+    document.getElementById('planning-area').classList.remove('hidden'); 
+    showNotification('New attendance plan ready. Fill in data and save.', true);
+
+    renderAttendancePlan(); // Render the blank grid
+    toggleLoading(false);
 }
 
 
@@ -181,17 +212,7 @@ function fetchAttendanceData(contractId) {
       .getAttendancePlan(contractId);
 }
 
-// NEW: Function to create sheets and fetch data
-function createAndFetchPlan(contractId) {
-    toggleLoading(true);
-    google.script.run
-        .withSuccessHandler(() => {
-            showNotification('Sheets created successfully! Loading plan...', true);
-            fetchAttendanceData(contractId);
-        })
-        .withFailureHandler(handleError)
-        .createContractSheets(contractId); // New function in Code.gs
-}
+// REMOVED: createAndFetchPlan() (Handled by SaveAllChanges)
 
 
 function handleAttendanceData(data) {
@@ -200,12 +221,14 @@ function handleAttendanceData(data) {
     currentContract.employees = data.employees;
     currentContract.planMap = data.planMap;
     
+    const cachedId = sessionStorage.getItem(CONTRACT_ID_CACHE_KEY);
+
     // Update the action button status to Load/Edit
     const statusText = document.getElementById('plan-status-text');
     const createBtn = document.getElementById('create-plan-btn');
     statusText.textContent = 'Attendance Plan Status: Plan Ready. Click to Load.';
     createBtn.textContent = 'Load/Edit Plan';
-    createBtn.onclick = () => fetchAttendanceData(currentContract.id); 
+    createBtn.onclick = () => fetchAttendanceData(cachedId); 
     
     // Show planning area and render table
     document.getElementById('planning-area').classList.remove('hidden'); 
@@ -619,11 +642,6 @@ function handleAttendanceData(data) {
         return;
     }
 
-    if (!finalStatus && !fixedStatusCodes.includes(finalStatus)) {
-      showNotification('Input must not be empty.', false);
-      return;
-    }
-    
     if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
         if (!TIME_FORMAT_REGEX.test(finalStatus)) {
             showNotification('Invalid schedule format. Please use HH:MM-HH:MM (e.g., 08:00-19:00).', false);
@@ -637,11 +655,15 @@ function handleAttendanceData(data) {
 
     const originalStatus = currentContract.planMap[originalPlanKey] || '';
 
+    // --- EDITED LOGIC: Tracking blank status ---
     if (originalStatus !== finalStatus) {
-        pendingAttendanceChanges[currentPlanKey] = finalStatus;
+        // I-store ang finalStatus, kahit na blangko ('')
+        pendingAttendanceChanges[currentPlanKey] = finalStatus; 
     } else {
+        // Kung bumalik sa original status (kahit blangko), tanggalin sa pending.
         delete pendingAttendanceChanges[currentPlanKey];
     }
+    // --- END EDITED LOGIC ---
     
     updateCellVisuals(cellElement, finalStatus, dayKey);
     
@@ -666,6 +688,15 @@ function handleAttendanceData(data) {
         return;
     }
     
+    // --- CRITICAL ID VALIDATION (Strict Check) ---
+    const contractIdToSave = sessionStorage.getItem(CONTRACT_ID_CACHE_KEY); // Use cached ID
+    
+    if (!contractIdToSave) {
+        showNotification('CRITICAL ERROR: Contract ID is not loaded. Please select a Contract Group ID and retry.', false);
+        return;
+    }
+    // --- END CRITICAL ID VALIDATION ---
+    
     // 2. I-prepare ang Contract Info
     const contractInfo = {
         payor: currentContract.payorCompany,
@@ -679,12 +710,13 @@ function handleAttendanceData(data) {
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        .saveAllData(currentContract.id, contractInfo, empChanges, attChanges);
+        .saveAllData(contractIdToSave, contractInfo, empChanges, attChanges); // Gamitin ang na-verify na ID
   }
 
   function handleSaveAllSuccess(response) {
       showNotification('All changes saved successfully! Refreshing data...', true);
-      fetchAttendanceData(currentContract.id); 
+      // I-fetch ulit ang data para ma-load ang na-save na plan
+      fetchAttendanceData(sessionStorage.getItem(CONTRACT_ID_CACHE_KEY)); 
   }
 
   function handleSaveAllError(error) {
