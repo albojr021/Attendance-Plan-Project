@@ -170,6 +170,9 @@
     const month = currentPlanningDate.getMonth();
     const daysInMonth = getDaysInMonth(year, month);
     const selectedShift = document.getElementById('shift-period-select').value;
+    
+    // NEW: Kukunin ang pangalan ng buwan (short format, e.g., Nov)
+    const monthName = currentPlanningDate.toLocaleString('en-US', { month: 'short' }); 
 
     document.getElementById('current-month-year').textContent = `${currentPlanningDate.toLocaleString('en-US', { month: 'long' })} ${year}`;
 
@@ -185,8 +188,8 @@
     
     // --- TABLE HEAD ---
     const thead = table.createTHead();
-    const headerRow1 = thead.insertRow();
-    const headerRow2 = thead.insertRow();
+    const headerRow1 = thead.insertRow(); // Row 1: Date & Month
+    const headerRow2 = thead.insertRow(); // Row 2: Day Name
     
     // Employee Info Header (2 rows tall)
     const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'Position', 'Area Posting'];
@@ -208,15 +211,17 @@
         const dayName = dayNames[dayOfMonth.getDay()];
         const th = document.createElement('th');
         th.scope = 'col';
-        th.textContent = d;
-        th.className = 'text-xs font-semibold uppercase tracking-wider p-3 text-center border-r border-b bg-gray-100';
+        // EDITED: Idagdag ang Buwan sa petsa (e.g., 1/Nov)
+        th.innerHTML = `<span>${d}</span><span class="block font-medium text-[10px] uppercase text-gray-500">${monthName}</span>`; 
+        th.className = 'text-xs font-semibold uppercase tracking-wider p-1 text-center border-r border-b bg-gray-100';
         headerRow1.appendChild(th);
         
         // Day Name Headers (Second row)
         const thDay = document.createElement('th');
         thDay.scope = 'col';
         thDay.textContent = dayName;
-        thDay.className = 'text-xs font-medium uppercase tracking-wider p-1 text-center border-r bg-gray-50';
+        // EDITED: Tanggalin ang p-1 at gamitin ang p-3 para pantay sa Row 1 (Day Name Row)
+        thDay.className = 'text-xs font-medium uppercase tracking-wider p-3 text-center border-r bg-gray-50'; 
         headerRow2.appendChild(thDay);
     }
     
