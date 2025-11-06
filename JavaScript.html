@@ -2,24 +2,24 @@
   // Global state variables
   let contractList = [];
   let currentContract = null;
-  const CONTRACT_ID_CACHE_KEY = 'current_contract_id'; // NEW: Dedicated cache key
+  const CONTRACT_ID_CACHE_KEY = 'current_contract_id'; 
   
   // *** DATE NAVIGATION VARIABLE ***
-  let currentPlanningDate = new Date(); // Default: Current Month/Year
+  let currentPlanningDate = new Date(); 
   // Ang status codes
   const fixedStatusCodes = ['RD', 'RH', 'SH', '']; 
   const shiftPeriods = [
     { key: '1stHalf', label: '1st Half (1st to 15th)' },
     { key: '2ndHalf', label: '2nd Half (16th to End)' }
   ];
-  const maxDays = 31; // Max days in a month for planning purposes
+  const maxDays = 31; 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   // *** FIXED STATUS OPTIONS PARA SA FLOATING DROPDOWN ***
-  let selectedCellData = {}; // Stores {personnelId, dayKey, shiftKey, inputElement}
+  let selectedCellData = {}; 
   
   // *** NEW: Global state para sa tracking ng changes ***
   let pendingAttendanceChanges = {}; // Key: personnelId_DayKey_ShiftKey, Value: Status
-  let pendingEmployeeInfoChanges = {}; // Key: oldPersonnelId, Value: {id, name, position, area}
+  let pendingEmployeeInfoChanges = {}; // Key: original/oldPersonnelId, Value: {id, name, position, area}
   // ---------------------------------------------
 
   const fixedStatusOptions = [
@@ -345,6 +345,16 @@ function handleAttendanceData(data) {
             position: '', 
             area: '' 
         };
+        
+        // CRITICAL: I-retrieve ang pending changes gamit ang employee.id (original/old ID) bilang key
+        const pendingInfo = pendingEmployeeInfoChanges[employee.id]; 
+        
+        // Gamitin ang pending data kung meron, kundi ang original/saved data
+        const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
+        const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
+        const displayPosition = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
+        const displayArea = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
+
 
         const tr = tbody.insertRow();
         
@@ -360,11 +370,11 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         let input = document.createElement('input');
         input.type = 'text';
-        const pendingInfo = pendingEmployeeInfoChanges[employee.id];
-        input.value = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
+        // Gamitin ang display value
+        input.value = displayId;
         input.placeholder = 'ID';
         input.maxLength = 20; 
-        input.dataset.oldPersonnelId = employee.id; 
+        input.dataset.oldPersonnelId = employee.id; // CRITICAL: Dapat ito ang original ID/key
         input.dataset.field = 'id';
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
@@ -376,7 +386,7 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
-        input.value = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
+        input.value = displayName; // Gamitin ang display value
         input.placeholder = 'Full Name';
         input.dataset.oldPersonnelId = employee.id; 
         input.dataset.field = 'name';
@@ -390,7 +400,7 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
-        input.value = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
+        input.value = displayPosition; // Gamitin ang display value
         input.placeholder = 'Position';
         input.dataset.oldPersonnelId = employee.id;
         input.dataset.field = 'position';
@@ -404,7 +414,7 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
-        input.value = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
+        input.value = displayArea; // Gamitin ang display value
         input.placeholder = 'Area';
         input.dataset.oldPersonnelId = employee.id;
         input.dataset.field = 'area';
@@ -420,15 +430,37 @@ function handleAttendanceData(data) {
         });
 
         // 2. Attendance Plan Cells (Dynamic Dates)
-        const currentPersonnelId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id; 
+        const currentPersonnelId = displayId; // Gamitin ang ID na na-save o pending
 
         for (let d = startDay; d <= endDay; d++) {
-            const dayKey = `${year}-${month + 1}-${d}`;
-            const planKey = `${currentPersonnelId}_${dayKey}_${selectedShift}`; 
+            // CRITICAL FIX: Direct Unpadded DayKey format (YYYY-M-D) na tugma sa Sheets
+            const dayKeyUnpadded = `${year}-${month + 1}-${d}`;
             
-            const status = pendingAttendanceChanges[planKey] !== undefined 
-                           ? pendingAttendanceChanges[planKey] 
-                           : currentContract.planMap[`${employee.id}_${dayKey}_${selectedShift}`] || '';
+            // CRITICAL LOOKUP PREPARATION
+            const trimmedCurrentId = currentPersonnelId.toString().trim();
+            const trimmedEmployeeId = employee.id.toString().trim();
+            const trimmedShift = selectedShift.toString().trim();
+            const trimmedDayKey = dayKeyUnpadded.toString().trim(); // Use the unpadded key for lookup
+
+            // Check 1: Pending (Un-saved) changes
+            const planKey = `${trimmedCurrentId}_${trimmedDayKey}_${trimmedShift}`; 
+            const pendingStatus = pendingAttendanceChanges[planKey];
+
+            // Check 2: Saved data (Unpadded Key)
+            // Use the Saved Employee ID and the Unpadded DayKey
+            const savedDataKeyUnpadded = `${trimmedEmployeeId}_${trimmedDayKey}_${trimmedShift}`;
+            const savedStatusUnpadded = currentContract.planMap[savedDataKeyUnpadded] || '';
+
+
+            // CRITICAL: I-prioritize ang Pending Status, Fallback to Saved Statuses
+            let status = pendingStatus !== undefined ? pendingStatus : '';
+
+            if (status === '') {
+                 // Huling subok, gamitin ang na-fetch na data mula sa server (Unpadded Key)
+                 if (savedStatusUnpadded !== '') {
+                    status = savedStatusUnpadded;
+                 }
+            }
             
             td = tr.insertCell();
             td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
@@ -438,12 +470,12 @@ function handleAttendanceData(data) {
             td.style.minWidth = dateColWidth;
             
             // Set cell color and content
-            updateCellVisuals(td, status, dayKey);
+            updateCellVisuals(td, status, dayKeyUnpadded); // Gamitin ang status na nahanap
 
             // Add click listener
-            td.dataset.personnelId = currentPersonnelId; 
-            td.dataset.dayKey = dayKey;
-            td.dataset.shiftKey = selectedShift;
+            td.dataset.personnelId = trimmedCurrentId; 
+            td.dataset.dayKey = dayKeyUnpadded; // Use Unpadded for data attributes
+            td.dataset.shiftKey = trimmedShift;
             td.dataset.originalId = employee.id; 
             td.addEventListener('click', handleCellClick);
         }
@@ -457,7 +489,7 @@ function handleAttendanceData(data) {
   function handlePersonnelInfoChange(event, employee) {
       const input = event.target;
       const field = input.dataset.field;
-      const oldPersonnelId = input.dataset.oldPersonnelId;
+      const oldPersonnelId = employee.id; // CRITICAL: Always use the original ID as the key/old ID
       let newValue = input.value;
       
       let pendingChange = pendingEmployeeInfoChanges[oldPersonnelId] || {
@@ -499,11 +531,13 @@ function handleAttendanceData(data) {
 
 
       if (field === 'id') {
+          // I-update ang dataset.oldPersonnelId ng iba pang inputs sa row sa bagong ID (para sa save logic)
           input.closest('tr').querySelectorAll('.personnel-info-input').forEach(otherInput => {
               if (otherInput !== input) {
-                  otherInput.dataset.oldPersonnelId = pendingChange.id; 
+                  otherInput.dataset.oldPersonnelId = pendingChange.id; // Ito ang bagong ID
               }
           });
+          // I-update ang dataset.personnelId ng plan cells sa bagong ID
           input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
               cell.dataset.personnelId = pendingChange.id; 
           });
@@ -516,8 +550,10 @@ function handleAttendanceData(data) {
                          pendingChange.isNew); 
 
       if (isChanged) {
+          // I-store gamit ang ORIGINAL/OLD ID bilang key
           pendingEmployeeInfoChanges[oldPersonnelId] = pendingChange;
       } else {
+          // Tanggalin gamit ang ORIGINAL/OLD ID bilang key
           delete pendingEmployeeInfoChanges[oldPersonnelId];
       }
   }
@@ -715,6 +751,10 @@ function handleAttendanceData(data) {
 
   function handleSaveAllSuccess(response) {
       showNotification('All changes saved successfully! Refreshing data...', true);
+      // CRITICAL: I-clear ang pendingEmployeeInfoChanges para ma-load ang fresh data
+      pendingAttendanceChanges = {}; 
+      pendingEmployeeInfoChanges = {}; 
+      
       // I-fetch ulit ang data para ma-load ang na-save na plan
       fetchAttendanceData(sessionStorage.getItem(CONTRACT_ID_CACHE_KEY)); 
   }
