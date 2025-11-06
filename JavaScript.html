@@ -14,7 +14,12 @@
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   // *** FIXED STATUS OPTIONS PARA SA FLOATING DROPDOWN ***
   let selectedCellData = {}; // Stores {personnelId, dayKey, shiftKey, inputElement}
-  let selectedEmployeeIdToEdit = null; // Para sa Employee Form (Add/Edit)
+  
+  // *** NEW: Global state para sa tracking ng changes ***
+  let pendingAttendanceChanges = {}; // Key: personnelId_DayKey_ShiftKey, Value: Status
+  let pendingEmployeeInfoChanges = {}; // Key: oldPersonnelId, Value: {id, name, position, area}
+  // ---------------------------------------------
+
 
   const fixedStatusOptions = [
     { value: 'RD', label: 'Rest Day (RD)', color: 'status-rd text-red-700' },
@@ -87,7 +92,8 @@
     document.getElementById('shift-period-select').addEventListener('change', renderAttendancePlan);
     document.getElementById('prev-month').addEventListener('click', () => navigateMonth(-1));
     document.getElementById('next-month').addEventListener('click', () => navigateMonth(1));
-    document.getElementById('save-employee-btn').addEventListener('click', handleSaveEmployee);
+    // *** NEW: Listener for Save All Button ***
+    document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
   }
 
   function handleContractChange(event) {
@@ -113,7 +119,7 @@
     document.getElementById('agency').textContent = contract.agency;
     document.getElementById('service-type').textContent = contract.serviceType;
     document.getElementById('head-count').textContent = contract.headCount;
-    document.getElementById('head-count-limit').textContent = contract.headCount; // Para sa form info
+    // Removed: document.getElementById('head-count-limit').textContent = contract.headCount; 
     
     document.getElementById('contract-details-area').classList.remove('hidden');
     document.getElementById('planning-area').classList.remove('hidden');
@@ -122,6 +128,10 @@
 
   function fetchAttendanceData(contractId) {
     toggleLoading(true);
+    // *** NEW: Clear pending changes when new data is fetched ***
+    pendingAttendanceChanges = {}; 
+    pendingEmployeeInfoChanges = {}; 
+    
     google.script.run
       .withSuccessHandler(handleAttendanceData)
       .withFailureHandler(handleError)
@@ -239,10 +249,12 @@
         td = tr.insertCell();
         let input = document.createElement('input');
         input.type = 'text';
-        input.value = employee.id;
+        // *** Display value from pending changes if available, otherwise from employee data ***
+        const pendingInfo = pendingEmployeeInfoChanges[employee.id];
+        input.value = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
         input.placeholder = 'ID';
-        input.maxLength = 20; // Example limit
-        input.dataset.personnelId = employee.id; // Store old ID for reference
+        input.maxLength = 20; 
+        input.dataset.oldPersonnelId = employee.id; // Store original ID for lookup
         input.dataset.field = 'id';
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
@@ -252,9 +264,9 @@
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
-        input.value = employee.name;
+        input.value = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         input.placeholder = 'Full Name';
-        input.dataset.personnelId = employee.id; // Store old ID for reference
+        input.dataset.oldPersonnelId = employee.id; 
         input.dataset.field = 'name';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
@@ -264,9 +276,9 @@
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
-        input.value = employee.position;
+        input.value = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
         input.placeholder = 'Position';
-        input.dataset.personnelId = employee.id;
+        input.dataset.oldPersonnelId = employee.id;
         input.dataset.field = 'position';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
@@ -276,27 +288,32 @@
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
-        input.value = employee.area;
+        input.value = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
         input.placeholder = 'Area';
-        input.dataset.personnelId = employee.id;
+        input.dataset.oldPersonnelId = employee.id;
         input.dataset.field = 'area';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
 
-        // Add event listeners for Personnel Info updates
+        // Add event listeners for Personnel Info updates (No auto-save)
         input.closest('tr').querySelectorAll('.personnel-info-input').forEach(infoInput => {
-             // Use blur to save when user clicks away
-            infoInput.addEventListener('blur', (e) => handlePersonnelInfoSave(e, employee));
+             // NEW: Use input to track immediate changes
+            infoInput.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
         });
 
         // 2. Attendance Plan Cells (Dynamic Dates)
-        const personnelId = employee.id;
-        
+        const currentPersonnelId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id; // Use new ID if changed
+
         for (let d = startDay; d <= endDay; d++) {
             const dayKey = `${year}-${month + 1}-${d}`;
-            const planKey = `${personnelId}_${dayKey}_${selectedShift}`;
-            const status = currentContract.planMap[planKey] || '';
+            // Use currentPersonnelId for the key
+            const planKey = `${currentPersonnelId}_${dayKey}_${selectedShift}`; 
+            
+            // *** Display status from pending changes if available, otherwise from planMap ***
+            const status = pendingAttendanceChanges[planKey] !== undefined 
+                           ? pendingAttendanceChanges[planKey] 
+                           : currentContract.planMap[`${employee.id}_${dayKey}_${selectedShift}`] || '';
             
             td = tr.insertCell();
             td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
@@ -305,9 +322,10 @@
             updateCellVisuals(td, status, dayKey);
 
             // Add click listener
-            td.dataset.personnelId = personnelId;
+            td.dataset.personnelId = currentPersonnelId; // Use the potentially new ID for click
             td.dataset.dayKey = dayKey;
             td.dataset.shiftKey = selectedShift;
+            td.dataset.originalId = employee.id; // Store the original ID for plan map lookup
             td.addEventListener('click', handleCellClick);
         }
     }
@@ -315,118 +333,63 @@
     tableContainer.appendChild(table);
   }
 
-  // --- EMPLOYEE FORM HANDLERS ---
+  // --- EMPLOYEE FORM HANDLERS (REMOVED: Clear form, Save Employee) ---
   
-  // Clear the Employee Form fields
-  function clearEmployeeForm() {
-      document.getElementById('form-personnel-id').value = '';
-      document.getElementById('form-name').value = '';
-      document.getElementById('form-position').value = '';
-      document.getElementById('form-area').value = '';
-      document.getElementById('form-personnel-id').disabled = false; // Enable ID for new entry
-      selectedEmployeeIdToEdit = null;
-  }
-  
-  // Handles saving/updating employee info from the form
-  function handleSaveEmployee() {
-      const contractId = currentContract.id;
-      const personnelId = document.getElementById('form-personnel-id').value.trim();
-      const name = document.getElementById('form-name').value.trim();
-      const position = document.getElementById('form-position').value.trim();
-      const area = document.getElementById('form-area').value.trim();
-      
-      if (!personnelId || !name) {
-          showNotification('Personnel ID and Name are required fields.', false);
-          return;
-      }
-      
-      const isNewEmployee = !currentContract.employees.some(e => e.id === personnelId);
-      
-      // Headcount Check (Only for new employees)
-      if (isNewEmployee && currentContract.employees.length >= currentContract.headCount) {
-           showNotification(`Cannot add. Maximum headcount (${currentContract.headCount}) reached.`, false);
-           return;
-      }
-
-      toggleLoading(true);
-
-      const dataToSave = {
-          contractId: contractId,
-          personnelId: personnelId,
-          name: name,
-          position: position,
-          area: area
-      };
-
-      google.script.run
-        .withSuccessHandler((response) => {
-            showNotification(`Employee ID ${personnelId} saved successfully!`, true);
-            // Re-fetch data to update the grid and employee list
-            fetchAttendanceData(contractId);
-            clearEmployeeForm();
-        })
-        .withFailureHandler(handleError)
-        .saveEmployeeInfo(dataToSave);
-  }
-
-  // Handles saving/updating employee info from the grid input fields
-  function handlePersonnelInfoSave(event, employee) {
+  // *** NEW: Track Personnel Info Changes (No Save) ***
+  function handlePersonnelInfoChange(event, employee) {
       const input = event.target;
       const field = input.dataset.field;
-      let newValue = input.value.trim();
+      const oldPersonnelId = input.dataset.oldPersonnelId;
+      let newValue = input.value;
       
-      // Only save if the value has changed
-      if (employee[field] === newValue) return;
-
-      if (field === 'id' && !newValue) {
-          showNotification('Personnel ID cannot be empty.', false);
-          input.value = employee.id; // Revert to old value
-          return;
-      }
-
-      toggleLoading(true);
-
-      const dataToSave = {
-          contractId: currentContract.id,
-          personnelId: employee.id, // Use existing ID for lookup/update
-          name: employee.name,
-          position: employee.position,
-          area: employee.area
+      // Initialize or get the pending change object
+      let pendingChange = pendingEmployeeInfoChanges[oldPersonnelId] || {
+          id: employee.id, 
+          name: employee.name, 
+          position: employee.position, 
+          area: employee.area,
+          isNew: !employee.id // Flag if this is a brand new row (empty ID)
       };
-      
-      // Update the specific field in the data to save
+
+      // Update the specific field
+      pendingChange[field] = newValue.trim();
+
+      // Check if ID is being changed
       if (field === 'id') {
-          // This is a special case: must update all related records/keys
-          // For now, let's keep it simple: if ID changes, treat it as new for safety, 
-          // or ideally, handle ID change on the server (Apps Script) which is complex.
-          // Since the server-side code handles appendRow for new ID, we'll allow it.
-          // Note: When ID changes, the old record won't be found, so a new one is appended.
-          // It's better to manage ID change only through a dedicated form for simplicity.
-          
-          if (currentContract.employees.some(e => e.id === newValue && e.id !== employee.id)) {
-               showNotification('Personnel ID already exists. Please use a unique ID.', false);
-               input.value = employee.id;
-               toggleLoading(false);
-               return;
-          }
-          dataToSave.personnelId = newValue; // New ID
-      } else {
-          dataToSave[field] = newValue;
+          // If the ID is changed, update the dataset of other inputs in the same row
+          // This is critical for tracking changes in other fields later
+          input.closest('tr').querySelectorAll('.personnel-info-input').forEach(otherInput => {
+              if (otherInput !== input) {
+                  otherInput.dataset.oldPersonnelId = pendingChange.id; // Use new ID as the 'new' old ID
+              }
+          });
       }
       
-      // Save data
-      google.script.run
-        .withSuccessHandler((response) => {
-            showNotification('Personnel Info updated!', true);
-            // Re-fetch data to update the grid (important if ID changed)
-            fetchAttendanceData(currentContract.id);
-        })
-        .withFailureHandler(handleError)
-        .saveEmployeeInfo(dataToSave);
+      // Only store if there is an actual change from the original loaded data
+      const isChanged = (pendingChange.id !== employee.id || 
+                         pendingChange.name !== employee.name || 
+                         pendingChange.position !== employee.position || 
+                         pendingChange.area !== employee.area ||
+                         pendingChange.isNew); // Always save if it's a new row
+
+      if (isChanged) {
+          pendingEmployeeInfoChanges[oldPersonnelId] = pendingChange;
+      } else {
+          // If reverted back to original, remove from pending changes
+          delete pendingEmployeeInfoChanges[oldPersonnelId];
+      }
+      
+      // Update the personnel ID in all attendance cells of the row to reflect the pending ID change
+      if(field === 'id') {
+          input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
+              cell.dataset.personnelId = newValue.trim();
+          });
+      }
+
+      // Update the UI to show the new value immediately (already done by input element)
   }
 
-
-  // --- ATTENDANCE PLAN HANDLERS ---
+  // --- ATTENDANCE PLAN HANDLERS (Manual Save) ---
 
   function updateCellVisuals(cell, status, dayKey) {
     const dayOfMonth = new Date(dayKey);
@@ -473,21 +436,27 @@
 
   function handleCellClick(event) {
     const targetCell = event.currentTarget;
-    const personnelId = targetCell.dataset.personnelId;
+    const personnelId = targetCell.dataset.personnelId; // Current ID (can be new ID)
+    const originalId = targetCell.dataset.originalId; // Original ID (for lookup in planMap)
     const dayKey = targetCell.dataset.dayKey;
     const shiftKey = targetCell.dataset.shiftKey;
     
     if (!personnelId) {
-        showNotification('Cannot edit: Personnel ID is empty.', false);
+        showNotification('Cannot edit: Personnel ID is empty. Please fill in the ID first.', false);
         return;
     }
 
     const planKey = `${personnelId}_${dayKey}_${shiftKey}`;
-    const currentStatus = currentContract.planMap[planKey] || '';
+    
+    // Get current status from pending changes or original plan map
+    const currentStatus = pendingAttendanceChanges[planKey] !== undefined 
+                          ? pendingAttendanceChanges[planKey] 
+                          : currentContract.planMap[`${originalId}_${dayKey}_${shiftKey}`] || '';
 
     // 1. Store data
     selectedCellData = {
-      personnelId,
+      personnelId, // Potentially new ID
+      originalId,  // Original ID
       dayKey,
       shiftKey,
       cellElement: targetCell
@@ -550,34 +519,73 @@
       showNotification('Input must not be empty.', false);
       return;
     }
+    
+    // Time format validation
+    const timePattern = /^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/;
+    if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
+        if (!timePattern.test(finalStatus)) {
+            showNotification('Invalid time format. Please use HH:MM-HH:MM (e.g., 9:00-18:00).', false);
+            // Re-open modal
+            setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
+            return;
+        }
+    }
 
-    const { personnelId, dayKey, shiftKey, cellElement } = selectedCellData;
 
-    // 1. Update local state
-    const planKey = `${personnelId}_${dayKey}_${shiftKey}`;
-    currentContract.planMap[planKey] = finalStatus;
+    const { personnelId, originalId, dayKey, shiftKey, cellElement } = selectedCellData;
 
+    // 1. Update local state and pending changes (NO auto-save to Sheets)
+    const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
+    const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
+
+    // Check if change is from original state
+    if (currentContract.planMap[originalPlanKey] !== finalStatus) {
+        pendingAttendanceChanges[currentPlanKey] = finalStatus;
+    } else {
+        // If reverted back to original, remove from pending changes
+        delete pendingAttendanceChanges[currentPlanKey];
+    }
+    
     // 2. Update UI
     updateCellVisuals(cellElement, finalStatus, dayKey);
     
-    // 3. Save to Sheets
-    saveStatusToSheets({
-        contractId: currentContract.id,
-        personnelId: personnelId,
-        shift: shiftKey,
-        dayKey: dayKey,
-        status: finalStatus 
-    });
+    showNotification('Change saved locally. Click "Save All Changes" to save to Sheets.', true);
   }
   
-  /**
-   * Helper function to send data to Google Sheets.
-   */
-  function saveStatusToSheets(dataToSave) {
+  // *** NEW: Save All Changes function ***
+  function handleSaveAllChanges() {
+    // 1. Check for pending changes
+    const empChanges = Object.values(pendingEmployeeInfoChanges).filter(e => e.id.trim() !== '' && e.name.trim() !== ''); // Filter out empty or incomplete rows
+    const attChanges = Object.keys(pendingAttendanceChanges).map(key => {
+        const [personnelId, dayKey, shift] = key.split('_');
+        return { personnelId, dayKey, shift, status: pendingAttendanceChanges[key] };
+    });
+
+    if (empChanges.length === 0 && attChanges.length === 0) {
+        showNotification('No changes detected to save.', false);
+        return;
+    }
+
+    toggleLoading(true);
+    
+    // Combine both saves into one server call (or two sequential calls)
+    // We'll use one server call: saveAllData()
     google.script.run
-      .withSuccessHandler((response) => showNotification('Attendance status saved!', true))
-      .withFailureHandler(handleError)
-      .saveAttendancePlan(dataToSave);
+        .withSuccessHandler(handleSaveAllSuccess)
+        .withFailureHandler(handleSaveAllError)
+        .saveAllData(currentContract.id, empChanges, attChanges);
+  }
+
+  function handleSaveAllSuccess(response) {
+      // Re-fetch data to refresh the grid and clear local pending changes
+      showNotification('All changes saved successfully! Refreshing data...', true);
+      fetchAttendanceData(currentContract.id); 
+  }
+
+  function handleSaveAllError(error) {
+       console.error("SAVE ALL ERROR:", error);
+       showNotification(`FATAL SAVE ERROR: ${error.message || 'An unknown error occurred during saving.'}`, false);
+       toggleLoading(false); // Make sure to remove loading indicator
   }
 
   // --- INITIALIZATION ---
@@ -588,10 +596,5 @@
       .withSuccessHandler(handleContractList)
       .withFailureHandler(handleError)
       .getContracts();
-      
-      // I-set ang global listener para i-close ang dropdown kapag nag-click sa labas
-      document.addEventListener('click', (event) => {
-          // Logic for dropdown is now in the modal
-      });
   }
 </script>
