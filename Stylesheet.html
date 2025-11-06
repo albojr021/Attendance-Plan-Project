@@ -30,7 +30,7 @@
         border: none;
         outline: none;
         height: 100%;
-        min-width: 50px; /* Mas maliit na default width */
+        min-width: 50px; 
         text-align: center;
         background-color: transparent;
         transition: background-color 0.2s;
@@ -49,21 +49,33 @@
     
     /* General table styling */
     .attendance-grid table {
-        table-layout: fixed;
-        width: max-content; /* Ensure table fits content */
-        min-width: 100%; /* For responsive on small screens */
+        table-layout: fixed; /* CRITICAL: Fixed layout */
+        width: max-content; 
+        min-width: 100%; 
     }
 
-    /* Column Widths: Adjusted for new Employee Info */
-    .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; /* No. */ }
-    .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; /* Personnel ID */ }
-    .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; /* Personnel Name */ }
-    .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 120px; /* Position */ }
-    .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; /* Area Posting */ }
-    /* Dynamic Date Cells - ADJUSTED FOR BETTER ALIGNMENT */
-    .attendance-grid th:nth-child(n+6), .attendance-grid td:nth-child(n+6) { 
-        width: 70px; /* Panatilihin ang parehong lapad */
-        min-width: 70px; /* Tiyakin na hindi mag-iiba */
+    /* Column Widths for Fixed Employee Info Columns */
+    .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; }
+    .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; }
+    .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; }
+    .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 120px; }
+    .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; }
+    
+    /* Dynamic Date Cells - EDITED FOR STRICT FIX */
+    .date-col-fix {
+        width: 70px;
+        min-width: 70px; 
+        max-width: 70px;
+        box-sizing: border-box; 
+    }
+
+    /* Applying the fix to all headers and data cells starting from the 6th column */
+    .attendance-grid th:nth-child(n+6), 
+    .attendance-grid td:nth-child(n+6) { 
+        width: 70px; 
+        min-width: 70px;
+        max-width: 70px;
+        padding: 0; /* Alisin ang padding sa TD/TH at ilagay sa inner DIV */
     }
 
     /* Apply Sticky Positioning to Headers and Cells */
@@ -72,7 +84,7 @@
         left: 0; 
     }
     .sticky-col-header {
-        top: 0; /* Freeze the top headers */
+        top: 0; 
         z-index: 20; 
     }
     
@@ -102,16 +114,14 @@
     
     /* Override sticky position for the first row's second header (Day Name row) */
     .attendance-grid tr:nth-child(2) th.sticky-col-header {
-        position: static; /* Disable sticky for the empty cells */
+        position: static; 
     }
 
-    /* FIX: Ensures dates and day names are perfectly aligned */
+    /* Ensure inner header text has padding, as we removed it from TH above */
     .attendance-grid th {
         box-sizing: border-box; 
-        padding-left: 0.5rem;
-        padding-right: 0.5rem;
     }
-    
+
     /* Ensure the inner content of the cell takes the color */
     .attendance-cell-bg {
         transition: background-color 0.2s, color 0.2s;
@@ -127,8 +137,8 @@
         min-height: 44px;
     }
     .personnel-info-input:focus {
-        border-color: #60a5fa; /* ring-blue-400 */
-        background-color: #eff6ff; /* bg-blue-50 */
+        border-color: #60a5fa; 
+        background-color: #eff6ff; 
         outline: none;
     }
     
