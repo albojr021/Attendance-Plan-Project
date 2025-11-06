@@ -60,8 +60,11 @@
     .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; /* Personnel Name */ }
     .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 120px; /* Position */ }
     .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; /* Area Posting */ }
-    /* Dynamic Date Cells */
-    .attendance-grid th:nth-child(n+6), .attendance-grid td:nth-child(n+6) { width: 70px; }
+    /* Dynamic Date Cells - ADJUSTED FOR BETTER ALIGNMENT */
+    .attendance-grid th:nth-child(n+6), .attendance-grid td:nth-child(n+6) { 
+        width: 70px; /* Panatilihin ang parehong lapad */
+        min-width: 70px; /* Tiyakin na hindi mag-iiba */
+    }
 
     /* Apply Sticky Positioning to Headers and Cells */
     .sticky-col, .sticky-col-header {
@@ -100,6 +103,13 @@
     /* Override sticky position for the first row's second header (Day Name row) */
     .attendance-grid tr:nth-child(2) th.sticky-col-header {
         position: static; /* Disable sticky for the empty cells */
+    }
+
+    /* FIX: Ensures dates and day names are perfectly aligned */
+    .attendance-grid th {
+        box-sizing: border-box; 
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
     }
     
     /* Ensure the inner content of the cell takes the color */
