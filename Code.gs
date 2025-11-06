@@ -71,15 +71,21 @@ function getSheetData(sheetName) {
   for (let i = 1; i < values.length; i++) { 
     const row = values[i];
     // Tiyakin na ang row ay may laman (hindi puro blanko)
-    if (row.some(cell => String(cell).trim() !== '')) { 
-        const item = {};
-        cleanHeaders.forEach((headerKey, index) => {
-          if (headerKey) {
-              item[headerKey] = row[index];
-          }
-        });
-        data.push(item);
+    // TANDAAN: Para sa plan data, binabasa natin ang lahat dahil sa nature ng AttendancePlan sheet.
+    // Ngunit para sa MASTER/Employees, tinatanggal natin ang puro blangko na rows.
+    if (sheetName === CONTRACTS_SHEET_NAME || sheetName.includes('Employees')) {
+      if (!row.some(cell => String(cell).trim() !== '')) {
+        continue;
+      }
     }
+    
+    const item = {};
+    cleanHeaders.forEach((headerKey, index) => {
+      if (headerKey) {
+          item[headerKey] = row[index];
+      }
+    });
+    data.push(item);
   }
   
   Logger.log(`[getSheetData] Total data rows processed (excluding header): ${data.length}`);
@@ -158,7 +164,7 @@ function createContractSheets(contractId) {
         
         Logger.log(`[createContractSheets] Created Attendance Plan sheet for ${contractId} with headers at Row 5.`);
     } else {
-        Logger.log(`[createContractSheets] Attendance Plan sheet for ${contractId} already existed.`);
+        Logger.log(`[createContractSheets] Employee sheet for ${contractId} already existed.`);
     }
 }
 
@@ -235,7 +241,7 @@ function getContracts() {
     return isLive;
   });
 
-  Logger.log(`[getContracts] Total contracts LIVE and filtered: ${filteredContracts.length}`);
+  Logger.log(`[getContracts] Total data rows available for filtering: ${allContracts.length}`);
   // MAPPING: Ginagamit ang case-insensitive keys
   return filteredContracts.map(c => {
     
@@ -267,33 +273,38 @@ function getContracts() {
  */
 function getAttendancePlan(contractId) {
     if (!contractId) throw new Error("Contract ID is required.");
-    // TANDAAN: HINDI na tinatawag ang ensureContractSheets() dito. Dapat itong tawagin bago tumawag sa getAttendancePlan.
     
     // 1. Kumuha ng Employee Data
     const empSheetName = getDynamicSheetName(contractId, 'employees');
-    const empData = getSheetData(empSheetName);
+    const empData = getSheetData(empSheetName); // Reads all rows, including new ones
     // 2. Kumuha ng Attendance Plan Data
     const planSheetName = getDynamicSheetName(contractId, 'plan');
     const planData = getSheetData(planSheetName); // Reads starting from Row 5 (headers)
     const planMap = {};
+    
+    // FIXED: I-store ang status kahit blangko
     planData.forEach(row => {
-        const id = row['Personnel ID'] || '';
-        const dayKey = row['DayKey'] || '';
-        const shift = row['Shift'] || '1stHalf'; // Default shift
-        const key = `${id}_${dayKey}_${shift}`;
-        planMap[key] = row['Status'] || '';
+        const id = String(row['Personnel ID'] || '').trim();
+        const dayKey = String(row['DayKey'] || '').trim();
+        const shift = String(row['Shift'] || '').trim() || '1stHalf'; 
+        
+        if (id && dayKey) {
+            const key = `${id}_${dayKey}_${shift}`;
+            // CRITICAL: Ensure we read the status correctly (which should contain '' if blank was saved)
+            planMap[key] = String(row['Status'] || '').trim(); 
+        }
     });
+    
     // 3. I-organisa ang Employee Data (Kasama ang 'No.')
+    // CRITICAL: Ito ay nagfi-filter ng mga rows na walang ID, na tama.
     const employees = empData.map((e, index) => ({
-        no: index + 1, // Auto-incremented No.
-        // FIXED: Ginagamit ang String() upang siguraduhin na ang numeric value ay nagiging string bago tawagin ang .trim()
+        no: index + 1, 
         id: String(e['Personnel ID'] || '').trim(),
         name: String(e['Personnel Name'] || '').trim(),
         position: String(e['Position'] || '').trim(),
         area: String(e['Area Posting'] || '').trim(),
-    })).filter(e => e.id);
-    // Siguraduhin na may ID
-
+    })).filter(e => e.id); // Filter out rows with empty ID
+    
     return { employees, planMap };
 }
 
@@ -307,7 +318,14 @@ function getAttendancePlan(contractId) {
  * @param {Array<Object>} attendanceChanges Mga pagbabago sa Attendance Plan.
  */
 function saveAllData(contractId, contractInfo, employeeChanges, attendanceChanges) {
-    if (!contractId) throw new Error("Contract ID is required.");
+    Logger.log(`[saveAllData] Starting save for contract: ${contractId}`);
+    Logger.log(`[saveAllData] Employee Changes count: ${employeeChanges.length}`);
+    Logger.log(`[saveAllData] Attendance Changes count: ${attendanceChanges.length}`);
+
+    if (!contractId) {
+      Logger.log("[saveAllData] ERROR: Contract ID is undefined or null.");
+      throw new Error("Contract ID is required.");
+    }
     ensureContractSheets(contractId); // Tiyakin na may sheets na mapagsa-save-an
     
     // 1. I-save ang Contract Info sa Plan Sheet
@@ -323,7 +341,7 @@ function saveAllData(contractId, contractInfo, employeeChanges, attendanceChange
         saveAttendancePlanBulk(contractId, attendanceChanges);
     }
     
-    Logger.log(`[saveAllData] Successfully saved Contract Info, ${employeeChanges.length} employee updates and ${attendanceChanges.length} attendance updates for ${contractId}.`);
+    Logger.log(`[saveAllData] Save completed.`);
 }
 
 
@@ -366,11 +384,9 @@ function saveAttendancePlanBulk(contractId, changes) {
     const HEADER_ROW = 5; // Attendance Plan headers are now at Row 5
     
     planSheet.setFrozenRows(0); 
-    // Magbasa ng data simula sa Row 5. Gumamit ng .getRange() na may tamang start row.
     const lastRow = planSheet.getLastRow();
     
-    // --- FIX APPLIED HERE (Line 371) ---
-    const numRowsToRead = lastRow - HEADER_ROW + 1; // Removed space in const name
+    const numRowsToRead = lastRow - HEADER_ROW + 1; // Corrected variable name
     
     const numColumns = planSheet.getLastColumn();
     
@@ -403,6 +419,10 @@ function saveAttendancePlanBulk(contractId, changes) {
     
     changes.forEach(data => {
         let rowFound = false;
+        
+        // Use the status, even if empty string ('')
+        const statusValue = String(data.status || '').trim(); // Ensures it is a string
+
         // Mag-loop sa data rows, simula sa index 1 (Row 6 sa sheet)
         for (let i = 1; i < values.length; i++) {
             const row = values[i];
@@ -413,21 +433,22 @@ function saveAttendancePlanBulk(contractId, changes) {
                 (String(row[dayKeyIndex] || '').trim() === String(data.dayKey || '').trim())         
             ) {
                 // Row found, record update
-                rowsToUpdate[i + HEADER_ROW] = data.status; // i + 5 is the actual sheet row number
+                // Gumamit ng statusValue (kahit blangko)
+                rowsToUpdate[i + HEADER_ROW] = statusValue; // i + 5 is the actual sheet row number
                 rowFound = true;
                 break;
             }
         }
         
-        // Kung walang existing row, i-record ang new row
+        // Kung walang existing row, mag-add ng bago
         if (!rowFound) {
+            // Gumawa ng bagong row para sa sheet, kahit blangko ang status.
             const newRow = [];
             newRow[personnelIdIndex] = data.personnelId;
             newRow[dayKeyIndex] = data.dayKey;
             newRow[shiftIndex] = data.shift;
             newRow[statusIndex] = data.status;
             
-            // I-fill ang gaps para sa appendRow
             const finalRow = [];
             for(let i = 0; i < headers.length; i++) {
                 finalRow.push(newRow[i] !== undefined ? newRow[i] : '');
@@ -438,7 +459,7 @@ function saveAttendancePlanBulk(contractId, changes) {
 
     // 1. Update existing rows
     Object.keys(rowsToUpdate).forEach(sheetRowNumber => {
-        // Sheet Row Number ay tama na
+        // Ang .setValue('') ay nagre-resulta sa blangkong cell sa sheet, na tama.
         planSheet.getRange(parseInt(sheetRowNumber), statusIndex + 1).setValue(rowsToUpdate[sheetRowNumber]);
     });
     
@@ -462,10 +483,18 @@ function saveEmployeeInfoBulk(contractId, changes) {
     if (!empSheet) throw new Error(`Employee Sheet for ID ${contractId} not found.`);
     
     empSheet.setFrozenRows(0); // Temporarily unfreeze
-    const range = empSheet.getDataRange();
-    const values = range.getValues();
+    
+    // Kumuha ng data mula sa Row 1, Col 1 hanggang sa dulo, para makuha ang headers.
+    const lastRow = empSheet.getLastRow();
+    const numRows = lastRow > 0 ? lastRow : 1; 
+    const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 4; 
+    
+    // Read values: Dito dapat makita ang headers at ang lahat ng existing data
+    const values = empSheet.getRange(1, 1, numRows, numColumns).getValues();
     const headers = values[0]; 
     empSheet.setFrozenRows(1); // Restore freeze
+    
+    Logger.log(`[saveEmployeeInfoBulk] Sheet Row Count (lastRow): ${lastRow}`);
 
     const personnelIdIndex = headers.indexOf('Personnel ID');
     const nameIndex = headers.indexOf('Personnel Name');
@@ -477,30 +506,34 @@ function saveEmployeeInfoBulk(contractId, changes) {
     }
     
     const rowsToUpdate = {}; // Key: i+1 (sheet row number), Value: [newId, newName, newPosition, newArea]
-    const newRows = [];
-
+    const rowsToAppend = []; // NEW: Array for batch appending
+    
     // Gumawa ng map para sa mabilis na lookup ng existing rows
     const personnelIdMap = {};
-    for (let i = 1; i < values.length; i++) {
+    // Simulan sa index 1 (Row 2) dahil index 0 ay headers
+    for (let i = 1; i < values.length; i++) { 
         personnelIdMap[String(values[i][personnelIdIndex] || '').trim()] = i + 1; // Store row number
     }
     
-    changes.forEach(data => {
+    changes.forEach((data, changeIndex) => {
         const oldId = String(data.oldPersonnelId || '').trim();
         const newId = String(data.id || '').trim();
         
-        // 1. Existing Row Update (Mahanap gamit ang OLD ID)
-        if (personnelIdMap[oldId]) {
+        Logger.log(`[saveEmployeeInfoBulk] Processing change #${changeIndex + 1}: oldId='${oldId}', newId='${newId}'`);
+
+        // 1. Existing Row Update (Hahanapin ang old ID)
+        if (oldId && personnelIdMap[oldId]) {
             const sheetRowNumber = personnelIdMap[oldId];
             
             // Check if a new ID is already being used by another row (Simple validation)
             if(oldId !== newId && personnelIdMap[newId] && personnelIdMap[newId] !== sheetRowNumber) {
-                 Logger.log(`SKIPPED: Cannot change ID from ${oldId} to ${newId}. ${newId} already exists in Row ${personnelIdMap[newId]}.`);
+                 Logger.log(`[saveEmployeeInfoBulk] SKIPPED (ID conflict): ${newId} already exists.`);
                  return; 
             }
             
             // I-record ang update
             rowsToUpdate[sheetRowNumber] = [newId, data.name, data.position, data.area];
+            Logger.log(`[saveEmployeeInfoBulk] Action: UPDATE existing row ${sheetRowNumber}.`);
 
             // Kung nagbago ang ID, i-update ang personnelIdMap para maiwasan ang conflict sa ibang changes sa batch na ito
             if (oldId !== newId) {
@@ -509,11 +542,12 @@ function saveEmployeeInfoBulk(contractId, changes) {
             }
 
         } 
-        // 2. New Row Append
-        else {
+        // 2. New Row Append (Kung ang oldId ay BLANK, ito ay bagong row)
+        // Dito papasok ang first save ng Row 1 (oldId = '')
+        else if (!oldId) {
             // Check if the new ID already exists in the existing sheet data or in the batch of updates
              if (personnelIdMap[newId]) {
-                Logger.log(`SKIPPED: Cannot add new ID ${newId}. It already exists in Row ${personnelIdMap[newId]} or in an earlier update batch.`);
+                Logger.log(`[saveEmployeeInfoBulk] SKIPPED (New ID conflict): ${newId} already exists.`);
                 return;
              }
             
@@ -527,14 +561,18 @@ function saveEmployeeInfoBulk(contractId, changes) {
             for(let i = 0; i < headers.length; i++) {
                 finalRow.push(newRow[i] !== undefined ? newRow[i] : '');
             }
-            newRows.push(finalRow);
-
+            
+            // CRITICAL FIX: I-store sa array para sa batch append
+            rowsToAppend.push(finalRow);
+            Logger.log(`[saveEmployeeInfoBulk] Action: Queued new employee for APPEND: ${newId}`);
+            
             // Add to map temporarily to prevent duplicates in the same batch
-            personnelIdMap[newId] = -1; // Flag as newly added in this batch
+            personnelIdMap[newId] = -1; 
         }
+        // Case 3: else (oldId has a value, but not found in map - skip)
     });
 
-    // 1. Update existing rows (using one call per column for efficiency)
+    // 1. Update existing rows (gamitin ang setValues para sa bilis ng maramihang updates)
     Object.keys(rowsToUpdate).forEach(sheetRowNumber => {
         const rowData = rowsToUpdate[sheetRowNumber];
         empSheet.getRange(parseInt(sheetRowNumber), personnelIdIndex + 1, 1, 4).setValues([
@@ -542,8 +580,15 @@ function saveEmployeeInfoBulk(contractId, changes) {
         ]);
     });
     
-    // 2. Append new rows
-    if (newRows.length > 0) {
-        empSheet.getRange(empSheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
+    // 2. Append new rows (Batch append)
+    if (rowsToAppend.length > 0) {
+      Logger.log(`[saveEmployeeInfoBulk] ACTION: Executing sequential append for ${rowsToAppend.length} rows.`);
+
+      // CRITICAL FIX: Sequential appendRow para sa maximum reliability (bypass setValues range issue)
+      rowsToAppend.forEach(row => {
+          empSheet.appendRow(row); 
+      });
+      
+      Logger.log(`[saveEmployeeInfoBulk] ACTION SUCCESS: Append operation completed.`);
     }
 }
