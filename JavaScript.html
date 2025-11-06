@@ -29,6 +29,9 @@
   
   // NEW: Global variable para sa validation (HH:MM-HH:MM)
   const TIME_FORMAT_REGEX = /^([01]?[0-9]|2[0-3]):[0-5][0-9]-([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  // NEW: Regex for Personnel Info validation
+  const PERSONNEL_ID_REGEX = /^[0-9]+$/; // Only numbers
+  const SAFE_TEXT_REGEX = /^[A-Z0-9\s.,]+$/; // Letters, Numbers, Space, Period, Comma
   // ---------------------------------------------
 
 
@@ -103,6 +106,7 @@
     if (!contractId) {
       document.getElementById('contract-details-area').classList.add('hidden');
       document.getElementById('planning-area').classList.add('hidden');
+      document.getElementById('plan-action-area').classList.add('hidden'); // HIDE NEW SECTION
       document.getElementById('initial-placeholder').classList.remove('hidden');
       currentContract = null;
       return;
@@ -111,11 +115,13 @@
     currentContract = contractList.find(c => c.id === contractId);
     if (currentContract) {
       displayContractDetails(currentContract);
-      fetchAttendanceData(contractId);
+      
+      // NEW: Check if sheets exist first (without creating them)
+      checkIfPlanExists(contractId); 
     }
-  }
+}
 
-  function displayContractDetails(contract) {
+function displayContractDetails(contract) {
     document.getElementById('sfc-ref').textContent = contract.sfcRef;
     document.getElementById('payor-company').textContent = contract.payorCompany;
     document.getElementById('agency').textContent = contract.agency;
@@ -123,33 +129,93 @@
     document.getElementById('head-count').textContent = contract.headCount;
     
     document.getElementById('contract-details-area').classList.remove('hidden');
-    document.getElementById('planning-area').classList.remove('hidden');
+    // document.getElementById('planning-area').classList.remove('hidden'); // HIDE planning-area
     document.getElementById('initial-placeholder').classList.add('hidden');
-  }
+    
+    // NEW: Show the action area
+    document.getElementById('plan-action-area').classList.remove('hidden'); 
+}
 
-  function fetchAttendanceData(contractId) {
+// NEW: Function to check if the plan sheets already exist
+function checkIfPlanExists(contractId) {
     toggleLoading(true);
-    // *** NEW: Clear pending changes when new data is fetched ***
+    google.script.run
+        .withSuccessHandler(handlePlanExistence)
+        .withFailureHandler(handleError)
+        .checkContractSheets(contractId);
+}
+
+// NEW: Handles the response from checkContractSheets
+function handlePlanExistence(exists) {
+    toggleLoading(false);
+    const planArea = document.getElementById('planning-area');
+    const actionArea = document.getElementById('plan-action-area');
+    const createBtn = document.getElementById('create-plan-btn');
+    const statusText = document.getElementById('plan-status-text');
+
+    if (exists) {
+        statusText.textContent = 'Attendance Plan Status: Plan Ready. Click to Load.';
+        createBtn.textContent = 'Load/Edit Plan';
+        // NEW: Load the data when button is clicked
+        createBtn.onclick = () => fetchAttendanceData(currentContract.id); 
+        planArea.classList.add('hidden');
+    } else {
+        statusText.textContent = 'Attendance Plan Status: No Plan Found. Click to Create.';
+        createBtn.textContent = 'Create Attendance Plan';
+        // NEW: Create and Load when button is clicked
+        createBtn.onclick = () => createAndFetchPlan(currentContract.id); 
+        planArea.classList.add('hidden');
+    }
+}
+
+
+function fetchAttendanceData(contractId) {
+    toggleLoading(true);
     pendingAttendanceChanges = {}; 
     pendingEmployeeInfoChanges = {}; 
     
+    // Call getAttendancePlan, which now assumes sheets exist
     google.script.run
       .withSuccessHandler(handleAttendanceData)
       .withFailureHandler(handleError)
       .getAttendancePlan(contractId);
-  }
+}
 
-  function handleAttendanceData(data) {
+// NEW: Function to create sheets and fetch data
+function createAndFetchPlan(contractId) {
+    toggleLoading(true);
+    google.script.run
+        .withSuccessHandler(() => {
+            showNotification('Sheets created successfully! Loading plan...', true);
+            fetchAttendanceData(contractId);
+        })
+        .withFailureHandler(handleError)
+        .createContractSheets(contractId); // New function in Code.gs
+}
+
+
+function handleAttendanceData(data) {
     // data.employees: [{no, id, name, position, area}, ...]
     // data.planMap: {personnelId_DayKey_ShiftKey: Status, ...}
     currentContract.employees = data.employees;
     currentContract.planMap = data.planMap;
+    
+    // Update the action button status to Load/Edit
+    const statusText = document.getElementById('plan-status-text');
+    const createBtn = document.getElementById('create-plan-btn');
+    statusText.textContent = 'Attendance Plan Status: Plan Ready. Click to Load.';
+    createBtn.textContent = 'Load/Edit Plan';
+    createBtn.onclick = () => fetchAttendanceData(currentContract.id); 
+    
+    // Show planning area and render table
+    document.getElementById('planning-area').classList.remove('hidden'); 
+    showNotification('Attendance Plan loaded successfully!', true);
 
     renderAttendancePlan();
     toggleLoading(false);
-  }
+}
 
-  // --- DATE NAVIGATION ---
+// --- DATE NAVIGATION ---
 
   function navigateMonth(direction) {
     currentPlanningDate.setMonth(currentPlanningDate.getMonth() + direction);
@@ -379,16 +445,44 @@
           isNew: !employee.id 
       };
 
-      pendingChange[field] = newValue.trim();
+      // --- NEW VALIDATION AND FORMATTING LOGIC ---
+      if (field === 'id') {
+          // 1. Validation: Only Numbers (allow empty string for now, validated on save)
+          const cleanId = newValue.trim();
+          // Check for non-numeric characters only if input is not empty
+          if (cleanId && !PERSONNEL_ID_REGEX.test(cleanId)) {
+               showNotification('Personnel ID must contain numbers only.', false);
+               // Revert input value to previous clean state if invalid
+               input.value = employee.id; 
+               return; 
+          }
+          pendingChange[field] = cleanId;
+      } else {
+          // 2. Formatting: Convert to CAPSLOCK and remove special characters
+          let cleanedValue = newValue.toUpperCase();
+          // Alisin ang characters na hindi kasama sa SAFE_TEXT_REGEX
+          cleanedValue = cleanedValue.replace(/[^A-Z0-9\s.,]/g, ''); 
+          
+          if (cleanedValue !== newValue.toUpperCase()) {
+              // Kung may inalis na special character, magbigay ng notification
+              showNotification(`Special characters removed from ${field}.`, false);
+          }
+          
+          // I-set ang input value sa cleaned value para makita ng user agad
+          input.value = cleanedValue;
+          pendingChange[field] = cleanedValue.trim();
+      }
+      // --- END NEW VALIDATION AND FORMATTING LOGIC ---
+
 
       if (field === 'id') {
           input.closest('tr').querySelectorAll('.personnel-info-input').forEach(otherInput => {
               if (otherInput !== input) {
-                  otherInput.dataset.oldPersonnelId = newValue.trim(); 
+                  otherInput.dataset.oldPersonnelId = pendingChange.id; 
               }
           });
           input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
-              cell.dataset.personnelId = newValue.trim();
+              cell.dataset.personnelId = pendingChange.id; 
           });
       }
       
@@ -566,18 +660,26 @@
         return;
     }
     
-    const incompleteEmpChanges = Object.values(pendingEmployeeInfoChanges).filter(e => e.isNew && (e.id.trim() === '' || e.name.trim() === ''));
-    if (incompleteEmpChanges.length > 0) {
-        showNotification('Cannot save: New employee rows require both Personnel ID and Personnel Name.', false);
+    // Safety check: Final validation before sending to server (Numeric ID check)
+    if (empChanges.some(e => !PERSONNEL_ID_REGEX.test(e.id.trim()))) {
+        showNotification('Personnel ID error detected (must be numbers only). Please check your inputs.', false);
         return;
     }
+    
+    // 2. I-prepare ang Contract Info
+    const contractInfo = {
+        payor: currentContract.payorCompany,
+        agency: currentContract.agency,
+        serviceType: currentContract.serviceType,
+        headCount: currentContract.headCount
+    };
 
     toggleLoading(true);
     
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        .saveAllData(currentContract.id, empChanges, attChanges);
+        .saveAllData(currentContract.id, contractInfo, empChanges, attChanges);
   }
 
   function handleSaveAllSuccess(response) {
