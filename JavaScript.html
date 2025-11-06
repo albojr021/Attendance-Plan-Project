@@ -171,7 +171,6 @@
     const daysInMonth = getDaysInMonth(year, month);
     const selectedShift = document.getElementById('shift-period-select').value;
     
-    // NEW: Kukunin ang pangalan ng buwan (short format, e.g., Nov)
     const monthName = currentPlanningDate.toLocaleString('en-US', { month: 'short' }); 
 
     document.getElementById('current-month-year').textContent = `${currentPlanningDate.toLocaleString('en-US', { month: 'long' })} ${year}`;
@@ -188,8 +187,12 @@
     
     // --- TABLE HEAD ---
     const thead = table.createTHead();
-    const headerRow1 = thead.insertRow(); // Row 1: Date & Month
-    const headerRow2 = thead.insertRow(); // Row 2: Day Name
+    const headerRow1 = thead.insertRow();
+    const headerRow2 = thead.insertRow();
+    
+    // NEW: Widths para sa inline style
+    const fixedWidths = ['50px', '120px', '200px', '120px', '120px']; 
+    const dateColWidth = '70px';
     
     // Employee Info Header (2 rows tall)
     const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'Position', 'Area Posting'];
@@ -199,6 +202,11 @@
         th.scope = 'col';
         th.textContent = headerText;
         th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-100 border-r border-gray-300 z-20';
+        
+        // EDITED: I-inject ang inline width para masigurado ang column size
+        th.style.width = fixedWidths[index];
+        th.style.minWidth = fixedWidths[index]; 
+
         // Freeze first few columns
         if (index <= 1) th.classList.add('freeze-1', 'z-30'); // No. and ID
         if (index === 2) th.classList.add('freeze-2', 'z-30'); // Name
@@ -209,18 +217,24 @@
     for (let d = startDay; d <= endDay; d++) {
         const dayOfMonth = new Date(year, month, d);
         const dayName = dayNames[dayOfMonth.getDay()];
+        
+        // --- HEADER ROW 1 (Date/Month) ---
         const th = document.createElement('th');
         th.scope = 'col';
-        // EDITED: Idagdag ang Buwan sa petsa (e.g., 1/Nov)
-        th.innerHTML = `<span>${d}</span><span class="block font-medium text-[10px] uppercase text-gray-500">${monthName}</span>`; 
+        // EDITED: I-set ang width dito
+        th.style.width = dateColWidth;
+        th.style.minWidth = dateColWidth;
         th.className = 'text-xs font-semibold uppercase tracking-wider p-1 text-center border-r border-b bg-gray-100';
+        th.innerHTML = `<span>${d}</span><span class="block font-medium text-[10px] uppercase text-gray-500">${monthName}</span>`; 
         headerRow1.appendChild(th);
         
-        // Day Name Headers (Second row)
+        // --- HEADER ROW 2 (Day Name) ---
         const thDay = document.createElement('th');
         thDay.scope = 'col';
         thDay.textContent = dayName;
-        // EDITED: Tanggalin ang p-1 at gamitin ang p-3 para pantay sa Row 1 (Day Name Row)
+        // EDITED: Tiyakin na ang width ay pareho
+        thDay.style.width = dateColWidth;
+        thDay.style.minWidth = dateColWidth;
         thDay.className = 'text-xs font-medium uppercase tracking-wider p-3 text-center border-r bg-gray-50'; 
         headerRow2.appendChild(thDay);
     }
@@ -250,21 +264,24 @@
         let td = tr.insertCell();
         td.textContent = employee.no;
         td.className = 'sticky-col text-center p-2 bg-gray-50 font-bold border-r border-b z-10 freeze-1';
+        td.style.width = fixedWidths[0]; // Apply inline width
+        td.style.minWidth = fixedWidths[0]; 
 
         // Personnel ID (Input)
         td = tr.insertCell();
         let input = document.createElement('input');
         input.type = 'text';
-        // *** Display value from pending changes if available, otherwise from employee data ***
         const pendingInfo = pendingEmployeeInfoChanges[employee.id];
         input.value = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
         input.placeholder = 'ID';
         input.maxLength = 20; 
-        input.dataset.oldPersonnelId = employee.id; // Store original ID for lookup
+        input.dataset.oldPersonnelId = employee.id; 
         input.dataset.field = 'id';
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1';
+        td.style.width = fixedWidths[1]; // Apply inline width
+        td.style.minWidth = fixedWidths[1]; 
         
         // Personnel Name (Input)
         td = tr.insertCell();
@@ -277,6 +294,8 @@
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
+        td.style.width = fixedWidths[2]; // Apply inline width
+        td.style.minWidth = fixedWidths[2]; 
         
         // Position (Input)
         td = tr.insertCell();
@@ -289,6 +308,8 @@
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
+        td.style.width = fixedWidths[3]; // Apply inline width
+        td.style.minWidth = fixedWidths[3]; 
         
         // Area Posting (Input)
         td = tr.insertCell();
@@ -301,22 +322,21 @@
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
+        td.style.width = fixedWidths[4]; // Apply inline width
+        td.style.minWidth = fixedWidths[4]; 
 
         // Add event listeners for Personnel Info updates (No auto-save)
         input.closest('tr').querySelectorAll('.personnel-info-input').forEach(infoInput => {
-             // NEW: Use input to track immediate changes
             infoInput.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
         });
 
         // 2. Attendance Plan Cells (Dynamic Dates)
-        const currentPersonnelId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id; // Use new ID if changed
+        const currentPersonnelId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id; 
 
         for (let d = startDay; d <= endDay; d++) {
             const dayKey = `${year}-${month + 1}-${d}`;
-            // Use currentPersonnelId for the key
             const planKey = `${currentPersonnelId}_${dayKey}_${selectedShift}`; 
             
-            // *** Display status from pending changes if available, otherwise from planMap ***
             const status = pendingAttendanceChanges[planKey] !== undefined 
                            ? pendingAttendanceChanges[planKey] 
                            : currentContract.planMap[`${employee.id}_${dayKey}_${selectedShift}`] || '';
@@ -324,14 +344,18 @@
             td = tr.insertCell();
             td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
             
+            // EDITED: I-apply ang inline width sa data cells
+            td.style.width = dateColWidth;
+            td.style.minWidth = dateColWidth;
+            
             // Set cell color and content
             updateCellVisuals(td, status, dayKey);
 
             // Add click listener
-            td.dataset.personnelId = currentPersonnelId; // Use the potentially new ID for click
+            td.dataset.personnelId = currentPersonnelId; 
             td.dataset.dayKey = dayKey;
             td.dataset.shiftKey = selectedShift;
-            td.dataset.originalId = employee.id; // Store the original ID for plan map lookup
+            td.dataset.originalId = employee.id; 
             td.addEventListener('click', handleCellClick);
         }
     }
@@ -341,52 +365,42 @@
 
   // --- EMPLOYEE INFO HANDLERS (Manual Save) ---
   
-  // *** NEW: Track Personnel Info Changes (No Save) ***
   function handlePersonnelInfoChange(event, employee) {
       const input = event.target;
       const field = input.dataset.field;
       const oldPersonnelId = input.dataset.oldPersonnelId;
       let newValue = input.value;
       
-      // Initialize or get the pending change object
       let pendingChange = pendingEmployeeInfoChanges[oldPersonnelId] || {
           id: employee.id, 
           name: employee.name, 
           position: employee.position, 
           area: employee.area,
-          isNew: !employee.id // Flag if this is a brand new row (empty ID)
+          isNew: !employee.id 
       };
 
-      // Update the specific field
       pendingChange[field] = newValue.trim();
 
-      // Check if ID is being changed
       if (field === 'id') {
-          // If the ID is changed, update the dataset of other inputs in the same row
-          // This is critical for tracking changes in other fields later
           input.closest('tr').querySelectorAll('.personnel-info-input').forEach(otherInput => {
               if (otherInput !== input) {
-                  // Use the new ID value as the 'new' old ID for tracking other fields
                   otherInput.dataset.oldPersonnelId = newValue.trim(); 
               }
           });
-          // Update the personnel ID in all attendance cells of the row to reflect the pending ID change
           input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
               cell.dataset.personnelId = newValue.trim();
           });
       }
       
-      // Only store if there is an actual change from the original loaded data
       const isChanged = (pendingChange.id !== employee.id || 
                          pendingChange.name !== employee.name || 
                          pendingChange.position !== employee.position || 
                          pendingChange.area !== employee.area ||
-                         pendingChange.isNew); // Always save if it's a new row
+                         pendingChange.isNew); 
 
       if (isChanged) {
           pendingEmployeeInfoChanges[oldPersonnelId] = pendingChange;
       } else {
-          // If reverted back to original, remove from pending changes
           delete pendingEmployeeInfoChanges[oldPersonnelId];
       }
   }
@@ -396,13 +410,12 @@
 
   function updateCellVisuals(cell, status, dayKey) {
     const dayOfMonth = new Date(dayKey);
-    const dayOfWeek = dayOfMonth.getDay(); // 0=Sun, 6=Sat
+    const dayOfWeek = dayOfMonth.getDay(); 
 
     cell.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
     cell.innerHTML = `<div class="p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg">${status}</div>`;
     const innerDiv = cell.querySelector('.attendance-cell-bg');
 
-    // Default: Work Schedule (Green)
     let bgColor = 'bg-white';
     let textColor = 'text-gray-900';
     let isWork = false;
@@ -418,20 +431,17 @@
         bgColor = 'status-sh';
         textColor = 'text-yellow-700 font-bold';
       } else {
-        // Work/Schedule Time Input
         bgColor = 'status-work';
         textColor = 'text-green-700 font-bold';
         isWork = true;
       }
     } else {
-      // BLANK (No Plan Yet)
       bgColor = 'bg-gray-100';
       textColor = 'text-gray-500';
     }
     
-    // Highlight weekends (Sat/Sun) if status is blank
     if (!isWork && !status && (dayOfWeek === 0 || dayOfWeek === 6)) {
-        bgColor = 'bg-gray-200'; // Darker blank for weekends
+        bgColor = 'bg-gray-200'; 
     }
 
     innerDiv.className = `p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg ${bgColor} ${textColor}`;
@@ -439,43 +449,36 @@
 
   function handleCellClick(event) {
     const targetCell = event.currentTarget;
-    const personnelId = targetCell.dataset.personnelId; // Current ID (can be new ID)
-    const originalId = targetCell.dataset.originalId; // Original ID (for lookup in planMap)
+    const personnelId = targetCell.dataset.personnelId; 
+    const originalId = targetCell.dataset.originalId; 
     const dayKey = targetCell.dataset.dayKey;
     const shiftKey = targetCell.dataset.shiftKey;
     
-    // --- EDITED: Check if both current ID (personnelId) and original ID (originalId) are empty ---
     if (!personnelId && !originalId) { 
         showNotification('Cannot edit: Personnel ID is empty. Please fill in the ID field first.', false);
         return;
     }
-    // --- END EDITED ---
 
     const planKey = `${personnelId}_${dayKey}_${shiftKey}`;
     
-    // Get current status from pending changes or original plan map
     const currentStatus = pendingAttendanceChanges[planKey] !== undefined 
                           ? pendingAttendanceChanges[planKey] 
                           : currentContract.planMap[`${originalId}_${dayKey}_${shiftKey}`] || '';
 
-    // 1. Store data
     selectedCellData = {
-      personnelId, // Potentially new ID
-      originalId,  // Original ID
+      personnelId, 
+      originalId,  
       dayKey,
       shiftKey,
       cellElement: targetCell
     };
 
-    // 2. Setup the modal
     const modal = document.getElementById('floating-status-modal');
     const inputTime = document.getElementById('schedule-input-time');
     const fixedOptionsContainer = document.getElementById('fixed-status-options-container');
 
-    // Clear previous options
     fixedOptionsContainer.innerHTML = '';
     
-    // Populate fixed status buttons
     fixedStatusOptions.forEach(option => {
         const button = document.createElement('button');
         button.type = 'button';
@@ -486,19 +489,16 @@
         fixedOptionsContainer.appendChild(button);
     });
 
-    // Set input time value
     if (currentStatus && !fixedStatusCodes.includes(currentStatus)) {
         inputTime.value = currentStatus;
     } else {
         inputTime.value = '';
     }
 
-    // 3. Show the modal
     modal.classList.remove('hidden');
     inputTime.focus();
   }
   
-  // Set up Modal listeners on script load
   document.getElementById('cancel-status-btn').addEventListener('click', () => {
       document.getElementById('floating-status-modal').classList.add('hidden');
   });
@@ -512,17 +512,14 @@
   function saveSchedule(event, schedule) {
     document.getElementById('floating-status-modal').classList.add('hidden');
     
-    if (!selectedCellData.personnelId && !selectedCellData.originalId) return; // Basic check
+    if (!selectedCellData.personnelId && !selectedCellData.originalId) return; 
 
     const { personnelId, originalId, dayKey, shiftKey, cellElement } = selectedCellData;
 
-    // If the user clicked a fixed status button, use that status. 
-    // Otherwise, use the time input value.
     const finalStatus = event.type === 'click' && event.target.closest('#fixed-status-options-container') 
         ? schedule 
         : document.getElementById('schedule-input-time').value.trim();
     
-    // Check if the user is trying to save a plan for a row without a Personnel ID (even if temporary/new)
     if (!personnelId) {
         showNotification('Cannot save plan: Personnel ID is missing for this row.', false);
         return;
@@ -533,44 +530,32 @@
       return;
     }
     
-    // --- EDITED: Time format validation ---
-    // Check if the status is NOT a fixed code (i.e., it must be a time schedule)
     if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
-        // Use the refined regex for HH:MM-HH:MM (e.g., 08:00-19:00 or 8:00-19:00)
         if (!TIME_FORMAT_REGEX.test(finalStatus)) {
             showNotification('Invalid schedule format. Please use HH:MM-HH:MM (e.g., 08:00-19:00).', false);
-            // Re-open modal
             setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
             return;
         }
     }
-    // --- END EDITED ---
 
-
-    // 1. Update local state and pending changes (NO auto-save to Sheets)
     const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
     const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
 
-    // Check if change is from original state
     const originalStatus = currentContract.planMap[originalPlanKey] || '';
 
     if (originalStatus !== finalStatus) {
         pendingAttendanceChanges[currentPlanKey] = finalStatus;
     } else {
-        // If reverted back to original, remove from pending changes
         delete pendingAttendanceChanges[currentPlanKey];
     }
     
-    // 2. Update UI
     updateCellVisuals(cellElement, finalStatus, dayKey);
     
     showNotification('Change saved locally. Click "Save All Changes" to save to Sheets.', true);
   }
   
-  // *** NEW: Save All Changes function ***
   function handleSaveAllChanges() {
-    // 1. Check for pending changes
-    const empChanges = Object.values(pendingEmployeeInfoChanges).filter(e => e.id.trim() !== '' && e.name.trim() !== ''); // Filter out empty or incomplete rows
+    const empChanges = Object.values(pendingEmployeeInfoChanges).filter(e => e.id.trim() !== '' && e.name.trim() !== ''); 
     const attChanges = Object.keys(pendingAttendanceChanges).map(key => {
         const [personnelId, dayKey, shift] = key.split('_');
         return { personnelId, dayKey, shift, status: pendingAttendanceChanges[key] };
@@ -581,7 +566,6 @@
         return;
     }
     
-    // Final check for incomplete new rows that might have plans but no name/id
     const incompleteEmpChanges = Object.values(pendingEmployeeInfoChanges).filter(e => e.isNew && (e.id.trim() === '' || e.name.trim() === ''));
     if (incompleteEmpChanges.length > 0) {
         showNotification('Cannot save: New employee rows require both Personnel ID and Personnel Name.', false);
@@ -590,8 +574,6 @@
 
     toggleLoading(true);
     
-    // Combine both saves into one server call (or two sequential calls)
-    // We'll use one server call: saveAllData()
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
@@ -599,7 +581,6 @@
   }
 
   function handleSaveAllSuccess(response) {
-      // Re-fetch data to refresh the grid and clear local pending changes
       showNotification('All changes saved successfully! Refreshing data...', true);
       fetchAttendanceData(currentContract.id); 
   }
@@ -607,7 +588,7 @@
   function handleSaveAllError(error) {
        console.error("SAVE ALL ERROR:", error);
        showNotification(`FATAL SAVE ERROR: ${error.message || 'An unknown error occurred during saving.'}`, false);
-       toggleLoading(false); // Make sure to remove loading indicator
+       toggleLoading(false); 
   }
 
   // --- INITIALIZATION ---
