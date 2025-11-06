@@ -1,0 +1,597 @@
+<script>
+  // Global state variables
+  let contractList = [];
+  let currentContract = null;
+  // *** DATE NAVIGATION VARIABLE ***
+  let currentPlanningDate = new Date(); // Default: Current Month/Year
+  // Ang status codes
+  const fixedStatusCodes = ['RD', 'RH', 'SH', '']; 
+  const shiftPeriods = [
+    { key: '1stHalf', label: '1st Half (1st to 15th)' },
+    { key: '2ndHalf', label: '2nd Half (16th to End)' }
+  ];
+  const maxDays = 31; // Max days in a month for planning purposes
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // *** FIXED STATUS OPTIONS PARA SA FLOATING DROPDOWN ***
+  let selectedCellData = {}; // Stores {personnelId, dayKey, shiftKey, inputElement}
+  let selectedEmployeeIdToEdit = null; // Para sa Employee Form (Add/Edit)
+
+  const fixedStatusOptions = [
+    { value: 'RD', label: 'Rest Day (RD)', color: 'status-rd text-red-700' },
+    { value: 'RH', label: 'Regular Holiday (RH)', color: 'status-rh text-blue-700' },
+    { value: 'SH', label: 'Special Holiday (SH)', color: 'status-sh text-yellow-700' },
+    { value: '', label: 'Clear/Blank (Work Schedule)', color: 'bg-gray-200 text-gray-700' },
+  ];
+  // ---------------------------------------------
+
+
+  // --- UI HANDLERS ---
+
+  function toggleLoading(isLoading) {
+    document.getElementById('loading-alert').classList.toggle('hidden', !isLoading);
+  }
+
+  function showNotification(message, isSuccess = true) {
+    const notification = document.getElementById('notification-area');
+    notification.textContent = message;
+    notification.classList.remove('opacity-0', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800');
+    
+    if (isSuccess) {
+      notification.classList.add('bg-green-100', 'text-green-800');
+    } else {
+      notification.classList.add('bg-red-100', 'text-red-800');
+    }
+
+    notification.classList.add('opacity-100');
+    
+    setTimeout(() => {
+      notification.classList.remove('opacity-100');
+      notification.classList.add('opacity-0');
+    }, 3000);
+  }
+
+  function handleError(error) {
+    console.error("APPS SCRIPT ERROR:", error);
+    showNotification(`Error: ${error.message || 'An unknown error occurred in the script.'}`, false);
+    toggleLoading(false);
+  }
+
+  // --- CONTRACT SELECTION & DATA FETCHING ---
+
+  function handleContractList(contracts) {
+    contractList = contracts;
+    const select = document.getElementById('contract-select');
+    select.innerHTML = '<option value="">-- Choose Contract Group ID --</option>';
+
+    contracts.forEach(contract => {
+      const option = document.createElement('option');
+      option.value = contract.id;
+      option.textContent = `${contract.id} - ${contract.status} (Ref#: ${contract.sfcRef})`;
+      select.appendChild(option);
+    });
+
+    // Populate Shift Periods
+    const shiftSelect = document.getElementById('shift-period-select');
+    shiftPeriods.forEach(period => {
+      const option = document.createElement('option');
+      option.value = period.key;
+      option.textContent = period.label;
+      shiftSelect.appendChild(option);
+    });
+
+    // Set default shift to 1st Half
+    shiftSelect.value = '1stHalf';
+
+    toggleLoading(false);
+    select.addEventListener('change', handleContractChange);
+    document.getElementById('shift-period-select').addEventListener('change', renderAttendancePlan);
+    document.getElementById('prev-month').addEventListener('click', () => navigateMonth(-1));
+    document.getElementById('next-month').addEventListener('click', () => navigateMonth(1));
+    document.getElementById('save-employee-btn').addEventListener('click', handleSaveEmployee);
+  }
+
+  function handleContractChange(event) {
+    const contractId = event.target.value;
+    if (!contractId) {
+      document.getElementById('contract-details-area').classList.add('hidden');
+      document.getElementById('planning-area').classList.add('hidden');
+      document.getElementById('initial-placeholder').classList.remove('hidden');
+      currentContract = null;
+      return;
+    }
+
+    currentContract = contractList.find(c => c.id === contractId);
+    if (currentContract) {
+      displayContractDetails(currentContract);
+      fetchAttendanceData(contractId);
+    }
+  }
+
+  function displayContractDetails(contract) {
+    document.getElementById('sfc-ref').textContent = contract.sfcRef;
+    document.getElementById('payor-company').textContent = contract.payorCompany;
+    document.getElementById('agency').textContent = contract.agency;
+    document.getElementById('service-type').textContent = contract.serviceType;
+    document.getElementById('head-count').textContent = contract.headCount;
+    document.getElementById('head-count-limit').textContent = contract.headCount; // Para sa form info
+    
+    document.getElementById('contract-details-area').classList.remove('hidden');
+    document.getElementById('planning-area').classList.remove('hidden');
+    document.getElementById('initial-placeholder').classList.add('hidden');
+  }
+
+  function fetchAttendanceData(contractId) {
+    toggleLoading(true);
+    google.script.run
+      .withSuccessHandler(handleAttendanceData)
+      .withFailureHandler(handleError)
+      .getAttendancePlan(contractId);
+  }
+
+  function handleAttendanceData(data) {
+    // data.employees: [{no, id, name, position, area}, ...]
+    // data.planMap: {personnelId_DayKey_ShiftKey: Status, ...}
+    currentContract.employees = data.employees;
+    currentContract.planMap = data.planMap;
+
+    renderAttendancePlan();
+    toggleLoading(false);
+  }
+
+  // --- DATE NAVIGATION ---
+
+  function navigateMonth(direction) {
+    currentPlanningDate.setMonth(currentPlanningDate.getMonth() + direction);
+    // Reset date to day 1 to avoid month skipping issues (e.g., 31st to Feb)
+    currentPlanningDate.setDate(1); 
+    document.getElementById('shift-period-select').value = '1stHalf'; // Reset to 1st Half
+    renderAttendancePlan();
+  }
+
+  function getDaysInMonth(year, month) {
+    return new Date(year, month + 1, 0).getDate();
+  }
+
+  function renderAttendancePlan() {
+    if (!currentContract) return;
+
+    const year = currentPlanningDate.getFullYear();
+    const month = currentPlanningDate.getMonth();
+    const daysInMonth = getDaysInMonth(year, month);
+    const selectedShift = document.getElementById('shift-period-select').value;
+
+    document.getElementById('current-month-year').textContent = `${currentPlanningDate.toLocaleString('en-US', { month: 'long' })} ${year}`;
+
+    const startDay = selectedShift === '1stHalf' ? 1 : 16;
+    const endDay = selectedShift === '1stHalf' ? 15 : daysInMonth;
+
+    const tableContainer = document.getElementById('attendance-table-container');
+    tableContainer.innerHTML = '';
+
+    // Create table element
+    const table = document.createElement('table');
+    table.className = 'w-full text-sm text-left text-gray-700 border-collapse';
+    
+    // --- TABLE HEAD ---
+    const thead = table.createTHead();
+    const headerRow1 = thead.insertRow();
+    const headerRow2 = thead.insertRow();
+    
+    // Employee Info Header (2 rows tall)
+    const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'Position', 'Area Posting'];
+    empInfoHeader.forEach((headerText, index) => {
+        const th = document.createElement('th');
+        th.rowSpan = 2;
+        th.scope = 'col';
+        th.textContent = headerText;
+        th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-100 border-r border-gray-300 z-20';
+        // Freeze first few columns
+        if (index <= 1) th.classList.add('freeze-1', 'z-30'); // No. and ID
+        if (index === 2) th.classList.add('freeze-2', 'z-30'); // Name
+        headerRow1.appendChild(th);
+    });
+
+    // Date/Day Headers (First row)
+    for (let d = startDay; d <= endDay; d++) {
+        const dayOfMonth = new Date(year, month, d);
+        const dayName = dayNames[dayOfMonth.getDay()];
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = d;
+        th.className = 'text-xs font-semibold uppercase tracking-wider p-3 text-center border-r border-b bg-gray-100';
+        headerRow1.appendChild(th);
+        
+        // Day Name Headers (Second row)
+        const thDay = document.createElement('th');
+        thDay.scope = 'col';
+        thDay.textContent = dayName;
+        thDay.className = 'text-xs font-medium uppercase tracking-wider p-1 text-center border-r bg-gray-50';
+        headerRow2.appendChild(thDay);
+    }
+    
+    
+    // --- TABLE BODY ---
+    const tbody = table.createTBody();
+
+    // Add empty rows if no employees are loaded (up to Head Count)
+    const currentEmployeeCount = currentContract.employees.length;
+    const totalRowsToRender = Math.max(currentContract.headCount, currentEmployeeCount);
+
+
+    for (let i = 0; i < totalRowsToRender; i++) {
+        const employee = currentContract.employees[i] || { 
+            no: i + 1, 
+            id: '', 
+            name: '', 
+            position: '', 
+            area: '' 
+        };
+
+        const tr = tbody.insertRow();
+        
+        // 1. Employee Info Cells (Fixed Columns)
+        // No.
+        let td = tr.insertCell();
+        td.textContent = employee.no;
+        td.className = 'sticky-col text-center p-2 bg-gray-50 font-bold border-r border-b z-10 freeze-1';
+
+        // Personnel ID (Input)
+        td = tr.insertCell();
+        let input = document.createElement('input');
+        input.type = 'text';
+        input.value = employee.id;
+        input.placeholder = 'ID';
+        input.maxLength = 20; // Example limit
+        input.dataset.personnelId = employee.id; // Store old ID for reference
+        input.dataset.field = 'id';
+        input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent';
+        td.appendChild(input);
+        td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1';
+        
+        // Personnel Name (Input)
+        td = tr.insertCell();
+        input = document.createElement('input');
+        input.type = 'text';
+        input.value = employee.name;
+        input.placeholder = 'Full Name';
+        input.dataset.personnelId = employee.id; // Store old ID for reference
+        input.dataset.field = 'name';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
+        td.appendChild(input);
+        td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
+        
+        // Position (Input)
+        td = tr.insertCell();
+        input = document.createElement('input');
+        input.type = 'text';
+        input.value = employee.position;
+        input.placeholder = 'Position';
+        input.dataset.personnelId = employee.id;
+        input.dataset.field = 'position';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
+        td.appendChild(input);
+        td.className = 'p-0 bg-white border-r border-b';
+        
+        // Area Posting (Input)
+        td = tr.insertCell();
+        input = document.createElement('input');
+        input.type = 'text';
+        input.value = employee.area;
+        input.placeholder = 'Area';
+        input.dataset.personnelId = employee.id;
+        input.dataset.field = 'area';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
+        td.appendChild(input);
+        td.className = 'p-0 bg-white border-r border-b';
+
+        // Add event listeners for Personnel Info updates
+        input.closest('tr').querySelectorAll('.personnel-info-input').forEach(infoInput => {
+             // Use blur to save when user clicks away
+            infoInput.addEventListener('blur', (e) => handlePersonnelInfoSave(e, employee));
+        });
+
+        // 2. Attendance Plan Cells (Dynamic Dates)
+        const personnelId = employee.id;
+        
+        for (let d = startDay; d <= endDay; d++) {
+            const dayKey = `${year}-${month + 1}-${d}`;
+            const planKey = `${personnelId}_${dayKey}_${selectedShift}`;
+            const status = currentContract.planMap[planKey] || '';
+            
+            td = tr.insertCell();
+            td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
+            
+            // Set cell color and content
+            updateCellVisuals(td, status, dayKey);
+
+            // Add click listener
+            td.dataset.personnelId = personnelId;
+            td.dataset.dayKey = dayKey;
+            td.dataset.shiftKey = selectedShift;
+            td.addEventListener('click', handleCellClick);
+        }
+    }
+    
+    tableContainer.appendChild(table);
+  }
+
+  // --- EMPLOYEE FORM HANDLERS ---
+  
+  // Clear the Employee Form fields
+  function clearEmployeeForm() {
+      document.getElementById('form-personnel-id').value = '';
+      document.getElementById('form-name').value = '';
+      document.getElementById('form-position').value = '';
+      document.getElementById('form-area').value = '';
+      document.getElementById('form-personnel-id').disabled = false; // Enable ID for new entry
+      selectedEmployeeIdToEdit = null;
+  }
+  
+  // Handles saving/updating employee info from the form
+  function handleSaveEmployee() {
+      const contractId = currentContract.id;
+      const personnelId = document.getElementById('form-personnel-id').value.trim();
+      const name = document.getElementById('form-name').value.trim();
+      const position = document.getElementById('form-position').value.trim();
+      const area = document.getElementById('form-area').value.trim();
+      
+      if (!personnelId || !name) {
+          showNotification('Personnel ID and Name are required fields.', false);
+          return;
+      }
+      
+      const isNewEmployee = !currentContract.employees.some(e => e.id === personnelId);
+      
+      // Headcount Check (Only for new employees)
+      if (isNewEmployee && currentContract.employees.length >= currentContract.headCount) {
+           showNotification(`Cannot add. Maximum headcount (${currentContract.headCount}) reached.`, false);
+           return;
+      }
+
+      toggleLoading(true);
+
+      const dataToSave = {
+          contractId: contractId,
+          personnelId: personnelId,
+          name: name,
+          position: position,
+          area: area
+      };
+
+      google.script.run
+        .withSuccessHandler((response) => {
+            showNotification(`Employee ID ${personnelId} saved successfully!`, true);
+            // Re-fetch data to update the grid and employee list
+            fetchAttendanceData(contractId);
+            clearEmployeeForm();
+        })
+        .withFailureHandler(handleError)
+        .saveEmployeeInfo(dataToSave);
+  }
+
+  // Handles saving/updating employee info from the grid input fields
+  function handlePersonnelInfoSave(event, employee) {
+      const input = event.target;
+      const field = input.dataset.field;
+      let newValue = input.value.trim();
+      
+      // Only save if the value has changed
+      if (employee[field] === newValue) return;
+
+      if (field === 'id' && !newValue) {
+          showNotification('Personnel ID cannot be empty.', false);
+          input.value = employee.id; // Revert to old value
+          return;
+      }
+
+      toggleLoading(true);
+
+      const dataToSave = {
+          contractId: currentContract.id,
+          personnelId: employee.id, // Use existing ID for lookup/update
+          name: employee.name,
+          position: employee.position,
+          area: employee.area
+      };
+      
+      // Update the specific field in the data to save
+      if (field === 'id') {
+          // This is a special case: must update all related records/keys
+          // For now, let's keep it simple: if ID changes, treat it as new for safety, 
+          // or ideally, handle ID change on the server (Apps Script) which is complex.
+          // Since the server-side code handles appendRow for new ID, we'll allow it.
+          // Note: When ID changes, the old record won't be found, so a new one is appended.
+          // It's better to manage ID change only through a dedicated form for simplicity.
+          
+          if (currentContract.employees.some(e => e.id === newValue && e.id !== employee.id)) {
+               showNotification('Personnel ID already exists. Please use a unique ID.', false);
+               input.value = employee.id;
+               toggleLoading(false);
+               return;
+          }
+          dataToSave.personnelId = newValue; // New ID
+      } else {
+          dataToSave[field] = newValue;
+      }
+      
+      // Save data
+      google.script.run
+        .withSuccessHandler((response) => {
+            showNotification('Personnel Info updated!', true);
+            // Re-fetch data to update the grid (important if ID changed)
+            fetchAttendanceData(currentContract.id);
+        })
+        .withFailureHandler(handleError)
+        .saveEmployeeInfo(dataToSave);
+  }
+
+
+  // --- ATTENDANCE PLAN HANDLERS ---
+
+  function updateCellVisuals(cell, status, dayKey) {
+    const dayOfMonth = new Date(dayKey);
+    const dayOfWeek = dayOfMonth.getDay(); // 0=Sun, 6=Sat
+
+    cell.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
+    cell.innerHTML = `<div class="p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg">${status}</div>`;
+    const innerDiv = cell.querySelector('.attendance-cell-bg');
+
+    // Default: Work Schedule (Green)
+    let bgColor = 'bg-white';
+    let textColor = 'text-gray-900';
+    let isWork = false;
+
+    if (status.length > 0) {
+      if (status === 'RD') {
+        bgColor = 'status-rd';
+        textColor = 'text-red-700 font-bold';
+      } else if (status === 'RH') {
+        bgColor = 'status-rh';
+        textColor = 'text-blue-700 font-bold';
+      } else if (status === 'SH') {
+        bgColor = 'status-sh';
+        textColor = 'text-yellow-700 font-bold';
+      } else {
+        // Work/Schedule Time Input
+        bgColor = 'status-work';
+        textColor = 'text-green-700 font-bold';
+        isWork = true;
+      }
+    } else {
+      // BLANK (No Plan Yet)
+      bgColor = 'bg-gray-100';
+      textColor = 'text-gray-500';
+    }
+    
+    // Highlight weekends (Sat/Sun) if status is blank
+    if (!isWork && !status && (dayOfWeek === 0 || dayOfWeek === 6)) {
+        bgColor = 'bg-gray-200'; // Darker blank for weekends
+    }
+
+    innerDiv.className = `p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg ${bgColor} ${textColor}`;
+  }
+
+  function handleCellClick(event) {
+    const targetCell = event.currentTarget;
+    const personnelId = targetCell.dataset.personnelId;
+    const dayKey = targetCell.dataset.dayKey;
+    const shiftKey = targetCell.dataset.shiftKey;
+    
+    if (!personnelId) {
+        showNotification('Cannot edit: Personnel ID is empty.', false);
+        return;
+    }
+
+    const planKey = `${personnelId}_${dayKey}_${shiftKey}`;
+    const currentStatus = currentContract.planMap[planKey] || '';
+
+    // 1. Store data
+    selectedCellData = {
+      personnelId,
+      dayKey,
+      shiftKey,
+      cellElement: targetCell
+    };
+
+    // 2. Setup the modal
+    const modal = document.getElementById('floating-status-modal');
+    const inputTime = document.getElementById('schedule-input-time');
+    const fixedOptionsContainer = document.getElementById('fixed-status-options-container');
+
+    // Clear previous options
+    fixedOptionsContainer.innerHTML = '';
+    
+    // Populate fixed status buttons
+    fixedStatusOptions.forEach(option => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = option.label;
+        button.value = option.value;
+        button.className = `w-full px-4 py-2 text-sm rounded-lg border hover:shadow-md transition duration-150 ${option.color} ${option.value === currentStatus ? 'bg-opacity-70 border-2 border-blue-500' : 'bg-opacity-50 border-gray-300'}`;
+        button.addEventListener('click', (e) => saveSchedule(e, option.value));
+        fixedOptionsContainer.appendChild(button);
+    });
+
+    // Set input time value
+    if (currentStatus && !fixedStatusCodes.includes(currentStatus)) {
+        inputTime.value = currentStatus;
+    } else {
+        inputTime.value = '';
+    }
+
+    // 3. Show the modal
+    modal.classList.remove('hidden');
+    inputTime.focus();
+  }
+  
+  // Set up Modal listeners on script load
+  document.getElementById('cancel-status-btn').addEventListener('click', () => {
+      document.getElementById('floating-status-modal').classList.add('hidden');
+  });
+  
+  document.getElementById('save-schedule-btn').addEventListener('click', (event) => {
+      const schedule = document.getElementById('schedule-input-time').value.trim();
+      saveSchedule(event, schedule);
+  });
+
+
+  function saveSchedule(event, schedule) {
+    document.getElementById('floating-status-modal').classList.add('hidden');
+    
+    if (!selectedCellData.personnelId || !selectedCellData.dayKey) return;
+    
+    // If the user clicked a fixed status button, use that status. 
+    // Otherwise, use the time input value.
+    const finalStatus = event.type === 'click' && event.target.closest('#fixed-status-options-container') 
+        ? schedule 
+        : document.getElementById('schedule-input-time').value.trim();
+
+    if (!finalStatus && !fixedStatusCodes.includes(finalStatus)) {
+      showNotification('Input must not be empty.', false);
+      return;
+    }
+
+    const { personnelId, dayKey, shiftKey, cellElement } = selectedCellData;
+
+    // 1. Update local state
+    const planKey = `${personnelId}_${dayKey}_${shiftKey}`;
+    currentContract.planMap[planKey] = finalStatus;
+
+    // 2. Update UI
+    updateCellVisuals(cellElement, finalStatus, dayKey);
+    
+    // 3. Save to Sheets
+    saveStatusToSheets({
+        contractId: currentContract.id,
+        personnelId: personnelId,
+        shift: shiftKey,
+        dayKey: dayKey,
+        status: finalStatus 
+    });
+  }
+  
+  /**
+   * Helper function to send data to Google Sheets.
+   */
+  function saveStatusToSheets(dataToSave) {
+    google.script.run
+      .withSuccessHandler((response) => showNotification('Attendance status saved!', true))
+      .withFailureHandler(handleError)
+      .saveAttendancePlan(dataToSave);
+  }
+
+  // --- INITIALIZATION ---
+
+  window.onload = function() {
+    toggleLoading(true);
+    google.script.run
+      .withSuccessHandler(handleContractList)
+      .withFailureHandler(handleError)
+      .getContracts();
+      
+      // I-set ang global listener para i-close ang dropdown kapag nag-click sa labas
+      document.addEventListener('click', (event) => {
+          // Logic for dropdown is now in the modal
+      });
+  }
+</script>

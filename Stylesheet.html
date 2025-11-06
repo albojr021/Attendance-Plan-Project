@@ -1,0 +1,125 @@
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    /* Custom Styles */
+    body { font-family: 'Inter', sans-serif; background-color: #f7f9fc;
+    }
+    .card { background-color: white; border-radius: 1rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); padding: 1.5rem;
+    margin-bottom: 1.5rem; }
+    
+    /* Status Colors */
+    .status-work { 
+        background-color: #d1fae5;
+        color: #065f46; 
+    } 
+    .status-rd { background-color: #fee2e2;
+    color: #991b1b; } 
+    .status-rh { background-color: #dbeafe;
+    color: #1e40af; } 
+    .status-sh { background-color: #fef3c7;
+    color: #92400e; } 
+    
+    /* Table Cell Structure */
+    .cell-container { 
+        padding: 0; 
+        position: relative; 
+    }
+
+    /* Styling para sa Attendance Input field (Schedule) */
+    .attendance-input {
+        box-sizing: border-box;
+        border: none;
+        outline: none;
+        height: 100%;
+        min-width: 50px; /* Mas maliit na default width */
+        text-align: center;
+        background-color: transparent;
+        transition: background-color 0.2s;
+    }
+    
+    .loading-pulse {
+        animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: .5; }
+    }
+
+    /* --- TABLE STICKY COLUMNS/HEADERS --- */
+    
+    /* General table styling */
+    .attendance-grid table {
+        table-layout: fixed;
+        width: max-content; /* Ensure table fits content */
+        min-width: 100%; /* For responsive on small screens */
+    }
+
+    /* Column Widths: Adjusted for new Employee Info */
+    .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; /* No. */ }
+    .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; /* Personnel ID */ }
+    .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; /* Personnel Name */ }
+    .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 120px; /* Position */ }
+    .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; /* Area Posting */ }
+    /* Dynamic Date Cells */
+    .attendance-grid th:nth-child(n+6), .attendance-grid td:nth-child(n+6) { width: 70px; }
+
+    /* Apply Sticky Positioning to Headers and Cells */
+    .sticky-col, .sticky-col-header {
+        position: sticky;
+        left: 0; 
+    }
+    .sticky-col-header {
+        top: 0; /* Freeze the top headers */
+        z-index: 20; 
+    }
+    
+    /* Freeze 1: For 'No.' and 'Personnel ID' */
+    .freeze-1 {
+        left: 0;
+        z-index: 10;
+    }
+    .sticky-col-header.freeze-1 {
+        z-index: 30;
+    }
+    
+    /* Freeze 2: For 'Personnel Name' */
+    .freeze-2 {
+        /* Total width of Freeze 1 columns: 50px + 120px = 170px */
+        left: 170px; 
+        z-index: 10;
+    }
+    .sticky-col-header.freeze-2 {
+        z-index: 30;
+    }
+    
+    /* Reset z-index for standard sticky cells */
+    .attendance-grid td:nth-child(n+4) {
+        z-index: 5; 
+    }
+    
+    /* Override sticky position for the first row's second header (Day Name row) */
+    .attendance-grid tr:nth-child(2) th.sticky-col-header {
+        position: static; /* Disable sticky for the empty cells */
+    }
+    
+    /* Ensure the inner content of the cell takes the color */
+    .attendance-cell-bg {
+        transition: background-color 0.2s, color 0.2s;
+        min-height: 44px; /* Minimum height for touch target */
+    }
+    
+    /* Style for Personnel Info Inputs in the Grid */
+    .personnel-info-input {
+        box-sizing: border-box;
+        border: 1px solid transparent;
+        padding: 0.5rem 0.25rem;
+        transition: border-color 0.15s, background-color 0.15s;
+        min-height: 44px;
+    }
+    .personnel-info-input:focus {
+        border-color: #60a5fa; /* ring-blue-400 */
+        background-color: #eff6ff; /* bg-blue-50 */
+        outline: none;
+    }
+    
+</style>
