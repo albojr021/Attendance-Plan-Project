@@ -452,6 +452,13 @@ function handleAttendanceData(data) {
             const savedStatusUnpadded = currentContract.planMap[savedDataKeyUnpadded] || '';
 
 
+            // --- DEBUGGING LOGS (Tiyakin na tama ang key at status) ---
+            console.log(`[DEBUG] EmpID(Saved): ${trimmedEmployeeId}, DayKey: ${trimmedDayKey}, Shift: ${trimmedShift}`);
+            console.log(`[DEBUG] Lookup Key: ${savedDataKeyUnpadded}`);
+            console.log(`[DEBUG] Found Status: ${currentContract.planMap[savedDataKeyUnpadded]}`); 
+            // --- END DEBUGGING LOGS ---
+
+
             // CRITICAL: I-prioritize ang Pending Status, Fallback to Saved Statuses
             let status = pendingStatus !== undefined ? pendingStatus : '';
 
@@ -462,7 +469,7 @@ function handleAttendanceData(data) {
                  }
             }
             
-            td = tr.insertCell();
+            let td = tr.insertCell();
             td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
             
             // EDITED: I-apply ang inline width sa data cells
