@@ -29,12 +29,26 @@
     { value: '', label: 'Clear/Blank (Work Schedule)', color: 'bg-gray-200 text-gray-700' },
   ];
   
-  // NEW: Global variable para sa validation (HH:MM-HH:MM)
+  // NEW: Global variable para sa validation (HH:MM-HH:MM) - HINDI NA GANOONG KA-STRICT DAHIL SA TYPE="TIME"
   const TIME_FORMAT_REGEX = /^([01]?[0-9]|2[0-3]):[0-5][0-9]-([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
   // NEW: Regex for Personnel Info validation
   const PERSONNEL_ID_REGEX = /^[0-9]+$/; // Only numbers
   const SAFE_TEXT_REGEX = /^[A-Z0-9\s.,]+$/; // Letters, Numbers, Space, Period, Comma
   // ---------------------------------------------
+
+  // --- NEW: Time Option Generator for Dropdowns ---
+  function generateTimeOptions() {
+      const times = [];
+      for (let h = 0; h < 24; h++) {
+          for (let m = 0; m < 60; m += 30) {
+              const hour = String(h).padStart(2, '0');
+              const minute = String(m).padStart(2, '0');
+              times.push(`${hour}:${minute}`);
+          }
+      }
+      return times;
+  }
+  const TIME_OPTIONS = generateTimeOptions();
 
 
   // --- UI HANDLERS ---
@@ -121,8 +135,8 @@
     if (currentContract) {
       displayContractDetails(currentContract);
       
-      // NEW: Check if sheets exist first (without creating them)
-      checkIfPlanExists(contractId); 
+      // NEW: Check if sheets exist first (pass SFC Ref#)
+      checkIfPlanExists(currentContract.sfcRef); 
     }
 }
 
@@ -142,12 +156,12 @@ function displayContractDetails(contract) {
 }
 
 // NEW: Function to check if the plan sheets already exist
-function checkIfPlanExists(contractId) {
+function checkIfPlanExists(sfcRef) {
     toggleLoading(true);
     google.script.run
         .withSuccessHandler(handlePlanExistence)
         .withFailureHandler(handleError)
-        .checkContractSheets(contractId);
+        .checkContractSheets(sfcRef); // Pass SFC Ref#
 }
 
 // NEW: Handles the response from checkContractSheets
@@ -157,13 +171,15 @@ function handlePlanExistence(exists) {
     const actionArea = document.getElementById('plan-action-area');
     const createBtn = document.getElementById('create-plan-btn');
     const statusText = document.getElementById('plan-status-text');
-    const cachedId = sessionStorage.getItem(CONTRACT_ID_CACHE_KEY);
+
+    // CRITICAL: Use currentContract.sfcRef here
+    const sfcRef = currentContract ? currentContract.sfcRef : null;
 
     if (exists) {
         statusText.textContent = 'Attendance Plan Status: Plan Ready. Click to Load.';
         createBtn.textContent = 'Load/Edit Plan';
         // NEW: Load the data when button is clicked
-        createBtn.onclick = () => fetchAttendanceData(cachedId); 
+        createBtn.onclick = () => fetchAttendanceData(sfcRef); // Pass SFC Ref#
         planArea.classList.add('hidden');
     } else {
         statusText.textContent = 'Attendance Plan Status: No Plan Found. Click to Create.';
@@ -200,7 +216,7 @@ function showBlankPlan() {
 }
 
 
-function fetchAttendanceData(contractId) {
+function fetchAttendanceData(sfcRef) {
     toggleLoading(true);
     pendingAttendanceChanges = {}; 
     pendingEmployeeInfoChanges = {}; 
@@ -209,7 +225,7 @@ function fetchAttendanceData(contractId) {
     google.script.run
       .withSuccessHandler(handleAttendanceData)
       .withFailureHandler(handleError)
-      .getAttendancePlan(contractId);
+      .getAttendancePlan(sfcRef); // Pass SFC Ref#
 }
 
 // REMOVED: createAndFetchPlan() (Handled by SaveAllChanges)
@@ -221,14 +237,13 @@ function handleAttendanceData(data) {
     currentContract.employees = data.employees;
     currentContract.planMap = data.planMap;
     
-    const cachedId = sessionStorage.getItem(CONTRACT_ID_CACHE_KEY);
-
     // Update the action button status to Load/Edit
     const statusText = document.getElementById('plan-status-text');
     const createBtn = document.getElementById('create-plan-btn');
     statusText.textContent = 'Attendance Plan Status: Plan Ready. Click to Load.';
     createBtn.textContent = 'Load/Edit Plan';
-    createBtn.onclick = () => fetchAttendanceData(cachedId); 
+    // Use currentContract.sfcRef when setting the button's action
+    createBtn.onclick = () => fetchAttendanceData(currentContract.sfcRef); 
     
     // Show planning area and render table
     document.getElementById('planning-area').classList.remove('hidden'); 
@@ -452,13 +467,6 @@ function handleAttendanceData(data) {
             const savedStatusUnpadded = currentContract.planMap[savedDataKeyUnpadded] || '';
 
 
-            // --- DEBUGGING LOGS (Tiyakin na tama ang key at status) ---
-            console.log(`[DEBUG] EmpID(Saved): ${trimmedEmployeeId}, DayKey: ${trimmedDayKey}, Shift: ${trimmedShift}`);
-            console.log(`[DEBUG] Lookup Key: ${savedDataKeyUnpadded}`);
-            console.log(`[DEBUG] Found Status: ${currentContract.planMap[savedDataKeyUnpadded]}`); 
-            // --- END DEBUGGING LOGS ---
-
-
             // CRITICAL: I-prioritize ang Pending Status, Fallback to Saved Statuses
             let status = pendingStatus !== undefined ? pendingStatus : '';
 
@@ -469,7 +477,7 @@ function handleAttendanceData(data) {
                  }
             }
             
-            let td = tr.insertCell();
+            td = tr.insertCell();
             td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
             
             // EDITED: I-apply ang inline width sa data cells
@@ -634,7 +642,10 @@ function handleAttendanceData(data) {
     };
 
     const modal = document.getElementById('floating-status-modal');
-    const inputTime = document.getElementById('schedule-input-time');
+    // I-reference ang bagong select pickers
+    const inputStartTime = document.getElementById('schedule-start-time');
+    const inputEndTime = document.getElementById('schedule-end-time');
+    
     const fixedOptionsContainer = document.getElementById('fixed-status-options-container');
 
     fixedOptionsContainer.innerHTML = '';
@@ -648,15 +659,36 @@ function handleAttendanceData(data) {
         button.addEventListener('click', (e) => saveSchedule(e, option.value));
         fixedOptionsContainer.appendChild(button);
     });
+    
+    // 1. Clear and Populate Dropdowns
+    inputStartTime.innerHTML = '<option value="">-- Start Time --</option>';
+    inputEndTime.innerHTML = '<option value="">-- End Time --</option>';
 
+    TIME_OPTIONS.forEach(time => {
+        let optionStart = document.createElement('option');
+        optionStart.value = time;
+        optionStart.textContent = time;
+        inputStartTime.appendChild(optionStart);
+        
+        let optionEnd = document.createElement('option');
+        optionEnd.value = time;
+        optionEnd.textContent = time;
+        inputEndTime.appendChild(optionEnd);
+    });
+
+
+    // 2. Set Selected Values
     if (currentStatus && !fixedStatusCodes.includes(currentStatus)) {
-        inputTime.value = currentStatus;
+        const parts = currentStatus.split('-');
+        inputStartTime.value = parts[0] || '';
+        inputEndTime.value = parts[1] || '';
     } else {
-        inputTime.value = '';
+        inputStartTime.value = '';
+        inputEndTime.value = '';
     }
 
     modal.classList.remove('hidden');
-    inputTime.focus();
+    inputStartTime.focus(); // Focus sa start time
   }
   
   document.getElementById('cancel-status-btn').addEventListener('click', () => {
@@ -664,32 +696,53 @@ function handleAttendanceData(data) {
   });
   
   document.getElementById('save-schedule-btn').addEventListener('click', (event) => {
-      const schedule = document.getElementById('schedule-input-time').value.trim();
-      saveSchedule(event, schedule);
+      // Walang schedule parameter dito, dahil kukunin natin ito sa inputs
+      saveSchedule(event, null); 
   });
 
 
-  function saveSchedule(event, schedule) {
+  function saveSchedule(event, fixedStatusValue) {
     document.getElementById('floating-status-modal').classList.add('hidden');
     
     if (!selectedCellData.personnelId && !selectedCellData.originalId) return; 
 
     const { personnelId, originalId, dayKey, shiftKey, cellElement } = selectedCellData;
 
-    const finalStatus = event.type === 'click' && event.target.closest('#fixed-status-options-container') 
-        ? schedule 
-        : document.getElementById('schedule-input-time').value.trim();
+    let finalStatus;
+    
+    if (event.type === 'click' && fixedStatusValue !== null) {
+        // Fixed status button was clicked
+        finalStatus = fixedStatusValue;
+    } else {
+        // 'Save' button was clicked (Schedule input is primary)
+        const inputStartTime = document.getElementById('schedule-start-time').value.trim();
+        const inputEndTime = document.getElementById('schedule-end-time').value.trim();
+
+        if (inputStartTime && inputEndTime) {
+            finalStatus = `${inputStartTime}-${inputEndTime}`;
+        } else if (inputStartTime || inputEndTime) {
+            // Incomplete time pair, treat as invalid
+            showNotification('Please select both start and end times, or use the fixed status buttons.', false); // Change prompt to 'select'
+            setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
+            return;
+        } else {
+            // Both time inputs are blank, treat as clearing the schedule status
+            finalStatus = '';
+        }
+    }
     
     if (!personnelId) {
         showNotification('Cannot save plan: Personnel ID is missing for this row.', false);
         return;
     }
 
+    // Since we use select, we trust the browser for HH:MM format, but we check the combined length/structure
     if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
-        if (!TIME_FORMAT_REGEX.test(finalStatus)) {
-            showNotification('Invalid schedule format. Please use HH:MM-HH:MM (e.g., 08:00-19:00).', false);
-            setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
-            return;
+        // Tiyakin na ang resultang string ay HH:MM-HH:MM (11 characters)
+        if (finalStatus.length !== 11 || finalStatus.charAt(5) !== '-') {
+             showNotification('Invalid schedule format detected.', false);
+             setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
+             return;
         }
     }
 
@@ -714,6 +767,9 @@ function handleAttendanceData(data) {
   }
   
   function handleSaveAllChanges() {
+    // CRITICAL: Gamitin ang SFC Ref# bilang key
+    const sfcRefToSave = currentContract ? currentContract.sfcRef : null;
+
     const empChanges = Object.values(pendingEmployeeInfoChanges).filter(e => e.id.trim() !== '' && e.name.trim() !== ''); 
     const attChanges = Object.keys(pendingAttendanceChanges).map(key => {
         const [personnelId, dayKey, shift] = key.split('_');
@@ -732,10 +788,8 @@ function handleAttendanceData(data) {
     }
     
     // --- CRITICAL ID VALIDATION (Strict Check) ---
-    const contractIdToSave = sessionStorage.getItem(CONTRACT_ID_CACHE_KEY); // Use cached ID
-    
-    if (!contractIdToSave) {
-        showNotification('CRITICAL ERROR: Contract ID is not loaded. Please select a Contract Group ID and retry.', false);
+    if (!sfcRefToSave) {
+        showNotification('CRITICAL ERROR: Contract data is not loaded. Please select a Contract Group ID and retry.', false);
         return;
     }
     // --- END CRITICAL ID VALIDATION ---
@@ -753,7 +807,7 @@ function handleAttendanceData(data) {
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        .saveAllData(contractIdToSave, contractInfo, empChanges, attChanges); // Gamitin ang na-verify na ID
+        .saveAllData(sfcRefToSave, contractInfo, empChanges, attChanges); // Pass SFC Ref#
   }
 
   function handleSaveAllSuccess(response) {
@@ -763,7 +817,7 @@ function handleAttendanceData(data) {
       pendingEmployeeInfoChanges = {}; 
       
       // I-fetch ulit ang data para ma-load ang na-save na plan
-      fetchAttendanceData(sessionStorage.getItem(CONTRACT_ID_CACHE_KEY)); 
+      fetchAttendanceData(currentContract.sfcRef); // Pass SFC Ref#
   }
 
   function handleSaveAllError(error) {
