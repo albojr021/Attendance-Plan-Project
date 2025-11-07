@@ -1,5 +1,6 @@
 // --- CONFIGURATION: PALITAN ITO NG ID NG INYONG SPREADSHEET at ANG MGA SHEET NAME ---
-const SPREADSHEET_ID = '1rQnJGqcWcEBjoyAccjYYMOQj7EkIu1ykXTMLGFzzn2I';
+const SPREADSHEET_ID = '1rQnJGqcWcEBjoyAccjYYMOQj7EkIu1ykXTMLGFzzn2I'; // Main/Master ID (Source)
+const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; // Target ID for Plans/Employees (Destination)
 const CONTRACTS_SHEET_NAME = 'MASTER';
 // ------------------------------------------------------------------
 
@@ -27,12 +28,12 @@ function include(filename) {
 
 /**
  * Kinuha ang data mula sa isang sheet, ginagamit ang unang row bilang headers.
- * Ngayon, ito ay sumusuporta sa mga header na hindi nagsisimula sa Row 1.
+ * @param {string} spreadsheetId Ang ID ng Spreadsheet na babasahin.
  * @param {string} sheetName Ang pangalan ng sheet.
  * @return {Array<Object>} Array ng objects, kung saan ang key ay ang header name.
  */
-function getSheetData(sheetName) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+function getSheetData(spreadsheetId, sheetName) {
+  const ss = SpreadsheetApp.openById(spreadsheetId); // Gumagamit na ng dynamic ID
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) return [];
 
@@ -106,12 +107,12 @@ function getSheetData(sheetName) {
 
 /**
  * Dynamic Sheet Naming
- * @param {string} contractId Ang ID ng kontrata.
+ * @param {string} sheetKey Ang key na gagamitin sa sheet name (Dating contractId, ngayon ay SFC Ref#).
  * @param {string} type 'employees' o 'plan'.
  * @return {string} Ang pangalan ng sheet.
  */
-function getDynamicSheetName(contractId, type) {
-    const safeId = (contractId || '').replace(/[\\/?*[]/g, '_');
+function getDynamicSheetName(sheetKey, type) {
+    const safeId = (sheetKey || '').replace(/[\\/?*[]/g, '_');
     // Linisin ang ID
     if (type === 'employees') {
         return `${safeId} - Employees`;
@@ -121,25 +122,27 @@ function getDynamicSheetName(contractId, type) {
 
 /**
  * Tinitiyak na ang Employee at Attendance Plan sheets para sa Contract ID ay existing at may tamang headers.
- * HINDI na ito auto-creates. Ito ay nagre-return lang ng boolean.
- * @param {string} contractId Ang ID ng kontrata.
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  * @return {boolean} True kung existing ang BOTH sheets, False kung hindi.
  */
-function checkContractSheets(contractId) {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const empSheetName = getDynamicSheetName(contractId, 'employees');
-    const planSheetName = getDynamicSheetName(contractId, 'plan');
+function checkContractSheets(sfcRef) {
+    // GUMAGAMIT NA NG TARGET_SPREADSHEET_ID
+    if (!sfcRef) return false;
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
+    const empSheetName = getDynamicSheetName(sfcRef, 'employees');
+    const planSheetName = getDynamicSheetName(sfcRef, 'plan');
     return !!ss.getSheetByName(empSheetName) && !!ss.getSheetByName(planSheetName);
 }
 
 /**
  * Gumagawa ng Employee at Attendance Plan sheets para sa Contract ID, kasama ang tamang headers.
- * @param {string} contractId Ang ID ng kontrata.
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  */
-function createContractSheets(contractId) {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+function createContractSheets(sfcRef) {
+    // GUMAGAMIT NA NG TARGET_SPREADSHEET_ID
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
     // --- EMPLOYEES SHEET ---
-    const empSheetName = getDynamicSheetName(contractId, 'employees');
+    const empSheetName = getDynamicSheetName(sfcRef, 'employees');
     let empSheet = ss.getSheetByName(empSheetName);
     if (!empSheet) {
         empSheet = ss.insertSheet(empSheetName);
@@ -148,13 +151,13 @@ function createContractSheets(contractId) {
         const empHeaders = ['Personnel ID', 'Personnel Name', 'Position', 'Area Posting'];
         empSheet.getRange(1, 1, 1, empHeaders.length).setValues([empHeaders]);
         empSheet.setFrozenRows(1);
-        Logger.log(`[createContractSheets] Created Employee sheet for ${contractId}`);
+        Logger.log(`[createContractSheets] Created Employee sheet for ${sfcRef}`);
     } else {
-        Logger.log(`[createContractSheets] Employee sheet for ${contractId} already existed.`);
+        Logger.log(`[createContractSheets] Employee sheet for ${sfcRef} already existed.`);
     }
     
     // --- ATTENDANCE PLAN SHEET ---
-    const planSheetName = getDynamicSheetName(contractId, 'plan');
+    const planSheetName = getDynamicSheetName(sfcRef, 'plan');
     let planSheet = ss.getSheetByName(planSheetName);
 
     // Kukunin natin ang attendance plan headers sa isang function para ma-reuse
@@ -168,9 +171,9 @@ function createContractSheets(contractId) {
         planSheet.getRange(5, 1, 1, planHeaders.length).setValues([planHeaders]);
         planSheet.setFrozenRows(5); // I-freeze ang headers simula Row 5
         
-        Logger.log(`[createContractSheets] Created Attendance Plan sheet for ${contractId} with headers at Row 5.`);
+        Logger.log(`[createContractSheets] Created Attendance Plan sheet for ${sfcRef} with headers at Row 5.`);
     } else {
-        Logger.log(`[createContractSheets] Employee sheet for ${contractId} already existed.`);
+        Logger.log(`[createContractSheets] Employee sheet for ${sfcRef} already existed.`);
     }
 }
 
@@ -178,15 +181,17 @@ function createContractSheets(contractId) {
 /**
  * Ito na ngayon ay isang internal helper, ginagamit LAMANG bago mag-save (saveAllData)
  * upang tiyakin na may sheet na mapagsa-save-an.
- * @param {string} contractId Ang ID ng kontrata.
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  */
-function ensureContractSheets(contractId) {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const empSheetName = getDynamicSheetName(contractId, 'employees');
+function ensureContractSheets(sfcRef) {
+    // GUMAGAMIT NA NG TARGET_SPREADSHEET_ID
+    if (!sfcRef) throw new Error("SFC Ref# is required to ensure sheets.");
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
+    const empSheetName = getDynamicSheetName(sfcRef, 'employees');
     if (!ss.getSheetByName(empSheetName)) {
-        createContractSheets(contractId);
+        createContractSheets(sfcRef);
         // Call the creator if missing
-        Logger.log(`[ensureContractSheets] Re-created sheets for ${contractId} before saving.`);
+        Logger.log(`[ensureContractSheets] Re-created sheets for ${sfcRef} before saving.`);
     }
 }
 
@@ -199,8 +204,8 @@ function getContracts() {
     throw new Error("CONFIGURATION ERROR: Pakipalitan ang 'YOUR_SPREADSHEET_ID_HERE' sa Code.gs ng tamang Spreadsheet ID.");
   }
     
-  // Dahil sa pagbabago sa getSheetData, kukunin na nito ang tamang data range
-  const allContracts = getSheetData(CONTRACTS_SHEET_NAME);
+  // GUMAGAMIT NG SPREADSHEET_ID para sa MASTER sheet
+  const allContracts = getSheetData(SPREADSHEET_ID, CONTRACTS_SHEET_NAME);
   Logger.log(`[getContracts] Total data rows available for filtering: ${allContracts.length}`); 
 
   // Helper function para mahanap ang case-insensitive key
@@ -272,8 +277,7 @@ function getContracts() {
       headCount: parseInt(headCountKey ? c[headCountKey] : 0) || 0, 
   
  
-      sfcRef: sfcRefKey ?
-    (c[sfcRefKey] || '').toString() : '',              
+      sfcRef: sfcRefKey ? (c[sfcRefKey] || '').toString() : '', // CRITICAL: Nagdagdag ng SFC Ref#
     };
   });
 }
@@ -288,17 +292,19 @@ function cleanPersonnelId(rawId) {
 
 /**
  * Kinukuha ang Employee List at Attendance Plan para sa isang Contract ID.
- * @param {string} contractId Ang Contract Group ID.
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  */
-function getAttendancePlan(contractId) {
-    if (!contractId) throw new Error("Contract ID is required.");
-    // 1. Kumuha ng Employee Data
-    const empSheetName = getDynamicSheetName(contractId, 'employees');
-    const empData = getSheetData(empSheetName);
-    // Reads all rows, including new ones
-    // 2. Kumuha ng Attendance Plan Data
-    const planSheetName = getDynamicSheetName(contractId, 'plan');
-    const planData = getSheetData(planSheetName); // Reads starting from Row 5 (headers)
+function getAttendancePlan(sfcRef) {
+    if (!sfcRef) throw new Error("SFC Ref# is required.");
+    
+    // 1. Kumuha ng Employee Data (GUMAGAMIT NG TARGET_SPREADSHEET_ID)
+    const empSheetName = getDynamicSheetName(sfcRef, 'employees');
+    const empData = getSheetData(TARGET_SPREADSHEET_ID, empSheetName);
+    
+    // 2. Kumuha ng Attendance Plan Data (GUMAGAMIT NG TARGET_SPREADSHEET_ID)
+    const planSheetName = getDynamicSheetName(sfcRef, 'plan');
+    const planData = getSheetData(TARGET_SPREADSHEET_ID, planSheetName); 
+    
     const planMap = {};
     // FIXED: I-store ang status kahit blangko
     planData.forEach(row => {
@@ -346,18 +352,19 @@ function getAttendancePlan(contractId) {
 
 /**
  * Ina-update ang Personnel ID sa AttendancePlan sheet kung nagbago ang ID.
- * @param {string} contractId 
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  * @param {Array<Object>} employeeChanges Array of {id (new ID), name, position, area, isNew, oldPersonnelId}
  */
-function updatePlanKeysOnIdChange(contractId, employeeChanges) {
+function updatePlanKeysOnIdChange(sfcRef, employeeChanges) {
     // Filter changes where oldPersonnelId is not empty and is different from the new ID
     const changesWithIdUpdate = employeeChanges.filter(c => c.oldPersonnelId && c.oldPersonnelId !== c.id);
     if (changesWithIdUpdate.length === 0) return;
 
     Logger.log(`[updatePlanKeysOnIdChange] Found ${changesWithIdUpdate.length} ID changes to process.`);
 
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const planSheetName = getDynamicSheetName(contractId, 'plan');
+    // GUMAGAMIT NA NG TARGET_SPREADSHEET_ID
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
+    const planSheetName = getDynamicSheetName(sfcRef, 'plan');
     const planSheet = ss.getSheetByName(planSheetName);
 
     if (!planSheet) {
@@ -419,34 +426,34 @@ function updatePlanKeysOnIdChange(contractId, employeeChanges) {
 /**
  * Ina-update ang maramihang entry sa Employee at Attendance Plan sheets, 
  * at sine-save ang Contract Info sa unang 4 rows ng Plan Sheet.
- * @param {string} contractId Ang ID ng kontrata.
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  * @param {Object} contractInfo Contract details to save in the plan sheet (Payor, Agency, etc.)
  * @param {Array<Object>} employeeChanges Mga pagbabago sa Employee Info.
  * @param {Array<Object>} attendanceChanges Mga pagbabago sa Attendance Plan.
  */
-function saveAllData(contractId, contractInfo, employeeChanges, attendanceChanges) {
-    Logger.log(`[saveAllData] Starting save for contract: ${contractId}`);
+function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges) {
+    Logger.log(`[saveAllData] Starting save for SFC Ref#: ${sfcRef}`);
     Logger.log(`[saveAllData] Employee Changes count: ${employeeChanges.length}`);
     Logger.log(`[saveAllData] Attendance Changes count: ${attendanceChanges.length}`);
-    if (!contractId) {
-      Logger.log("[saveAllData] ERROR: Contract ID is undefined or null.");
-      throw new Error("Contract ID is required.");
+    if (!sfcRef) {
+      Logger.log("[saveAllData] ERROR: SFC Ref# is undefined or null.");
+      throw new Error("SFC Ref# is required.");
     }
-    ensureContractSheets(contractId);
+    ensureContractSheets(sfcRef);
     // Tiyakin na may sheets na mapagsa-save-an
     
     // 1. I-save ang Contract Info sa Plan Sheet
-    saveContractInfo(contractId, contractInfo);
+    saveContractInfo(sfcRef, contractInfo);
     // 2. I-save ang Employee Info (Bulk)
     if (employeeChanges && employeeChanges.length > 0) {
-        saveEmployeeInfoBulk(contractId, employeeChanges);
+        saveEmployeeInfoBulk(sfcRef, employeeChanges);
         // *** NEW STEP: I-update ang Plan Keys kung nagbago ang Employee ID ***
-        updatePlanKeysOnIdChange(contractId, employeeChanges);
+        updatePlanKeysOnIdChange(sfcRef, employeeChanges);
     }
     
     // 3. I-save ang Attendance Plan (Bulk)
     if (attendanceChanges && attendanceChanges.length > 0) {
-        saveAttendancePlanBulk(contractId, attendanceChanges);
+        saveAttendancePlanBulk(sfcRef, attendanceChanges);
     }
     
     Logger.log(`[saveAllData] Save completed.`);
@@ -455,15 +462,16 @@ function saveAllData(contractId, contractInfo, employeeChanges, attendanceChange
 
 /**
  * Sine-save ang Contract Details sa Row 1-4 ng Attendance Plan sheet.
- * @param {string} contractId 
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  * @param {Object} info 
  */
-function saveContractInfo(contractId, info) {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const planSheetName = getDynamicSheetName(contractId, 'plan');
+function saveContractInfo(sfcRef, info) {
+    // GUMAGAMIT NA NG TARGET_SPREADSHEET_ID
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
+    const planSheetName = getDynamicSheetName(sfcRef, 'plan');
     const planSheet = ss.getSheetByName(planSheetName);
     
-    if (!planSheet) throw new Error(`Plan Sheet for ID ${contractId} not found.`);
+    if (!planSheet) throw new Error(`Plan Sheet for SFC Ref# ${sfcRef} not found.`);
     const data = [
         ['PAYOR COMPANY', info.payor],           // Row 1
         ['AGENCY', info.agency],                 // Row 2
@@ -471,21 +479,22 @@ function saveContractInfo(contractId, info) {
         ['TOTAL HEAD COUNT', info.headCount]     // Row 4
     ];
     planSheet.getRange('A1:B4').setValues(data);
-    Logger.log(`[saveContractInfo] Saved metadata for ${contractId}.`);
+    Logger.log(`[saveContractInfo] Saved metadata for ${sfcRef}.`);
 }
 
 
 /**
  * Ina-update ang maramihang entry sa Attendance Plan sheet.
- * @param {string} contractId Ang ID ng kontrata.
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  * @param {Array<Object>} changes Array of {personnelId, dayKey, shift, status}
  */
-function saveAttendancePlanBulk(contractId, changes) {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const planSheetName = getDynamicSheetName(contractId, 'plan');
+function saveAttendancePlanBulk(sfcRef, changes) {
+    // GUMAGAMIT NA NG TARGET_SPREADSHEET_ID
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
+    const planSheetName = getDynamicSheetName(sfcRef, 'plan');
     const planSheet = ss.getSheetByName(planSheetName);
 
-    if (!planSheet) throw new Error(`AttendancePlan Sheet for ID ${contractId} not found.`);
+    if (!planSheet) throw new Error(`AttendancePlan Sheet for SFC Ref# ${sfcRef} not found.`);
     const HEADER_ROW = 5; // Attendance Plan headers are now at Row 5
     
     planSheet.setFrozenRows(0);
@@ -582,15 +591,16 @@ function saveAttendancePlanBulk(contractId, changes) {
 
 /**
  * Ina-update ang maramihang entry sa Employee sheet.
- * @param {string} contractId Ang ID ng kontrata.
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  * @param {Array<Object>} changes Array of {id (new ID), name, position, area, isNew, oldPersonnelId}
  */
-function saveEmployeeInfoBulk(contractId, changes) {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const empSheetName = getDynamicSheetName(contractId, 'employees');
+function saveEmployeeInfoBulk(sfcRef, changes) {
+    // GUMAGAMIT NA NG TARGET_SPREADSHEET_ID
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
+    const empSheetName = getDynamicSheetName(sfcRef, 'employees');
     const empSheet = ss.getSheetByName(empSheetName);
 
-    if (!empSheet) throw new Error(`Employee Sheet for ID ${contractId} not found.`);
+    if (!empSheet) throw new Error(`Employee Sheet for SFC Ref# ${sfcRef} not found.`);
     empSheet.setFrozenRows(0); // Temporarily unfreeze
     
     // Kumuha ng data mula sa Row 1, Col 1 hanggang sa dulo, para makuha ang headers.
