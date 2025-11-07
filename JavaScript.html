@@ -81,6 +81,18 @@
     showNotification(`Error: ${error.message || 'An unknown error occurred in the script.'}`, false);
     toggleLoading(false);
   }
+  
+  // --- NEW: RELOAD PLAN HELPER ---
+  function reloadPlanAndCheckExistence() {
+      if (currentContract && currentContract.sfcRef) {
+          // I-clear ang planning area display immediately to show loading state
+          document.getElementById('planning-area').classList.add('hidden'); 
+          checkIfPlanExists(currentContract.sfcRef);
+      } else {
+          renderAttendancePlan(); // Fallback
+      }
+  }
+
 
   // --- CONTRACT SELECTION & DATA FETCHING ---
 
@@ -110,9 +122,12 @@
 
     toggleLoading(false);
     select.addEventListener('change', handleContractChange);
-    document.getElementById('shift-period-select').addEventListener('change', renderAttendancePlan);
-    document.getElementById('prev-month').addEventListener('click', () => navigateMonth(-1));
-    document.getElementById('next-month').addEventListener('click', () => navigateMonth(1));
+    
+    // CRITICAL FIX: Use reloadPlanAndCheckExistence for all navigation
+    document.getElementById('shift-period-select').addEventListener('change', reloadPlanAndCheckExistence);
+    document.getElementById('prev-month').addEventListener('click', () => { navigateMonth(-1); reloadPlanAndCheckExistence(); });
+    document.getElementById('next-month').addEventListener('click', () => { navigateMonth(1); reloadPlanAndCheckExistence(); });
+    
     // *** NEW: Listener for Save All Button ***
     document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
   }
@@ -151,17 +166,23 @@ function displayContractDetails(contract) {
     // document.getElementById('planning-area').classList.remove('hidden'); // HIDE planning-area
     document.getElementById('initial-placeholder').classList.add('hidden');
     
-    // NEW: Show the action area
-    document.getElementById('plan-action-area').classList.remove('hidden'); 
+    // CRITICAL FIX: Huwag ipakita ang action area by default.
+    document.getElementById('plan-action-area').classList.add('hidden'); 
 }
 
 // NEW: Function to check if the plan sheets already exist
 function checkIfPlanExists(sfcRef) {
     toggleLoading(true);
+    
+    // FIX: Pass Year, Month, and Shift for dynamic sheet check
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+    
     google.script.run
         .withSuccessHandler(handlePlanExistence)
         .withFailureHandler(handleError)
-        .checkContractSheets(sfcRef); // Pass SFC Ref#
+        .checkContractSheets(sfcRef, currentYear, currentMonth, currentShift); // Pass all required context
 }
 
 // NEW: Handles the response from checkContractSheets
@@ -169,24 +190,20 @@ function handlePlanExistence(exists) {
     toggleLoading(false);
     const planArea = document.getElementById('planning-area');
     const actionArea = document.getElementById('plan-action-area');
-    const createBtn = document.getElementById('create-plan-btn');
     const statusText = document.getElementById('plan-status-text');
-
-    // CRITICAL: Use currentContract.sfcRef here
     const sfcRef = currentContract ? currentContract.sfcRef : null;
 
+    // Laging itago ang load button kapag nag-a-update ng state
+    actionArea.classList.add('hidden'); 
+
     if (exists) {
-        statusText.textContent = 'Attendance Plan Status: Plan Ready. Click to Load.';
-        createBtn.textContent = 'Load/Edit Plan';
-        // NEW: Load the data when button is clicked
-        createBtn.onclick = () => fetchAttendanceData(sfcRef); // Pass SFC Ref#
-        planArea.classList.add('hidden');
+        // CRITICAL FIX: If Plan exists, Auto-load data immediately.
+        statusText.textContent = 'Attendance Plan Status: Plan Ready. Loading...';
+        fetchAttendanceData(sfcRef); // Trigger load automatically
     } else {
-        statusText.textContent = 'Attendance Plan Status: No Plan Found. Click to Create.';
-        createBtn.textContent = 'Create Attendance Plan';
-        // NEW WORKFLOW: Call showBlankPlan()
-        createBtn.onclick = () => showBlankPlan(); 
-        planArea.classList.add('hidden');
+        // CRITICAL FIX: If plan does NOT exist, auto-render blank grid immediately.
+        statusText.textContent = 'Attendance Plan Status: Ready to Plan (New Sheet).';
+        showBlankPlan(); // Auto-render blank grid for new plan entry
     }
 }
 
@@ -198,18 +215,12 @@ function showBlankPlan() {
         return;
     }
     
-    currentContract.employees = []; // Start with no employees loaded
+    currentContract.employees = currentContract.employees || []; // Ensure employees array is available
     currentContract.planMap = {}; // Start with no plan data
-    
-    // Update the action button status
-    const statusText = document.getElementById('plan-status-text');
-    const createBtn = document.getElementById('create-plan-btn');
-    statusText.textContent = 'Attendance Plan Status: Creating New Plan...';
-    createBtn.textContent = 'Load/Edit Plan';
     
     // Show planning area and render table
     document.getElementById('planning-area').classList.remove('hidden'); 
-    showNotification('New attendance plan ready. Fill in data and save.', true);
+    showNotification('Ready to plan. Your plan will be saved as a new sheet on click.', true);
 
     renderAttendancePlan(); // Render the blank grid
     toggleLoading(false);
@@ -221,11 +232,17 @@ function fetchAttendanceData(sfcRef) {
     pendingAttendanceChanges = {}; 
     pendingEmployeeInfoChanges = {}; 
     
+    // FIX: Pass Year, Month, and Shift to the server
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth(); // 0-based month (0=Jan, 10=Nov)
+    const currentShift = document.getElementById('shift-period-select').value;
+
+
     // Call getAttendancePlan, which now assumes sheets exist
     google.script.run
       .withSuccessHandler(handleAttendanceData)
       .withFailureHandler(handleError)
-      .getAttendancePlan(sfcRef); // Pass SFC Ref#
+      .getAttendancePlan(sfcRef, currentYear, currentMonth, currentShift); // PASS YEAR, MONTH & SHIFT
 }
 
 // REMOVED: createAndFetchPlan() (Handled by SaveAllChanges)
@@ -236,14 +253,6 @@ function handleAttendanceData(data) {
     // data.planMap: {personnelId_DayKey_ShiftKey: Status, ...}
     currentContract.employees = data.employees;
     currentContract.planMap = data.planMap;
-    
-    // Update the action button status to Load/Edit
-    const statusText = document.getElementById('plan-status-text');
-    const createBtn = document.getElementById('create-plan-btn');
-    statusText.textContent = 'Attendance Plan Status: Plan Ready. Click to Load.';
-    createBtn.textContent = 'Load/Edit Plan';
-    // Use currentContract.sfcRef when setting the button's action
-    createBtn.onclick = () => fetchAttendanceData(currentContract.sfcRef); 
     
     // Show planning area and render table
     document.getElementById('planning-area').classList.remove('hidden'); 
@@ -259,8 +268,8 @@ function handleAttendanceData(data) {
     currentPlanningDate.setMonth(currentPlanningDate.getMonth() + direction);
     // Reset date to day 1 to avoid month skipping issues (e.g., 31st to Feb)
     currentPlanningDate.setDate(1); 
-    document.getElementById('shift-period-select').value = '1stHalf'; // Reset to 1st Half
-    renderAttendancePlan();
+    // Walang renderAttendancePlan() call dito, dahil ang reloadPlanAndCheckExistence() na ang bahala.
+    // document.getElementById('shift-period-select').value = '1stHalf'; // Reset to 1st Half - Huwag muna i-reset para sa consistency
   }
 
   function getDaysInMonth(year, month) {
@@ -343,7 +352,6 @@ function handleAttendanceData(data) {
         headerRow2.appendChild(thDay);
     }
     
-    
     // --- TABLE BODY ---
     const tbody = table.createTBody();
 
@@ -361,8 +369,13 @@ function handleAttendanceData(data) {
             area: '' 
         };
         
-        // CRITICAL: I-retrieve ang pending changes gamit ang employee.id (original/old ID) bilang key
-        const pendingInfo = pendingEmployeeInfoChanges[employee.id]; 
+        // CRITICAL FIX 1: Gumawa ng STABLE unique key para sa paghahanap ng pending changes.
+        // Gagamitin ang employee.id (original/saved ID) kung meron, kundi ang temporary ID.
+        const stableLookupKey = employee.id || `TEMP_${employee.no}`; 
+
+        
+        // CRITICAL: I-retrieve ang pending changes gamit ang stableLookupKey bilang key
+        const pendingInfo = pendingEmployeeInfoChanges[stableLookupKey]; 
         
         // Gamitin ang pending data kung meron, kundi ang original/saved data
         const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
@@ -389,7 +402,8 @@ function handleAttendanceData(data) {
         input.value = displayId;
         input.placeholder = 'ID';
         input.maxLength = 20; 
-        input.dataset.oldPersonnelId = employee.id; // CRITICAL: Dapat ito ang original ID/key
+        // CRITICAL FIX 2: Gamitin ang stableLookupKey bilang oldPersonnelId
+        input.dataset.oldPersonnelId = stableLookupKey; 
         input.dataset.field = 'id';
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
@@ -403,7 +417,7 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayName; // Gamitin ang display value
         input.placeholder = 'Full Name';
-        input.dataset.oldPersonnelId = employee.id; 
+        input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'name';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
@@ -417,7 +431,7 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayPosition; // Gamitin ang display value
         input.placeholder = 'Position';
-        input.dataset.oldPersonnelId = employee.id;
+        input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'position';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
@@ -431,7 +445,7 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayArea; // Gamitin ang display value
         input.placeholder = 'Area';
-        input.dataset.oldPersonnelId = employee.id;
+        input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'area';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
@@ -504,15 +518,19 @@ function handleAttendanceData(data) {
   function handlePersonnelInfoChange(event, employee) {
       const input = event.target;
       const field = input.dataset.field;
-      const oldPersonnelId = employee.id; // CRITICAL: Always use the original ID as the key/old ID
+      // CRITICAL FIX 3: Gamitin ang dataset.oldPersonnelId (stable key) bilang storage key
+      const oldPersonnelKey = input.dataset.oldPersonnelId; 
       let newValue = input.value;
       
-      let pendingChange = pendingEmployeeInfoChanges[oldPersonnelId] || {
+      // I-retrieve ang pending change gamit ang stable key
+      let pendingChange = pendingEmployeeInfoChanges[oldPersonnelKey] || {
           id: employee.id, 
           name: employee.name, 
           position: employee.position, 
           area: employee.area,
-          isNew: !employee.id 
+          isNew: !employee.id,
+          // Store the original ID for save logic (needed if ID changes)
+          originalEmployeeId: employee.id 
       };
 
       // --- NEW VALIDATION AND FORMATTING LOGIC ---
@@ -546,31 +564,29 @@ function handleAttendanceData(data) {
 
 
       if (field === 'id') {
-          // I-update ang dataset.oldPersonnelId ng iba pang inputs sa row sa bagong ID (para sa save logic)
-          input.closest('tr').querySelectorAll('.personnel-info-input').forEach(otherInput => {
-              if (otherInput !== input) {
-                  otherInput.dataset.oldPersonnelId = pendingChange.id; // Ito ang bagong ID
-              }
-          });
-          // I-update ang dataset.personnelId ng plan cells sa bagong ID
+          // Manwal na i-update ang dataset.personnelId ng attendance cells
           input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
               cell.dataset.personnelId = pendingChange.id; 
           });
       }
       
+      // Tiyakin na ang comparison ay ginagawa sa pagitan ng current pending data at saved data (employee.id/name/etc)
       const isChanged = (pendingChange.id !== employee.id || 
                          pendingChange.name !== employee.name || 
                          pendingChange.position !== employee.position || 
                          pendingChange.area !== employee.area ||
-                         pendingChange.isNew); 
+                         (pendingChange.originalEmployeeId === '' && pendingChange.id !== '')); // Bagong row na may laman
 
       if (isChanged) {
-          // I-store gamit ang ORIGINAL/OLD ID bilang key
-          pendingEmployeeInfoChanges[oldPersonnelId] = pendingChange;
+          // I-store gamit ang stableLookupKey
+          pendingEmployeeInfoChanges[oldPersonnelKey] = pendingChange;
       } else {
-          // Tanggalin gamit ang ORIGINAL/OLD ID bilang key
-          delete pendingEmployeeInfoChanges[oldPersonnelId];
+          // Tanggalin gamit ang stableLookupKey
+          delete pendingEmployeeInfoChanges[oldPersonnelKey];
       }
+      
+      // CRITICAL FIX 5: TANGGALIN ANG renderAttendancePlan() CALL DITO PARA HINDI MAWALA ANG FOCUS
+      // renderAttendancePlan(); 
   }
 
 
@@ -608,12 +624,14 @@ function handleAttendanceData(data) {
       textColor = 'text-gray-500';
     }
     
+    // Default weekend color for blank cells
     if (!isWork && !status && (dayOfWeek === 0 || dayOfWeek === 6)) {
         bgColor = 'bg-gray-200'; 
     }
-
-    innerDiv.className = `p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg ${bgColor} ${textColor}`;
+    
+     innerDiv.className = `p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg ${bgColor} ${textColor}`;
   }
+
 
   function handleCellClick(event) {
     const targetCell = event.currentTarget;
@@ -763,14 +781,36 @@ function handleAttendanceData(data) {
     
     updateCellVisuals(cellElement, finalStatus, dayKey);
     
+    // Walang re-render dito
+    
     showNotification('Change saved locally. Click "Save All Changes" to save to Sheets.', true);
   }
   
   function handleSaveAllChanges() {
     // CRITICAL: Gamitin ang SFC Ref# bilang key
     const sfcRefToSave = currentContract ? currentContract.sfcRef : null;
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
 
-    const empChanges = Object.values(pendingEmployeeInfoChanges).filter(e => e.id.trim() !== '' && e.name.trim() !== ''); 
+
+    // CRITICAL FIX 4: I-convert ang pendingEmployeeInfoChanges bago ipadala sa server.
+    const empChanges = Object.keys(pendingEmployeeInfoChanges).map(stableKey => {
+        const change = pendingEmployeeInfoChanges[stableKey];
+        
+        return {
+            // Ito ang gagamitin ng server para hanapin ang row
+            oldPersonnelId: change.originalEmployeeId, // Dapat ito ang original saved ID (o '')
+            // Ito ang bagong data
+            id: change.id,
+            name: change.name,
+            position: change.position,
+            area: change.area,
+            isNew: change.originalEmployeeId === '' // Flag para sa bagong row
+        };
+    }).filter(e => e.id.trim() !== '' && e.name.trim() !== ''); // Filter out fully empty rows
+
+
     const attChanges = Object.keys(pendingAttendanceChanges).map(key => {
         const [personnelId, dayKey, shift] = key.split('_');
         return { personnelId, dayKey, shift, status: pendingAttendanceChanges[key] };
@@ -807,7 +847,7 @@ function handleAttendanceData(data) {
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        .saveAllData(sfcRefToSave, contractInfo, empChanges, attChanges); // Pass SFC Ref#
+        .saveAllData(sfcRefToSave, contractInfo, empChanges, attChanges, currentYear, currentMonth, currentShift); // PASS ALL CONTEXT
   }
 
   function handleSaveAllSuccess(response) {
