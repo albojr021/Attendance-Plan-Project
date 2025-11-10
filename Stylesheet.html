@@ -153,7 +153,9 @@
     
     @media print {
         /* 1. Itago ang lahat ng hindi kailangan */
-        .print-hidden, #loading-alert, #notification-area, #floating-status-modal {
+        .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
+        #legend-area /* EXPLICITLY HIDE LEGEND */
+        {
             display: none !important;
         }
 
@@ -165,7 +167,7 @@
             font-size: 10pt; /* Default print font size */
         }
         
-        /* 3. I-ayos ang Contract Details (Gawing mas compact) */
+        /* 3. I-ayos ang Contract Details: Standard Text Style */
         #contract-details-area, #planning-area {
             display: block !important;
             margin-top: 0.5rem;
@@ -180,37 +182,40 @@
             padding: 0 !important;
         }
         
-        /* I-ayos ang grid ng contract details (Dalawang column sa isang row) */
+        /* CONTRACT DETAILS: REMOVE GRID AND CARD STYLE */
         #contract-details-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr); 
-            gap: 0.5rem; 
-            margin-bottom: 0.5rem;
+            display: block; /* Remove the grid display */
+            margin-bottom: 0.5rem; 
+            padding: 0;
         }
         
         #contract-details-grid > div {
-            /* Gawing mas compact ang bawat detalye */
-            padding: 0.3rem 0.5rem !important;
-            border: 1px solid #ccc;
-            border-radius: 0.25rem;
-            background-color: #f9f9f9 !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+            /* Gawing standard text line ang bawat detalye */
+            display: flex; /* Para magkatabi ang label at value */
+            border: none !important; 
+            padding: 1px 0 !important; 
+            background-color: transparent !important;
+            break-inside: avoid;
         }
         
-        /* CRITICAL: Gawing pare-pareho ang font size sa Contract Details (0.7rem) */
+        /* CRITICAL: Gawing mas madali basahin ang label at value */
         #contract-details-grid p,
         #contract-details-grid .text-xl,
         #contract-details-grid .text-lg {
-            font-size: 0.7rem !important;
+            font-size: 0.65rem !important; /* Liitan pa */
             line-height: 1.2;
             font-weight: normal !important;
+            margin: 0;
+            padding: 0;
         }
         
-        #contract-details-grid .font-extrabold {
-            font-weight: bold !important; /* Bold pero pareho ang size */
+        /* Apply BOLD to the label (first p tag) and make it occupy fixed space */
+        #contract-details-grid > div p:first-child {
+            font-weight: bold !important; /* Label */
+            color: #444 !important;
+            min-width: 100px; /* Fixed width for alignment */
+            margin-right: 5px; 
         }
-
 
         /* Itago ang mga blangkong row (logic galing sa JS) */
         .print-empty-row {
@@ -290,10 +295,10 @@
             font-size: 0.5rem !important; /* Pareho ang size */
         }
         
-        /* Liitan ang font size ng legend at gawing 0.7rem */
-        #legend-area {
+        /* Legend area is now hidden, so this section is not strictly needed but kept for general style */
+        /* #legend-area {
             font-size: 0.7rem;
             margin-bottom: 0.5rem !important;
-        }
+        } */
     }
 </style>
