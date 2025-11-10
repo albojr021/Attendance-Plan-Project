@@ -1,4 +1,9 @@
 <script>
+  // NEW: Include jQuery first (Select2 dependency)
+  document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"><\/script>');
+  // NEW: Include Select2
+  document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"><\/script>');
+  
   // Global state variables
   let contractList = [];
   let currentContract = null;
@@ -20,6 +25,8 @@
   // *** NEW: Global state para sa tracking ng changes ***
   let pendingAttendanceChanges = {}; // Key: personnelId_DayKey_ShiftKey, Value: Status
   let pendingEmployeeInfoChanges = {}; // Key: original/oldPersonnelId, Value: {id, name, position, area}
+  
+  // REMOVED: isScheduleLocked global state
   // ---------------------------------------------
 
   const fixedStatusOptions = [
@@ -136,9 +143,25 @@
     contracts.forEach(contract => {
       const option = document.createElement('option');
       option.value = contract.id;
+      // Gumamit ng Contract ID at SFC Ref# para mas madaling hanapin
       option.textContent = `${contract.id} - ${contract.status} (Ref#: ${contract.sfcRef})`;
       select.appendChild(option);
     });
+
+    // NEW: I-initialize ang Select2 sa iyong dropdown
+    // Gumamit ng setTimeout para tiyakin na fully loaded ang Select2 JS
+    setTimeout(() => {
+        // I-set ang minimum results for search sa Infinity (default), o pwede rin gawing 1
+        $('#contract-select').select2({
+            placeholder: "-- Choose Contract Group ID --",
+            allowClear: true,
+            width: '100%',
+        }).on('select2:select', handleSelect2Change) // Call new handler on select
+          .on('select2:unselect', handleSelect2Change) // Call new handler on unselect/clear
+          .on('change', handleSelect2Change); // General change listener (fallback)
+
+        toggleLoading(false);
+    }, 100); 
 
     // Populate Shift Periods
     const shiftSelect = document.getElementById('shift-period-select');
@@ -152,9 +175,6 @@
     // Set default shift to 1st Half
     shiftSelect.value = '1stHalf';
 
-    toggleLoading(false);
-    select.addEventListener('change', handleContractChange);
-    
     // CRITICAL FIX: Use reloadPlanAndCheckExistence for all navigation
     document.getElementById('shift-period-select').addEventListener('change', reloadPlanAndCheckExistence);
     document.getElementById('prev-month').addEventListener('click', () => { navigateMonth(-1); reloadPlanAndCheckExistence(); });
@@ -165,30 +185,36 @@
     
     // *** NEW: Listener for Print Button ***
     document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
+    
+    // REMOVED: Schedule Lock Toggle Button Listener
+    
   }
 
-  function handleContractChange(event) {
-    const contractId = event.target.value;
-    if (!contractId) {
-      document.getElementById('contract-details-area').classList.add('hidden');
-      document.getElementById('planning-area').classList.add('hidden');
-      document.getElementById('plan-action-area').classList.add('hidden'); // HIDE NEW SECTION
-      document.getElementById('initial-placeholder').classList.remove('hidden');
-      currentContract = null;
-      sessionStorage.removeItem(CONTRACT_ID_CACHE_KEY); // Clear cache
-      return;
-    }
-
-    currentContract = contractList.find(c => c.id === contractId);
-    sessionStorage.setItem(CONTRACT_ID_CACHE_KEY, currentContract.id); // Set cache
-    
-    if (currentContract) {
-      displayContractDetails(currentContract);
+  // NEW: I-create ang handler para sa Select2 change
+  function handleSelect2Change(event) {
+      // Kunin ang value (contractId) galing sa Select2 element
+      const contractId = $('#contract-select').val(); 
       
-      // NEW: Check if sheets exist first (pass SFC Ref#)
-      checkIfPlanExists(currentContract.sfcRef); 
-    }
-}
+      if (!contractId || contractId === "") {
+          // Logic kapag nag-clear o pumili ng blanko
+          document.getElementById('contract-details-area').classList.add('hidden');
+          document.getElementById('planning-area').classList.add('hidden');
+          document.getElementById('plan-action-area').classList.add('hidden');
+          document.getElementById('initial-placeholder').classList.remove('hidden');
+          currentContract = null;
+          sessionStorage.removeItem(CONTRACT_ID_CACHE_KEY); 
+          return;
+      }
+      
+      currentContract = contractList.find(c => c.id === contractId);
+      sessionStorage.setItem(CONTRACT_ID_CACHE_KEY, currentContract.id); 
+      
+      if (currentContract) {
+          displayContractDetails(currentContract);
+          checkIfPlanExists(currentContract.sfcRef); 
+      }
+  }
+
 
 function displayContractDetails(contract) {
     document.getElementById('sfc-ref').textContent = contract.sfcRef;
@@ -343,7 +369,7 @@ function handleAttendanceData(data) {
     const dateColWidth = '70px';
     
     // Employee Info Header (2 rows tall)
-    const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'Position', 'Area Posting'];
+    const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'Position', 'Area Posting']; 
     empInfoHeader.forEach((headerText, index) => {
         const th = document.createElement('th');
         th.rowSpan = 2;
@@ -417,6 +443,9 @@ function handleAttendanceData(data) {
         const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         const displayPosition = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
         const displayArea = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
+        
+        // NEW LOGIC: Tiyakin kung saved na ba ang row (may ID)
+        const isSavedRow = !!employee.id;
 
         // ** PRINTING LOGIC START: Check for blank row **
         // Kung walang Personnel ID at Name, at wala ring pending changes, i-marka para sa pagtatago sa print
@@ -425,6 +454,8 @@ function handleAttendanceData(data) {
 
 
         const tr = tbody.insertRow();
+        tr.dataset.stableKey = stableLookupKey; // Add stable key to row for easy lookup
+        
         if (isRowBlank) {
              // Added class to hide the row during printing if the user selects the "Clean Print" option.
              tr.classList.add('print-empty-row'); 
@@ -432,12 +463,38 @@ function handleAttendanceData(data) {
 
         
         // 1. Employee Info Cells (Fixed Columns)
-        // No.
+        // No. (Now includes the Edit Button/Icon)
         let td = tr.insertCell();
-        td.textContent = employee.no;
-        td.className = 'sticky-col text-center p-2 bg-gray-50 font-bold border-r border-b z-10 freeze-1';
+        td.className = 'sticky-col text-center p-0 bg-gray-50 font-bold border-r border-b z-10 freeze-1 relative'; // Added relative for absolute positioning of button
         td.style.width = fixedWidths[0]; // Apply inline width
         td.style.minWidth = fixedWidths[0]; 
+        
+        // Content for No. cell: Number and (optionally) Edit Button
+        td.innerHTML = `<span class="block py-2">${employee.no}</span>`;
+        
+        if (isSavedRow) {
+            // Edit Button (Pen icon) for saved rows - POSITIONED INSIDE THE NO. CELL
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            // NEW CLASS: 'edit-icon-no-col' for positioning
+            editButton.className = 'edit-icon-no-col absolute top-1/2 right-0 transform -translate-y-1/2 p-1 text-blue-600 hover:bg-blue-200 transition duration-150 edit-row-btn rounded-full print-hidden';
+            editButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+            `;
+            editButton.dataset.locked = 'true';
+            editButton.dataset.stableKey = stableLookupKey;
+            editButton.addEventListener('click', handleEditRowToggle);
+            td.appendChild(editButton);
+        } else if (!isRowBlank) {
+             // Indicator for New Row
+             const newLabel = document.createElement('span');
+             newLabel.textContent = 'NEW';
+             newLabel.className = 'new-label-no-col absolute top-1/2 right-0 transform -translate-y-1/2 mr-1 text-[8px] font-bold text-green-700 bg-green-200 px-1 py-0.5 rounded print-hidden';
+             td.appendChild(newLabel);
+        }
+
 
         // Personnel ID (Input)
         td = tr.insertCell();
@@ -447,16 +504,16 @@ function handleAttendanceData(data) {
         input.value = displayId;
         input.placeholder = 'ID';
         input.maxLength = 20; 
-        // CRITICAL FIX 2: Gamitin ang stableLookupKey bilang oldPersonnelId
+        input.readOnly = isSavedRow; // NEW: Set Read-only for saved rows
         input.dataset.oldPersonnelId = stableLookupKey; 
         input.dataset.field = 'id';
         // NEW: Idagdag ang employee.no para sa duplicate check
         input.dataset.rowNo = employee.no; 
-        input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent';
+        input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (isSavedRow ? 'read-only' : ''); // NEW: Add read-only class
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1';
         td.style.width = fixedWidths[1]; // Apply inline width
-        td.style.minWidth = fixedWidths[1]; 
+        input.style.minWidth = fixedWidths[1]; // Tiyakin na may min width
         
         // Personnel Name (Input)
         td = tr.insertCell();
@@ -464,13 +521,14 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayName; // Gamitin ang display value
         input.placeholder = 'Full Name';
+        input.readOnly = isSavedRow; // NEW: Set Read-only for saved rows
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'name';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (isSavedRow ? 'read-only' : ''); // NEW: Add read-only class
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
         td.style.width = fixedWidths[2]; // Apply inline width
-        td.style.minWidth = fixedWidths[2]; 
+        input.style.minWidth = fixedWidths[2]; // Tiyakin na may min width
         
         // Position (Input)
         td = tr.insertCell();
@@ -478,13 +536,14 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayPosition; // Gamitin ang display value
         input.placeholder = 'Position';
+        input.readOnly = isSavedRow; // NEW: Set Read-only for saved rows
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'position';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (isSavedRow ? 'read-only' : ''); // NEW: Add read-only class
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         td.style.width = fixedWidths[3]; // Apply inline width
-        td.style.minWidth = fixedWidths[3]; 
+        input.style.minWidth = fixedWidths[3]; // Tiyakin na may min width
         
         // Area Posting (Input)
         td = tr.insertCell();
@@ -492,16 +551,18 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayArea; // Gamitin ang display value
         input.placeholder = 'Area';
+        input.readOnly = isSavedRow; // NEW: Set Read-only for saved rows
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'area';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (isSavedRow ? 'read-only' : ''); // NEW: Add read-only class
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         td.style.width = fixedWidths[4]; // Apply inline width
-        td.style.minWidth = fixedWidths[4]; 
+        input.style.minWidth = fixedWidths[4]; // Tiyakin na may min width
+
 
         // Add event listeners for Personnel Info updates (No auto-save)
-        input.closest('tr').querySelectorAll('.personnel-info-input').forEach(infoInput => {
+        tr.querySelectorAll('.personnel-info-input').forEach(infoInput => {
             infoInput.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
         });
 
@@ -539,7 +600,8 @@ function handleAttendanceData(data) {
             }
             
             td = tr.insertCell();
-            td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
+            // REMOVED: isScheduleLocked check for cursor feedback
+            td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out cursor-pointer';
             
             // EDITED: I-apply ang inline width sa data cells
             td.style.width = dateColWidth;
@@ -559,6 +621,56 @@ function handleAttendanceData(data) {
     
     tableContainer.appendChild(table);
   }
+
+  // NEW FUNCTION: Handle Edit/Unlock Button Click (No change here, only affects employee info)
+  function handleEditRowToggle(event) {
+      const button = event.currentTarget;
+      const row = button.closest('tr');
+      // Inputs now start from the second TD (Personnel ID)
+      const inputs = row.querySelectorAll('.personnel-info-input'); 
+      const isLocked = button.dataset.locked === 'true';
+
+      if (isLocked) {
+          // Unlock the inputs
+          inputs.forEach(input => {
+              input.readOnly = false;
+              input.classList.remove('read-only');
+          });
+
+          // Change button to Lock/Save icon
+          button.dataset.locked = 'false';
+          button.classList.remove('text-blue-600', 'hover:bg-blue-200');
+          button.classList.add('text-green-600', 'hover:bg-green-200');
+          button.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+          `; // Checkmark icon
+          showNotification('Row unlocked. Remember to click "Save All Changes" to save edits.', false);
+
+      } else {
+          // Relock the inputs (Save is handled by saveAllChanges, this only visually locks)
+          inputs.forEach(input => {
+              input.readOnly = true;
+              input.classList.add('read-only');
+          });
+
+          // Change button back to Edit icon
+          button.dataset.locked = 'true';
+          button.classList.remove('text-green-600', 'hover:bg-green-200');
+          button.classList.add('text-blue-600', 'hover:bg-blue-200');
+          button.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+          `; // Pen icon
+          showNotification('Row locked. Changes are tracked locally.', true);
+      }
+  }
+  
+  // REMOVED: handleScheduleLockToggle function
+
+  // REMOVED: updateScheduleLockUI function
 
   // --- EMPLOYEE INFO HANDLERS (Manual Save) ---
   
@@ -660,7 +772,8 @@ function handleAttendanceData(data) {
     const dayOfMonth = new Date(dayKey);
     const dayOfWeek = dayOfMonth.getDay(); 
 
-    cell.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out';
+    // REMOVED: isScheduleLocked check
+    cell.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out cursor-pointer';
     cell.innerHTML = `<div class="p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg">${status}</div>`;
     const innerDiv = cell.querySelector('.attendance-cell-bg');
 
@@ -698,6 +811,8 @@ function handleAttendanceData(data) {
 
 
   function handleCellClick(event) {
+    // REMOVED: isScheduleLocked check
+    
     const targetCell = event.currentTarget;
     const personnelId = targetCell.dataset.personnelId; 
     const originalId = targetCell.dataset.originalId; 
@@ -941,27 +1056,25 @@ function handleAttendanceData(data) {
     const emptyRows = document.querySelectorAll('.print-empty-row');
     emptyRows.forEach(row => row.classList.add('print-hidden'));
 
-    // 2. I-convert ang input fields sa text para sa printout
-    // Dapat gawin ito bago mag-print
+    // 2. I-convert ang input fields sa read-only text (para ma-print ang values)
     const inputs = document.querySelectorAll('#attendance-table-container input');
     
     inputs.forEach(input => {
-        // Magdagdag ng temporary class para sa print
-        input.classList.add('print-input-text');
+        // Tiyakin na read-only ang lahat ng inputs habang nagpi-print.
+        input.classList.add('print-read-only');
     });
 
     // 3. I-trigger ang print dialog
     window.print();
 
     // 4. Ibalik ang mga tinanggal na element pagkatapos ng print (sa 'afterprint' event)
-    // Ang mga modern browsers ay nagti-trigger ng 'afterprint' event
     window.addEventListener('afterprint', () => {
         emptyRows.forEach(row => row.classList.remove('print-hidden'));
         inputs.forEach(input => {
-            // Tanggalin ang temporary class
-            input.classList.remove('print-input-text');
+            // Tanggalin ang temporary print class
+            input.classList.remove('print-read-only');
         });
-    }, { once: true }); // Tiyakin na isang beses lang gagana ang listener
+    }, { once: true }); 
   }
 
 
