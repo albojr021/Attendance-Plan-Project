@@ -7,6 +7,9 @@ const CONTRACTS_SHEET_NAME = 'MASTER';
 // TANDAAN: Para sa MASTER sheet, ang headers ay nagsisimula sa Row 5.
 // Para sa ibang sheets (Employees/Plan), ang headers ay nagsisimula sa Row 1.
 const MASTER_HEADER_ROW = 5;
+// CRITICAL FIX: Baguhin ang Header Row para sa Plan Sheets mula 5 patungong 6
+const PLAN_HEADER_ROW = 6; 
+
 /**
  * ENTRY POINT for the Web App.
  * Ito ang function na tinatawag ng Google Apps Script kapag iniload ang URL ng Web App.
@@ -25,6 +28,14 @@ function doGet() {
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
+
+// CRITICAL NEW HELPER: Universal Header Sanitizer
+function sanitizeHeader(header) {
+    if (!header) return '';
+    // Alisin ang lahat ng non-alphanumeric characters (spaces, periods, newlines, etc.)
+    return String(header).replace(/[^A-Za-z0-9]/g, '');
+}
+
 
 /**
  * Kinuha ang data mula sa isang sheet, ginagamit ang unang row bilang headers.
@@ -58,7 +69,7 @@ function getSheetData(spreadsheetId, sheetName) {
   }
   // CRITICAL FIX: Add a special case for AttendancePlan sheets (Horizontal Save).
   else if (sheetName.includes('AttendancePlan')) {
-      startRow = 5; // Fixed start row for the actual data headers
+      startRow = PLAN_HEADER_ROW; // FIXED to Row 6
       // Ayusin ang numRows para sa range (getLastRow() - startRow + 1)
       if (numRows < startRow) {
           numRows = 0; // Walang data
@@ -110,7 +121,7 @@ function getSheetData(spreadsheetId, sheetName) {
 /**
  * Dynamic Sheet Naming
  * Gumagawa ng sheet name para sa Employees (per SFC Ref#) O Attendance Plan (per SFC Ref#, Month, Shift).
- * @param {string} sfcRef Ang SFC Ref#.
+ * @param {string} sfcRef Ang SFC Ref# (ang bagong sheet key).
  * @param {string} type 'employees' o 'plan'.
  * @param {number} [year] Ang taon (kinakailangan kung 'plan').
  * @param {number} [month] Ang buwan (0-based, kinakailangan kung 'plan').
@@ -147,13 +158,18 @@ function getDynamicSheetName(sfcRef, type, year, month, shift) {
 function checkContractSheets(sfcRef, year, month, shift) {
     if (!sfcRef || year === undefined || month === undefined || !shift) return false;
     
-    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
-    const empSheetName = getDynamicSheetName(sfcRef, 'employees');
-    // GUMAGAMIT NA NG NEW DYNAMIC SHEET NAME PARA SA PLAN
-    const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift); 
-    
-    // Employees sheet ay laging kailangan, Plan sheet lang ang kailangan i-check for the specific month/shift
-    return !!ss.getSheetByName(empSheetName) && !!ss.getSheetByName(planSheetName);
+    try {
+        const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
+        const empSheetName = getDynamicSheetName(sfcRef, 'employees');
+        // GUMAGAMIT NA NG NEW DYNAMIC SHEET NAME PARA SA PLAN
+        const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift); 
+        
+        // Employees sheet ay laging kailangan, Plan sheet lang ang kailangan i-check for the specific month/shift
+        return !!ss.getSheetByName(empSheetName) && !!ss.getSheetByName(planSheetName);
+    } catch (e) {
+         Logger.log(`[checkContractSheets] ERROR: Failed to open Spreadsheet ID ${TARGET_SPREADSHEET_ID}. Check ID and permissions. Error: ${e.message}`);
+         return false;
+    }
 }
 
 
@@ -230,10 +246,23 @@ function createContractSheets(sfcRef, year, month, shift) {
     const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift); 
     let planSheet = ss.getSheetByName(planSheetName);
 
-    const getHorizontalPlanHeaders = () => {
+    // CRITICAL FIX: NEW HEADER GENERATION
+    const getHorizontalPlanHeaders = (sheetYear, sheetMonth) => {
         const base = ['Personnel ID', 'Shift'];
-        for (let i = 1; i <= 31; i++) {
-            base.push(`Day ${i}`); // Day 1, Day 2, ... Day 31
+        
+        for (let d = 1; d <= 31; d++) {
+            const currentDate = new Date(sheetYear, sheetMonth, d);
+            // Check if date is valid for the month
+            if (currentDate.getMonth() === sheetMonth) {
+                const monthShortRaw = currentDate.toLocaleString('en-US', { month: 'short' });
+                // CRITICAL FIX: I-UPPERCASE ang unang letter ng month name AT ALISIN ANG TULDOK
+                const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '');
+                
+                base.push(`${monthShort}${d}`); 
+            } else {
+                // Para panatilihin ang 31 column position, gagamitin natin ang Day X
+                base.push(`Day${d}`); 
+            }
         }
         return base;
     };
@@ -241,26 +270,28 @@ function createContractSheets(sfcRef, year, month, shift) {
     if (!planSheet) {
         planSheet = ss.insertSheet(planSheetName);
         planSheet.clear();
-        // NEW: Mag-reserve ng space para sa Contract Info (Row 1-4)
-        const planHeaders = getHorizontalPlanHeaders();
-        planSheet.getRange(5, 1, 1, planHeaders.length).setValues([planHeaders]);
-        planSheet.setFrozenRows(5); // I-freeze ang headers simula Row 5
         
-        Logger.log(`[createContractSheets] Created Horizontal Attendance Plan sheet for ${planSheetName} with headers at Row 5.`);
+        // Mag-reserve ng space para sa Contract Info (Row 1-5)
+        // CRITICAL FIX: Headers ay nasa Row 6
+        const planHeaders = getHorizontalPlanHeaders(year, month); // Pass Year and Month for dynamic date headers
+        planSheet.getRange(PLAN_HEADER_ROW, 1, 1, planHeaders.length).setValues([planHeaders]);
+        planSheet.setFrozenRows(PLAN_HEADER_ROW); // I-freeze ang headers simula Row 6
+        
+        Logger.log(`[createContractSheets] Created Horizontal Attendance Plan sheet for ${planSheetName} with headers at Row ${PLAN_HEADER_ROW}.`);
         
         // CRITICAL FIX 1: Populate the newly created sheet with existing employee rows
         appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shift); // PASS SHIFT
         
         // CRITICAL FIX 3: Aesthetic Fix - Hide irrelevant columns
+        // Column Index: ID (1), Shift (2), Day 1 (3), Day 15 (17), Day 16 (18), Day 31 (33)
         if (shift === '1stHalf') {
-            // HIDE Day 16 (Column 22) hanggang Day 31 (Column 37)
-            const START_COL_TO_HIDE = 22; 
+            // HIDE Day 16 (Column 18) hanggang Day 31 (Column 33)
+            const START_COL_TO_HIDE = 18; 
             const NUM_COLS_TO_HIDE = 16; 
             planSheet.hideColumns(START_COL_TO_HIDE, NUM_COLS_TO_HIDE);
             Logger.log(`[createContractSheets] Hiding Day 16-31 columns for 1stHalf sheet.`);
         } else if (shift === '2ndHalf') {
-            // HIDE Day 1 (Column 3) hanggang Day 15 (Column 21)
-            // Column 3 is the first 'Day' column (Day 1)
+            // HIDE Day 1 (Column 3) hanggang Day 15 (Column 17)
             const START_COL_TO_HIDE = 3; 
             const NUM_COLS_TO_HIDE = 15; 
             planSheet.hideColumns(START_COL_TO_HIDE, NUM_COLS_TO_HIDE);
@@ -394,7 +425,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     if (!planSheet) return { employees: empData, planMap: {} };
 
     // CRITICAL: Read all data rows starting from Row 6
-    const HEADER_ROW = 5;
+    const HEADER_ROW = PLAN_HEADER_ROW; // FIXED to 6
     const lastRow = planSheet.getLastRow();
     const numRowsToRead = lastRow - HEADER_ROW;
     const numColumns = planSheet.getLastColumn();
@@ -404,8 +435,8 @@ function getAttendancePlan(sfcRef, year, month, shift) {
         return { employees: empData, planMap: {} };
     }
 
-    // Read headers (Row 5) and data (Row 6 onwards)
-    const planValues = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
+    // Read headers (Row 6) and data (Row 7 onwards)
+    const planValues = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getValues(); // Use getValues() for raw strings
     const headers = planValues[0];
     const dataRows = planValues.slice(1);
 
@@ -413,6 +444,16 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const shiftIndex = headers.indexOf('Shift');
     
     const planMap = {};
+    
+    // CRITICAL FIX 1: Gumawa ng sanitized map ng headers
+    const sanitizedHeadersMap = {};
+    headers.forEach((header, index) => {
+        // Linisin ang header sa pamamagitan ng pag-alis ng lahat ng non-alphanumeric
+        const cleanedHeader = sanitizeHeader(header); 
+        sanitizedHeadersMap[cleanedHeader] = index;
+    });
+    // END CRITICAL FIX 1
+    
     
     // Horizontal to Vertical Conversion (Focusing only on the current shift)
     dataRows.forEach((row, rowIndex) => {
@@ -427,11 +468,31 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             for (let d = 1; d <= 31; d++) {
                 // FIX: Gamitin ang year at month na galing sa client
                 const dayKey = `${year}-${month + 1}-${d}`; // Month + 1 para sa 1-based month
-                const dayHeader = `Day ${d}`;
-                const dayIndex = headers.indexOf(dayHeader);
-
-                if (dayIndex !== -1 && id && currentShift) {
-                    const status = String(row[dayIndex] || '').trim();
+                
+                // CRITICAL FIX: Hanapin ang header gamit ang "MonthDay" format
+                const date = new Date(year, month, d);
+                
+                let lookupHeader = '';
+                if (date.getMonth() === month) {
+                    const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
+                    // CRITICAL FIX: I-UPPERCASE ang unang letter ng month name AT ALISIN ANG TULDOK AT SPACE
+                    const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
+                    
+                    // FIX: Ito ang tamang format na mayroon tayo: MonthDay (e.g., Nov15)
+                    lookupHeader = `${monthShort}${d}`; 
+                } else {
+                    // Fallback para sa Day X columns (Hindi dapat ma-trigger, pero safety)
+                    lookupHeader = `Day${d}`; 
+                }
+                
+                // CRITICAL FIX 2: Gamitin ang sanitized map
+                const dayIndex = sanitizedHeadersMap[sanitizeHeader(lookupHeader)];
+                
+                if (dayIndex !== undefined && id && currentShift) {
+                    // Gamitin ang DisplayValue para makuha ang formatted schedule (e.g., 08:00-17:00)
+                    const statusRange = planSheet.getRange(HEADER_ROW + rowIndex + 1, dayIndex + 1);
+                    const status = String(statusRange.getDisplayValue() || '').trim();
+                    
                     const key = `${id}_${dayKey}_${currentShift}`;
                     
                     if (status) {
@@ -524,14 +585,39 @@ function saveContractInfo(sfcRef, info, year, month, shift) {
     const planSheet = ss.getSheetByName(planSheetName);
     
     if (!planSheet) throw new Error(`Plan Sheet for ${planSheetName} not found.`);
+    
+    // Helper para makuha ang start at end date
+    const date = new Date(year, month, 1);
+    const monthName = date.toLocaleString('en-US', { month: 'long' });
+    const yearNum = date.getFullYear();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    
+    let dateRange = '';
+    if (shift === '1stHalf') {
+        dateRange = `${monthName} 1-15, ${yearNum} (${shift})`;
+    } else {
+        dateRange = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
+    }
+    
+    // CRITICAL FIX: Idagdag ang date range sa metadata
     const data = [
         ['PAYOR COMPANY', info.payor],           // Row 1
         ['AGENCY', info.agency],                 // Row 2
         ['SERVICE TYPE', info.serviceType],      // Row 3
-        ['TOTAL HEAD COUNT', info.headCount]     // Row 4
+        ['TOTAL HEAD COUNT', info.headCount],     // Row 4
+        ['PLAN PERIOD', dateRange]               // NEW Row 5
     ];
-    planSheet.getRange('A1:B4').setValues(data);
-    Logger.log(`[saveContractInfo] Saved metadata for ${planSheetName}.`);
+    
+    // 1. Tanggalin ang dating content ng Rows 1-5 (para sa malinis na pag-save)
+    planSheet.getRange('A1:B5').clearContent();
+    
+    // 2. I-set ang values sa A1:B5 (Headers: A, Values: B)
+    planSheet.getRange('A1:B5').setValues(data);
+    
+    // 3. I-update ang frozen rows (Dapat Row 6 na ang header)
+    planSheet.setFrozenRows(PLAN_HEADER_ROW);
+    
+    Logger.log(`[saveContractInfo] Saved metadata and date range for ${planSheetName}.`);
 }
 
 
@@ -551,7 +637,8 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     const planSheet = ss.getSheetByName(planSheetName);
 
     if (!planSheet) throw new Error(`AttendancePlan Sheet for ${planSheetName} not found.`);
-    const HEADER_ROW = 5; 
+    // TANDAAN: SHIFTED HEADER ROW to 6
+    const HEADER_ROW = PLAN_HEADER_ROW; // FIXED to 6
     
     // Tiyakin na ang sheet ay bukas bago magbasa
     planSheet.setFrozenRows(0);
@@ -567,9 +654,10 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
          values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getValues();
          headers = values[0]; 
     } else {
+        // Fallback Headers (Should not happen if sheets are created correctly)
         headers = ['Personnel ID', 'Shift'];
         for (let i = 1; i <= 31; i++) {
-            headers.push(`Day ${i}`);
+            headers.push(`Day${i}`);
         }
         values.push(headers);
     }
@@ -580,6 +668,14 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     if (personnelIdIndex === -1 || shiftIndex === -1) {
         throw new Error("Missing critical column in AttendancePlan sheet (Personnel ID or Shift).");
     }
+    
+    // CRITICAL FIX 1: Gumawa ng sanitized map ng headers
+    const sanitizedHeadersMap = {};
+    headers.forEach((header, index) => {
+        // Linisin ang header sa pamamagitan ng pag-alis ng lahat ng non-alphanumeric
+        const cleanedHeader = sanitizeHeader(header); 
+        sanitizedHeadersMap[cleanedHeader] = index;
+    });
     
     // Gumawa ng map para sa mabilis na lookup ng existing rows: Key: ID_Shift -> RowIndex (sa values array)
     const rowLookupMap = {}; 
@@ -597,18 +693,36 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     changes.forEach(data => {
         const { personnelId, dayKey, shift: dataShift, status } = data;
         
-        // Tanging ang changes lang na tumutugma sa shift ng sheet ang i-sa-save
+        // Tanging ang changes lang na tumugma sa shift ng sheet ang i-sa-save
         if (dataShift !== shift) return; 
         
         const rowKey = `${personnelId}_${dataShift}`;
         
         // Kunin ang Day Number mula sa DayKey (YYYY-M-D)
         const dayNumber = parseInt(dayKey.split('-')[2], 10);
-        const dayHeader = `Day ${dayNumber}`;
-        const dayColIndex = headers.indexOf(dayHeader); // Column index (0-based)
         
-        if (dayColIndex === -1) {
-            Logger.log(`[savePlanBulk] Skipped: Day header not found for ${dayHeader}.`);
+        // CRITICAL FIX 2: Hanapin ang header gamit ang MonthDay format
+        const date = new Date(year, month, dayNumber);
+        
+        let targetLookupHeader = '';
+        if (date.getMonth() === month) {
+            const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
+            // CRITICAL FIX: I-UPPERCASE ang unang letter ng month name AT ALISIN ANG TULDOK AT SPACE
+            const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
+            
+            // FIX: Ito ang tamang format na mayroon tayo: MonthDay (e.g., Nov15)
+            targetLookupHeader = `${monthShort}${dayNumber}`; 
+        } else {
+            // Fallback para sa Day X columns (Hindi dapat ma-trigger, pero safety)
+            targetLookupHeader = `Day${dayNumber}`; 
+        }
+        
+        // CRITICAL FIX 3: Maghanap ng index gamit ang Sanitized Map
+        const dayColIndex = sanitizedHeadersMap[targetLookupHeader]; 
+        
+        if (dayColIndex === undefined) {
+            // I-log ang FATAL MISS
+            Logger.log(`[savePlanBulk] FATAL MISS: Header Lookup '${targetLookupHeader}' failed. Available Sanitized Keys: ${Object.keys(sanitizedHeadersMap).join(' | ')}`);
             return; 
         }
 
@@ -672,7 +786,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     
     // Kumuha ng data mula sa Row 1, Col 1 hanggang sa dulo, para makuha ang headers.
     const lastRow = empSheet.getLastRow();
-    const numRows = lastRow > 0 ? lastRow : 1;
+    const numRows = empSheet.getLastRow() > 0 ? empSheet.getLastRow() : 1; 
     const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 4;
     // Read values: Dito dapat makita ang headers at ang lahat ng existing data
     const values = empSheet.getRange(1, 1, numRows, numColumns).getValues();
@@ -732,7 +846,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             rowsToAppend.push(finalRow);
             
             // NEW: Maghanda ng dalawang row para sa Attendance Plan (1stHalf at 2ndHalf)
-            // CRITICAL FIX 2: Tiyakin na ang sheets ay may laman bago subukang magbasa ng lastRow.
             const planHeadersCount = 33; // Always assume 33 columns for horizontal save
             
             // Row for 1st Half
