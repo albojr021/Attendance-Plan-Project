@@ -131,6 +131,9 @@
     
     // *** NEW: Listener for Save All Button ***
     document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
+    
+    // *** NEW: Listener for Print Button ***
+    document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
   }
 
   function handleContractChange(event) {
@@ -384,8 +387,18 @@ function handleAttendanceData(data) {
         const displayPosition = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
         const displayArea = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
 
+        // ** PRINTING LOGIC START: Check for blank row **
+        // Kung walang Personnel ID at Name, at wala ring pending changes, i-marka para sa pagtatago sa print
+        const isRowBlank = !displayId.trim() && !displayName.trim() && !Object.keys(pendingInfo || {}).length;
+        // ** PRINTING LOGIC END **
+
 
         const tr = tbody.insertRow();
+        if (isRowBlank) {
+             // Added class to hide the row during printing if the user selects the "Clean Print" option.
+             tr.classList.add('print-empty-row'); 
+        }
+
         
         // 1. Employee Info Cells (Fixed Columns)
         // No.
@@ -866,6 +879,41 @@ function handleAttendanceData(data) {
        showNotification(`FATAL SAVE ERROR: ${error.message || 'An unknown error occurred during saving.'}`, false);
        toggleLoading(false); 
   }
+  
+  // --- NEW PRINT LOGIC ---
+  function handlePrintPlan() {
+    if (!currentContract) {
+        showNotification('Please select a Contract Group ID first.', false);
+        return;
+    }
+    
+    // 1. Tanggalin ang mga blangkong row
+    const emptyRows = document.querySelectorAll('.print-empty-row');
+    emptyRows.forEach(row => row.classList.add('print-hidden'));
+
+    // 2. I-convert ang input fields sa text para sa printout
+    // Dapat gawin ito bago mag-print
+    const inputs = document.querySelectorAll('#attendance-table-container input');
+    
+    inputs.forEach(input => {
+        // Magdagdag ng temporary class para sa print
+        input.classList.add('print-input-text');
+    });
+
+    // 3. I-trigger ang print dialog
+    window.print();
+
+    // 4. Ibalik ang mga tinanggal na element pagkatapos ng print (sa 'afterprint' event)
+    // Ang mga modern browsers ay nagti-trigger ng 'afterprint' event
+    window.addEventListener('afterprint', () => {
+        emptyRows.forEach(row => row.classList.remove('print-hidden'));
+        inputs.forEach(input => {
+            // Tanggalin ang temporary class
+            input.classList.remove('print-input-text');
+        });
+    }, { once: true }); // Tiyakin na isang beses lang gagana ang listener
+  }
+
 
   // --- INITIALIZATION ---
 
