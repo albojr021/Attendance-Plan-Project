@@ -16,9 +16,9 @@
     <p class="text-sm">This may take a few seconds.</p>
   </div>
 
-  <h1 class="text-3xl font-extrabold text-gray-800 mb-6">Attendance Plan Monitoring & Planning (Google Sheets Powered)</h1>
+  <h1 class="text-3xl font-extrabold text-gray-800 mb-6 print-hidden">Attendance Plan Monitoring & Planning (Google Sheets Powered)</h1>
 
-  <div class="card">
+  <div class="card print-hidden">
     <p class="text-lg font-semibold 
 text-gray-700 mb-3">Select Contract Group ID:</p>
     <select id="contract-select" class="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-blue-500 focus:border-blue-500 transition duration-150 shadow-sm">
@@ -27,8 +27,8 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
   </div>
 
   <div id="contract-details-area" class="mt-6 hidden">
-    <h2 class="text-2xl font-bold text-gray-800 mb-4">Contract Details</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <h2 class="text-2xl font-bold text-gray-800 mb-4 print-header">Contract Details</h2>
+    <div id="contract-details-grid"> 
       <div class="card bg-blue-50">
         <p class="text-sm font-medium text-blue-800">SFC Reference #</p>
         <p id="sfc-ref" class="text-xl font-extrabold text-blue-900"></p>
@@ -51,16 +51,16 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
       </div>
     </div>
     
-    <div id="plan-action-area" class="mt-6 card p-4 flex justify-between items-center hidden">
+    <div id="plan-action-area" class="mt-6 card p-4 flex justify-between items-center hidden print-hidden">
         <h3 id="plan-status-text" class="text-xl font-semibold text-gray-700">Attendance Plan Status: Checking...</h3>
         <button id="create-plan-btn" class="p-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition duration-150 shadow-lg">Create/Load Plan</button>
     </div>
     </div>
 
   <div id="planning-area" class="mt-6 hidden">
-    <h2 class="text-2xl font-bold text-gray-800 mb-4">Attendance Plan</h2>
+    <h2 class="text-2xl font-bold text-gray-800 mb-4 print-header">Attendance Plan</h2>
     
-    <div class="card flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0 mb-4">
+    <div class="card flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0 mb-4 print-hidden">
       <div class="flex items-center space-x-3">
         <button id="prev-month" class="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition duration-150">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
@@ -75,11 +75,17 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
         </select>
     </div>
     
-    <div class="mb-4 flex justify-end">
+    <div class="mb-4 flex justify-end space-x-3 print-hidden">
+        <button id="print-plan-btn" class="p-3 rounded-lg bg-green-600 text-white font-extrabold text-lg hover:bg-green-700 transition duration-150 shadow-lg flex items-center space-x-2">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m0 0l-1 3H4a2 2 0 00-2 2v2a2 2 0 002 2h16a2 2 0 002-2v-2a2 2 0 00-2-2h-3l-1-3m0-8h.01M16 7h.01M12 21v-4a2 2 0 00-2-2h-4a2 2 0 00-2 2v4h16z" />
+            </svg>
+            <span>Print Plan</span>
+        </button>
         <button id="save-all-changes-btn" class="p-3 rounded-lg bg-red-600 text-white font-extrabold text-lg hover:bg-red-700 transition duration-150 shadow-lg">Save All Changes to Sheets</button>
     </div>
     
-    <div class="card mb-4 p-4">
+    <div class="card mb-4 p-4" id="legend-area">
       <h3 class="text-lg font-semibold mb-2 text-gray-700">Legend:</h3>
       <div class="flex flex-wrap gap-4 text-sm">
         <span class="status-label text-green-700"><span class="w-3 h-3 rounded-full status-work mr-2"></span>Work/Schedule (Time Input)</span>
@@ -90,20 +96,20 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
       </div>
     </div>
 
-    <div id="attendance-grid" class="attendance-grid card p-0 overflow-x-auto">
+    <div id="attendance-grid" class="attendance-grid card p-0 overflow-x-auto print-grid">
       <div id="attendance-table-container">
         </div>
     </div>
 
-    <p class="text-sm text-gray-500 mt-2 p-4">Click the box (cell) to open status selection or input schedule. **Important: Click 'Save All Changes to Sheets' button to permanently save data.**</p>
+    <p class="text-sm text-gray-500 mt-2 p-4 print-hidden">Click the box (cell) to open status selection or input schedule. **Important: Click 'Save All Changes to Sheets' button to permanently save data.**</p>
 
   </div>
 
-  <div id="initial-placeholder" class="card mt-6">
+  <div id="initial-placeholder" class="card mt-6 print-hidden">
     <p class="text-center text-gray-500 p-8">Select a Contract Group ID to view details and the attendance plan.</p>
   </div>
 
-  <div id="floating-status-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4">
+  <div id="floating-status-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
     <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
       <h3 class="text-lg font-bold mb-4">Update Schedule/Status</h3>
       <div id="fixed-status-options-container" class="space-y-2 mb-4">
