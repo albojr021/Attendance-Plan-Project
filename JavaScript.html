@@ -52,6 +52,37 @@
   const TIME_OPTIONS = generateTimeOptions();
 
 
+  // --- NEW: FUNCTION PARA I-CHECK KUNG DUPLICATE ANG ID ---
+  function isDuplicateId(newId, originalSavedId, currentNo) {
+      const trimmedNewId = newId.trim();
+      if (!trimmedNewId) return false;
+
+      // 1. Check against SAVED employees (using originalSavedId as exclusion)
+      if (currentContract && currentContract.employees) {
+          const savedConflict = currentContract.employees.some(emp => {
+              const savedId = (emp.id || '').trim();
+              // I-check kung nag-match ang ID, PERO hindi ito ang original ID ng row na ine-edit
+              return savedId === trimmedNewId && savedId !== originalSavedId;
+          });
+          if (savedConflict) return true;
+      }
+
+      // 2. Check against PENDING changes (using row key exclusion)
+      const pendingKeys = Object.keys(pendingEmployeeInfoChanges);
+      for (const key of pendingKeys) {
+          // Stable key: original ID (kung meron) o TEMP_N (kung bago)
+          const isCurrentRowPending = (key === originalSavedId) || (key === `TEMP_${currentNo}`);
+          if (isCurrentRowPending) continue; // Skip ang row na kasalukuyang ine-edit
+
+          const pendingId = (pendingEmployeeInfoChanges[key].id || '').trim();
+          if (pendingId === trimmedNewId) return true;
+      }
+      
+      return false;
+  }
+  // --- END NEW FUNCTION ---
+
+
   // --- UI HANDLERS ---
 
   function toggleLoading(isLoading) {
@@ -419,6 +450,8 @@ function handleAttendanceData(data) {
         // CRITICAL FIX 2: Gamitin ang stableLookupKey bilang oldPersonnelId
         input.dataset.oldPersonnelId = stableLookupKey; 
         input.dataset.field = 'id';
+        // NEW: Idagdag ang employee.no para sa duplicate check
+        input.dataset.rowNo = employee.no; 
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent';
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1';
@@ -558,6 +591,23 @@ function handleAttendanceData(data) {
                input.value = employee.id; 
                return; 
           }
+          
+          // --- DUPLICATE CHECK (NEW ADDITION) ---
+          if (cleanId) {
+              // Pass new ID, original saved ID, and current row number
+              if (isDuplicateId(cleanId, employee.id, employee.no)) { 
+                  showNotification(`Personnel ID "${cleanId}" is already used in another row (saved or pending).`, false);
+                  input.value = employee.id; // Revert input
+                  pendingChange.id = employee.id; // Revert pending change
+                  // I-delete kung ang pag-revert ay nagbalik sa original state
+                  if (employee.id === input.value) { 
+                      delete pendingEmployeeInfoChanges[oldPersonnelKey];
+                  }
+                  return;
+              }
+          }
+          // --- END DUPLICATE CHECK ---
+
           pendingChange[field] = cleanId;
       } else {
           // 2. Formatting: Convert to CAPSLOCK and remove special characters
