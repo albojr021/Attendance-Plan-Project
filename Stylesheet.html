@@ -158,11 +158,21 @@
         box-shadow: none;
     }
     
-    /* NEW: Style for the Edit Icon inside the No. Column */
-    .edit-icon-no-col {
-        right: 0px !important; /* Move it to the far right edge of the <td> */
-        z-index: 20; /* Ensure it's above other cells */
+    /* UPDATED: Style for the Action Container (Edit/Delete Icons) */
+    /* Gumamit ng fixed width sa container para hindi gumalaw ang icon kapag nag-hover */
+    .sticky-col:first-child .absolute.flex {
+        width: 48px; /* Fixed width: 2 icons (h-4 w-4) + spacing + padding */
+        right: 0;
     }
+    
+    /* === FIX: PADDDING PARA SA NO. COLUMN === */
+    /* Target the span inside the first TD (No. column) na may hawak ng numero */
+    .sticky-col:first-child > span {
+        padding-right: 50px; /* Dagdagan ang padding sa kanan para magbigay space sa 48px na icon container */
+    }
+    /* === END FIX === */
+
+    /* REMOVED: .edit-icon-no-col - gumamit na ng flex container */
     
     /* --- Select2 Custom Styling (para mas maging Tailwind-like) --- */
     .select2-container--default .select2-selection--single {
@@ -208,7 +218,7 @@
     @media print {
         /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
-        #legend-area, .edit-icon-no-col, .new-label-no-col,
+        #legend-area, .action-icon, .new-label-no-col,
         .print-header /* NEW: Hide Contract Details/Attendance Plan titles */
         {
             display: none !important;
