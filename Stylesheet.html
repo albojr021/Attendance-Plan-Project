@@ -24,6 +24,14 @@
         position: relative; 
     }
 
+    /* NEW: Style for Selected Cells */
+    .cell-selected {
+        /* Gumamit ng border para mas obvious ang selection */
+        border: 3px solid #3b82f6 !important; /* blue-500 */
+        box-shadow: 0 0 0 1px #2563eb; /* blue-600 ring */
+        transition: border 0.1s;
+    }
+
     /* Styling para sa Attendance Input field (Schedule) */
     .attendance-input {
         box-sizing: border-box;
@@ -218,7 +226,7 @@
     @media print {
         /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
-        #legend-area, .action-icon, .new-label-no-col,
+        #legend-area, .action-icon, .new-label-no-col, #floating-bulk-modal,
         .print-header /* NEW: Hide Contract Details/Attendance Plan titles */
         {
             display: none !important;
