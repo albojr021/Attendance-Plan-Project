@@ -55,6 +55,7 @@
     }
 
     /* Column Widths for Fixed Employee Info Columns (SCREEN ONLY) */
+    /* NOTE: These fixed widths are ONLY for the screen view */
     .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; }
     .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; }
     .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; }
@@ -69,7 +70,7 @@
         box-sizing: border-box; 
     }
 
-    /* Applying the fix to all headers and data cells starting from the 6th column (SCREEN ONLY) */
+    /* Applying the fix to all headers and data cells starting from the 6th column (Dynamic Dates) */
     .attendance-grid th:nth-child(n+6), 
     .attendance-grid td:nth-child(n+6) { 
         width: 70px; 
@@ -108,7 +109,7 @@
     }
     
     /* Reset z-index for standard sticky cells (SCREEN ONLY) */
-    .attendance-grid td:nth-child(n+4) {
+    .attendance-grid td:nth-child(n+6) {
         z-index: 5; 
     }
     
@@ -142,6 +143,59 @@
         outline: none;
     }
     
+    /* NEW: Read-only visual style */
+    .personnel-info-input.read-only {
+        background-color: #f3f4f6; /* bg-gray-100 */
+        color: #6b7280; /* text-gray-500 */
+        border-style: dashed;
+        border-color: #e5e7eb;
+        cursor: default;
+    }
+    /* When read-only, ensure no focus ring */
+    .personnel-info-input.read-only:focus {
+        background-color: #f3f4f6;
+        border-color: #e5e7eb;
+        box-shadow: none;
+    }
+    
+    /* NEW: Style for the Edit Icon inside the No. Column */
+    .edit-icon-no-col {
+        right: 0px !important; /* Move it to the far right edge of the <td> */
+        z-index: 20; /* Ensure it's above other cells */
+    }
+    
+    /* --- Select2 Custom Styling (para mas maging Tailwind-like) --- */
+    .select2-container--default .select2-selection--single {
+        height: 44px; /* Para maging tugma sa taas ng p-3 na input/select */
+        border-radius: 0.5rem; /* rounded-lg */
+        border-color: #d1d5db; /* border-gray-300 */
+        padding-top: 0.4rem; 
+    }
+
+    .select2-container--default .select2-selection--single .select2-selection__rendered {
+        color: #374151; /* text-gray-700 */
+        line-height: 1.5rem; /* Line height */
+        padding-left: 0.75rem;
+    }
+    
+    /* Para sa search box */
+    .select2-container--default .select2-search--dropdown .select2-search__field {
+        border-radius: 0.5rem;
+        border-color: #d1d5db;
+    }
+
+    /* Focus state */
+    .select2-container--default.select2-container--focus .select2-selection--single {
+        border-color: #3b82f6 !important; /* focus:border-blue-500 */
+        box-shadow: 0 0 0 1px #3b82f6; /* focus:ring-blue-500 */
+        outline: 0;
+    }
+    
+    /* Ensure dropdown is above other content */
+    .select2-container--open {
+        z-index: 50; 
+    }
+    
     
     /* --- PRINT STYLES --- */
 
@@ -152,9 +206,10 @@
     }
     
     @media print {
-        /* 1. Itago ang lahat ng hindi kailangan */
+        /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
-        #legend-area /* EXPLICITLY HIDE LEGEND */
+        #legend-area, .edit-icon-no-col, .new-label-no-col,
+        .print-header /* NEW: Hide Contract Details/Attendance Plan titles */
         {
             display: none !important;
         }
@@ -167,10 +222,10 @@
             font-size: 10pt; /* Default print font size */
         }
         
-        /* 3. I-ayos ang Contract Details: Standard Text Style */
+        /* 3. I-ayos ang Contract Details: Maging mas compact */
         #contract-details-area, #planning-area {
             display: block !important;
-            margin-top: 0.5rem;
+            margin-top: 0.1rem; /* Liitan pa lalo ang top margin */
             padding: 0;
             break-after: avoid; 
         }
@@ -180,12 +235,13 @@
             box-shadow: none !important;
             border-radius: 0 !important;
             padding: 0 !important;
+            background-color: transparent !important; /* Ensure no background color */
         }
         
         /* CONTRACT DETAILS: REMOVE GRID AND CARD STYLE */
         #contract-details-grid {
             display: block; /* Remove the grid display */
-            margin-bottom: 0.5rem; 
+            margin-bottom: 0.1rem; /* Liitan pa lalo ang bottom margin */
             padding: 0;
         }
         
@@ -193,17 +249,18 @@
             /* Gawing standard text line ang bawat detalye */
             display: flex; /* Para magkatabi ang label at value */
             border: none !important; 
-            padding: 1px 0 !important; 
+            padding: 0 0 !important; /* CRITICAL: Tanggalin ang vertical padding */
+            margin-bottom: 0; /* Alisin ang space between items */
             background-color: transparent !important;
             break-inside: avoid;
         }
         
-        /* CRITICAL: Gawing mas madali basahin ang label at value */
+        /* CRITICAL: Gawing mas maliit at i-compact ang label at value */
         #contract-details-grid p,
         #contract-details-grid .text-xl,
         #contract-details-grid .text-lg {
-            font-size: 0.65rem !important; /* Liitan pa */
-            line-height: 1.2;
+            font-size: 0.55rem !important; /* Liitan pa lalo (8.8px) */
+            line-height: 1; /* Alisin ang extra line height */
             font-weight: normal !important;
             margin: 0;
             padding: 0;
@@ -213,7 +270,7 @@
         #contract-details-grid > div p:first-child {
             font-weight: bold !important; /* Label */
             color: #444 !important;
-            min-width: 100px; /* Fixed width for alignment */
+            min-width: 80px; /* Liitan ang fixed width para mag-align */
             margin-right: 5px; 
         }
 
@@ -222,7 +279,7 @@
             display: none;
         }
         
-        /* 4. I-ayos ang Table (Print Grid) */
+        /* 4. I-ayos ang Table (Print Grid) - Excel-like appearance */
         
         /* Tanggalin ang overflow para makita ang buong table */
         .print-grid {
@@ -239,7 +296,7 @@
         /* CRITICAL: Standard font size para sa table (0.5rem) */
         .attendance-grid table {
             width: 100% !important; 
-            table-layout: auto !important; 
+            table-layout: auto !important; /* Allow auto layout for content-based width */
             font-size: 0.5rem; /* Standard font size para sa table (~8px) */
             border-collapse: collapse;
         }
@@ -251,6 +308,8 @@
             padding: 2px 1px !important; 
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            vertical-align: middle;
+            text-align: center;
         }
         
         /* CRITICAL: Gawing pare-pareho ang font size sa header elements (0.5rem) */
@@ -261,18 +320,28 @@
             font-weight: bold;
         }
         
-        /* CRITICAL FIX: Tanggalin ang fixed widths sa print mode para mag-compress ang table */
-        .attendance-grid th, 
-        .attendance-grid td {
-             width: auto !important;
+        /* NEW: Tanggalin ang fixed widths sa Personnel Info Columns (1st to 5th TH/TD) */
+        .attendance-grid th:nth-child(-n+5), 
+        .attendance-grid td:nth-child(-n+5) {
+             width: 1% !important; /* Give minimum width priority */
              min-width: 0 !important;
              max-width: none !important;
+             /* Use content width */
         }
         
-        /* Cell styling */
+        /* Date/Schedule Columns (6th column onwards) - Let them take up the remaining space */
+        .attendance-grid th:nth-child(n+6), 
+        .attendance-grid td:nth-child(n+6) { 
+             width: auto !important; /* Auto size to fill remaining space */
+             min-width: 0.5rem !important; /* Allow minimal compression */
+             max-width: none !important;
+        }
+
+        /* Cell styling - Ensure visible border for Excel look */
         .attendance-grid td {
             padding: 0 !important;
-            border: 1px solid #e5e7eb;
+            border: 1px solid #444 !important; /* Darker border for Excel look */
+            vertical-align: middle;
         }
         
         /* Inner cell content (status/schedule) - pareho ang size (0.5rem) */
@@ -286,19 +355,29 @@
             height: auto;
         }
 
-        /* I-convert ang input fields sa text at gawing 0.5rem */
-        .personnel-info-input.print-input-text {
+        /* Personnel Info Inputs: Remove borders, padding, and make transparent/text-like */
+        .personnel-info-input {
             border: none !important;
             background-color: transparent !important;
-            padding: 1px !important;
+            padding: 1px 2px !important;
             color: black !important;
             font-size: 0.5rem !important; /* Pareho ang size */
+            font-weight: normal !important;
+            text-align: left !important;
+            line-height: 1;
         }
         
-        /* Legend area is now hidden, so this section is not strictly needed but kept for general style */
-        /* #legend-area {
-            font-size: 0.7rem;
-            margin-bottom: 0.5rem !important;
-        } */
+        /* Override read-only styling in print */
+        .personnel-info-input.read-only {
+            background-color: transparent !important;
+            border-style: none !important;
+            color: black !important;
+        }
+        
+        /* Ensure the content of the No. column is centered (just the number) */
+        .attendance-grid td:nth-child(1) {
+            text-align: center !important;
+            padding: 2px 1px !important;
+        }
     }
 </style>
