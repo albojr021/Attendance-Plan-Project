@@ -45,23 +45,23 @@
         50% { opacity: .5; }
     }
 
-    /* --- TABLE STICKY COLUMNS/HEADERS --- */
+    /* --- TABLE STICKY COLUMNS/HEADERS (SCREEN ONLY) --- */
     
     /* General table styling */
     .attendance-grid table {
-        table-layout: fixed; /* CRITICAL: Fixed layout */
+        table-layout: fixed; /* CRITICAL: Fixed layout for screen */
         width: max-content; 
         min-width: 100%; 
     }
 
-    /* Column Widths for Fixed Employee Info Columns */
+    /* Column Widths for Fixed Employee Info Columns (SCREEN ONLY) */
     .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; }
     .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; }
     .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; }
     .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 120px; }
     .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; }
     
-    /* Dynamic Date Cells - EDITED FOR STRICT FIX */
+    /* Dynamic Date Cells - EDITED FOR STRICT FIX (SCREEN ONLY) */
     .date-col-fix {
         width: 70px;
         min-width: 70px; 
@@ -69,7 +69,7 @@
         box-sizing: border-box; 
     }
 
-    /* Applying the fix to all headers and data cells starting from the 6th column */
+    /* Applying the fix to all headers and data cells starting from the 6th column (SCREEN ONLY) */
     .attendance-grid th:nth-child(n+6), 
     .attendance-grid td:nth-child(n+6) { 
         width: 70px; 
@@ -78,7 +78,7 @@
         padding: 0; /* Alisin ang padding sa TD/TH at ilagay sa inner DIV */
     }
 
-    /* Apply Sticky Positioning to Headers and Cells */
+    /* Apply Sticky Positioning to Headers and Cells (SCREEN ONLY) */
     .sticky-col, .sticky-col-header {
         position: sticky;
         left: 0; 
@@ -88,7 +88,7 @@
         z-index: 20; 
     }
     
-    /* Freeze 1: For 'No.' and 'Personnel ID' */
+    /* Freeze 1: For 'No.' and 'Personnel ID' (SCREEN ONLY) */
     .freeze-1 {
         left: 0;
         z-index: 10;
@@ -97,7 +97,7 @@
         z-index: 30;
     }
     
-    /* Freeze 2: For 'Personnel Name' */
+    /* Freeze 2: For 'Personnel Name' (SCREEN ONLY) */
     .freeze-2 {
         /* Total width of Freeze 1 columns: 50px + 120px = 170px */
         left: 170px; 
@@ -107,12 +107,12 @@
         z-index: 30;
     }
     
-    /* Reset z-index for standard sticky cells */
+    /* Reset z-index for standard sticky cells (SCREEN ONLY) */
     .attendance-grid td:nth-child(n+4) {
         z-index: 5; 
     }
     
-    /* Override sticky position for the first row's second header (Day Name row) */
+    /* Override sticky position for the first row's second header (Day Name row) (SCREEN ONLY) */
     .attendance-grid tr:nth-child(2) th.sticky-col-header {
         position: static; 
     }
@@ -142,4 +142,158 @@
         outline: none;
     }
     
+    
+    /* --- PRINT STYLES --- */
+
+    /* CRITICAL FIX: I-set ang orientation sa Landscape */
+    @page {
+        size: letter landscape; /* Gawing Landscape ang page orientation */
+        margin: 10mm; /* Liitan ang margin para may space */
+    }
+    
+    @media print {
+        /* 1. Itago ang lahat ng hindi kailangan */
+        .print-hidden, #loading-alert, #notification-area, #floating-status-modal {
+            display: none !important;
+        }
+
+        /* 2. I-reset ang body at margin */
+        body {
+            background-color: white !important;
+            margin: 0;
+            padding: 0 !important;
+            font-size: 10pt; /* Default print font size */
+        }
+        
+        /* 3. I-ayos ang Contract Details (Gawing mas compact) */
+        #contract-details-area, #planning-area {
+            display: block !important;
+            margin-top: 0.5rem;
+            padding: 0;
+            break-after: avoid; 
+        }
+        
+        /* Alisin ang box shadow at padding ng card para maging malinis */
+        .card {
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            padding: 0 !important;
+        }
+        
+        /* I-ayos ang grid ng contract details (Dalawang column sa isang row) */
+        #contract-details-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 0.5rem; 
+            margin-bottom: 0.5rem;
+        }
+        
+        #contract-details-grid > div {
+            /* Gawing mas compact ang bawat detalye */
+            padding: 0.3rem 0.5rem !important;
+            border: 1px solid #ccc;
+            border-radius: 0.25rem;
+            background-color: #f9f9f9 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        
+        /* CRITICAL: Gawing pare-pareho ang font size sa Contract Details (0.7rem) */
+        #contract-details-grid p,
+        #contract-details-grid .text-xl,
+        #contract-details-grid .text-lg {
+            font-size: 0.7rem !important;
+            line-height: 1.2;
+            font-weight: normal !important;
+        }
+        
+        #contract-details-grid .font-extrabold {
+            font-weight: bold !important; /* Bold pero pareho ang size */
+        }
+
+
+        /* Itago ang mga blangkong row (logic galing sa JS) */
+        .print-empty-row {
+            display: none;
+        }
+        
+        /* 4. I-ayos ang Table (Print Grid) */
+        
+        /* Tanggalin ang overflow para makita ang buong table */
+        .print-grid {
+            overflow-x: visible !important; 
+        }
+        
+        /* I-alis ang sticky positioning */
+        .sticky-col, .sticky-col-header, .freeze-1, .freeze-2 {
+            position: static !important;
+            left: auto !important;
+            z-index: auto !important;
+        }
+        
+        /* CRITICAL: Standard font size para sa table (0.5rem) */
+        .attendance-grid table {
+            width: 100% !important; 
+            table-layout: auto !important; 
+            font-size: 0.5rem; /* Standard font size para sa table (~8px) */
+            border-collapse: collapse;
+        }
+        
+        /* Header styling */
+        .attendance-grid th {
+            background-color: #e5e7eb !important; 
+            color: #374151 !important;
+            padding: 2px 1px !important; 
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        
+        /* CRITICAL: Gawing pare-pareho ang font size sa header elements (0.5rem) */
+        .attendance-grid th span,
+        .attendance-grid th.text-xs,
+        .attendance-grid th.font-semibold {
+            font-size: 0.5rem !important;
+            font-weight: bold;
+        }
+        
+        /* CRITICAL FIX: Tanggalin ang fixed widths sa print mode para mag-compress ang table */
+        .attendance-grid th, 
+        .attendance-grid td {
+             width: auto !important;
+             min-width: 0 !important;
+             max-width: none !important;
+        }
+        
+        /* Cell styling */
+        .attendance-grid td {
+            padding: 0 !important;
+            border: 1px solid #e5e7eb;
+        }
+        
+        /* Inner cell content (status/schedule) - pareho ang size (0.5rem) */
+        .attendance-cell-bg {
+            padding: 1px 1px !important; 
+            font-size: 0.5rem !important; 
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            line-height: 1;
+            min-height: 0;
+            height: auto;
+        }
+
+        /* I-convert ang input fields sa text at gawing 0.5rem */
+        .personnel-info-input.print-input-text {
+            border: none !important;
+            background-color: transparent !important;
+            padding: 1px !important;
+            color: black !important;
+            font-size: 0.5rem !important; /* Pareho ang size */
+        }
+        
+        /* Liitan ang font size ng legend at gawing 0.7rem */
+        #legend-area {
+            font-size: 0.7rem;
+            margin-bottom: 0.5rem !important;
+        }
+    }
 </style>
