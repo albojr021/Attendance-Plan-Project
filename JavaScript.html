@@ -15,7 +15,7 @@
   const fixedStatusCodes = ['RD', 'RH', 'SH', '']; 
   const shiftPeriods = [
     { key: '1stHalf', label: '1st Half (1st to 15th)' },
-    { key: '2ndHalf', label: '2nd Half (16th to End)' }
+    { key: '2nd Half', label: '2nd Half (16th to End)' }
   ];
   const maxDays = 31; 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -24,7 +24,8 @@
   
   // *** NEW: Global state para sa tracking ng changes ***
   let pendingAttendanceChanges = {}; // Key: personnelId_DayKey_ShiftKey, Value: Status
-  let pendingEmployeeInfoChanges = {}; // Key: original/oldPersonnelId, Value: {id, name, position, area}
+  // UPDATED: Ngayon may `isDeleted` property na
+  let pendingEmployeeInfoChanges = {}; // Key: original/oldPersonnelId, Value: {id, name, position, area, isNew, isDeleted}
   
   // REMOVED: isScheduleLocked global state
   // ---------------------------------------------
@@ -81,13 +82,97 @@
           const isCurrentRowPending = (key === originalSavedId) || (key === `TEMP_${currentNo}`);
           if (isCurrentRowPending) continue; // Skip ang row na kasalukuyang ine-edit
 
-          const pendingId = (pendingEmployeeInfoChanges[key].id || '').trim();
+          const pendingChange = pendingEmployeeInfoChanges[key];
+          // Tiyakin na hindi deleted ang pending change na ito
+          if (pendingChange.isDeleted) continue; 
+
+          const pendingId = (pendingChange.id || '').trim();
           if (pendingId === trimmedNewId) return true;
       }
       
       return false;
   }
-  // --- END NEW FUNCTION ---
+  // --- END DUPLICATE ID FUNCTION ---
+
+  // *** NEW: FUNCTION PARA I-CHECK KUNG DUPLICATE ANG NAME ***
+  function isDuplicateName(newName, originalSavedId, currentNo) {
+      const trimmedNewName = newName.trim().toUpperCase();
+      if (!trimmedNewName) return false;
+      
+      // 1. Check against SAVED employees (using originalSavedId as exclusion)
+      if (currentContract && currentContract.employees) {
+          const savedConflict = currentContract.employees.some(emp => {
+              const savedName = (emp.name || '').trim().toUpperCase();
+              // I-check kung nag-match ang Name, PERO hindi ito ang original ID ng row na ine-edit
+              return savedName === trimmedNewName && (emp.id || '') !== originalSavedId;
+          });
+          if (savedConflict) return true;
+      }
+
+      // 2. Check against PENDING changes (using row key exclusion)
+      const pendingKeys = Object.keys(pendingEmployeeInfoChanges);
+      for (const key of pendingKeys) {
+          // Stable key: original ID (kung meron) o TEMP_N (kung bago)
+          const isCurrentRowPending = (key === originalSavedId) || (key === `TEMP_${currentNo}`);
+          if (isCurrentRowPending) continue; // Skip ang row na kasalukuyang ine-edit
+
+          const pendingChange = pendingEmployeeInfoChanges[key];
+          // Tiyakin na hindi deleted ang pending change na ito
+          if (pendingChange.isDeleted) continue; 
+
+          // Kunin ang pending name. Pwedeng ang new value (kung nag-iba na) o ang original name (kung name field lang ang nag-iba)
+          const pendingName = (pendingChange.name || '').trim().toUpperCase();
+          if (pendingName === trimmedNewName) return true;
+      }
+      
+      return false;
+  }
+  // --- END DUPLICATE NAME FUNCTION ---
+  
+  // --- HELPER FUNCTION: KUNIN ANG ACTIVE EMPLOYEES SA GRID ---
+  function getActiveEmployeesInGrid() {
+    const activeEmployees = [];
+    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    
+    gridRows.forEach(row => {
+        const stableKey = row.dataset.stableKey;
+        const pendingInfo = pendingEmployeeInfoChanges[stableKey];
+        
+        // Skip kung marked for deletion
+        if (pendingInfo && pendingInfo.isDeleted) return; 
+
+        const employee = currentContract.employees.find(e => e.id === stableKey) || { 
+            id: '', name: '', position: '', area: '' 
+        };
+
+        const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
+        const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
+        
+        // I-check kung ang row ay may Personnel ID at Name
+        if (displayId.trim() && displayName.trim()) {
+            // Kunin ang active schedule cells
+            const planCells = row.querySelectorAll('.cell-container');
+            
+            const cellData = [];
+            planCells.forEach(cell => {
+                // Gamitin ang innerHTML para kunin ang displayed status (Schedule, RD, RH, SH, o '')
+                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                const dayKey = cell.dataset.dayKey;
+                
+                cellData.push({ dayKey, status });
+            });
+
+            activeEmployees.push({
+                id: displayId.trim(),
+                name: displayName.trim(),
+                planCells: cellData
+            });
+        }
+    });
+    
+    return activeEmployees;
+  }
+  // --- END HELPER FUNCTION ---
 
 
   // --- UI HANDLERS ---
@@ -446,9 +531,11 @@ function handleAttendanceData(data) {
         
         // NEW LOGIC: Tiyakin kung saved na ba ang row (may ID)
         const isSavedRow = !!employee.id;
+        // NEW LOGIC: Tiyakin kung marked for deletion
+        const isMarkedForDeletion = pendingInfo && pendingInfo.isDeleted; 
 
         // ** PRINTING LOGIC START: Check for blank row **
-        // Kung walang Personnel ID at Name, at wala ring pending changes, i-marka para sa pagtatago sa print
+        // Kung walang Personnel ID at Name, at wala ring pending changes (maliban sa ID na blangko), i-marka para sa pagtatago sa print
         const isRowBlank = !displayId.trim() && !displayName.trim() && !Object.keys(pendingInfo || {}).length;
         // ** PRINTING LOGIC END **
 
@@ -456,9 +543,14 @@ function handleAttendanceData(data) {
         const tr = tbody.insertRow();
         tr.dataset.stableKey = stableLookupKey; // Add stable key to row for easy lookup
         
-        if (isRowBlank) {
+        if (isRowBlank || isMarkedForDeletion) {
              // Added class to hide the row during printing if the user selects the "Clean Print" option.
              tr.classList.add('print-empty-row'); 
+        }
+        
+        // NEW: Kung marked for deletion, magdagdag ng visual cue
+        if (isMarkedForDeletion) {
+            tr.classList.add('bg-red-200', 'opacity-50', 'line-through');
         }
 
         
@@ -470,31 +562,54 @@ function handleAttendanceData(data) {
         td.style.minWidth = fixedWidths[0]; 
         
         // Content for No. cell: Number and (optionally) Edit Button
+        // UPDATED: Gamitin ang CSS class `py-2` para magbigay ng vertical padding
         td.innerHTML = `<span class="block py-2">${employee.no}</span>`;
         
         if (isSavedRow) {
+            // Container para sa Edit at Delete Icons
+            const actionContainer = document.createElement('div');
+            // NEW CLASS: Flex container para sa dalawang icon
+            actionContainer.className = 'absolute top-1/2 right-0 transform -translate-y-1/2 flex space-x-0.5 pr-1 print-hidden';
+            
             // Edit Button (Pen icon) for saved rows - POSITIONED INSIDE THE NO. CELL
             const editButton = document.createElement('button');
             editButton.type = 'button';
-            // NEW CLASS: 'edit-icon-no-col' for positioning
-            editButton.className = 'edit-icon-no-col absolute top-1/2 right-0 transform -translate-y-1/2 p-1 text-blue-600 hover:bg-blue-200 transition duration-150 edit-row-btn rounded-full print-hidden';
+            // NEW CLASS: 'action-icon'
+            editButton.className = 'action-icon p-1 text-blue-600 hover:bg-blue-200 transition duration-150 edit-row-btn rounded-full';
             editButton.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
             `;
-            editButton.dataset.locked = 'true';
+            editButton.dataset.locked = isMarkedForDeletion ? 'true' : 'true'; // Force locked if marked for deletion
             editButton.dataset.stableKey = stableLookupKey;
             editButton.addEventListener('click', handleEditRowToggle);
-            td.appendChild(editButton);
+            
+            // DELETE Button (Trash icon) for saved rows
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            // NEW CLASS: 'action-icon' at color red
+            deleteButton.className = `action-icon p-1 text-red-600 hover:bg-red-200 transition duration-150 delete-row-btn rounded-full ${isMarkedForDeletion ? 'bg-red-400' : ''}`;
+            deleteButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            `;
+            deleteButton.dataset.stableKey = stableLookupKey;
+            deleteButton.dataset.isDeleted = isMarkedForDeletion ? 'true' : 'false';
+            deleteButton.addEventListener('click', handleDeleteRowToggle);
+            
+            // I-append ang icons sa container
+            actionContainer.appendChild(editButton);
+            actionContainer.appendChild(deleteButton);
+            td.appendChild(actionContainer);
         } else if (!isRowBlank) {
-             // Indicator for New Row
+             // Indicator for New Row (TEMP_N)
              const newLabel = document.createElement('span');
              newLabel.textContent = 'NEW';
              newLabel.className = 'new-label-no-col absolute top-1/2 right-0 transform -translate-y-1/2 mr-1 text-[8px] font-bold text-green-700 bg-green-200 px-1 py-0.5 rounded print-hidden';
              td.appendChild(newLabel);
         }
-
 
         // Personnel ID (Input)
         td = tr.insertCell();
@@ -504,12 +619,14 @@ function handleAttendanceData(data) {
         input.value = displayId;
         input.placeholder = 'ID';
         input.maxLength = 20; 
-        input.readOnly = isSavedRow; // NEW: Set Read-only for saved rows
+        // UPDATED: Read-only kung saved o marked for deletion
+        input.readOnly = isSavedRow || isMarkedForDeletion; 
         input.dataset.oldPersonnelId = stableLookupKey; 
         input.dataset.field = 'id';
         // NEW: Idagdag ang employee.no para sa duplicate check
         input.dataset.rowNo = employee.no; 
-        input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (isSavedRow ? 'read-only' : ''); // NEW: Add read-only class
+        // UPDATED: Add read-only class if locked or deleted
+        input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); 
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1';
         td.style.width = fixedWidths[1]; // Apply inline width
@@ -521,10 +638,10 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayName; // Gamitin ang display value
         input.placeholder = 'Full Name';
-        input.readOnly = isSavedRow; // NEW: Set Read-only for saved rows
+        input.readOnly = isSavedRow || isMarkedForDeletion; // UPDATED
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'name';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (isSavedRow ? 'read-only' : ''); // NEW: Add read-only class
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
         td.style.width = fixedWidths[2]; // Apply inline width
@@ -536,10 +653,10 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayPosition; // Gamitin ang display value
         input.placeholder = 'Position';
-        input.readOnly = isSavedRow; // NEW: Set Read-only for saved rows
+        input.readOnly = isSavedRow || isMarkedForDeletion; // UPDATED
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'position';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (isSavedRow ? 'read-only' : ''); // NEW: Add read-only class
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         td.style.width = fixedWidths[3]; // Apply inline width
@@ -551,10 +668,10 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayArea; // Gamitin ang display value
         input.placeholder = 'Area';
-        input.readOnly = isSavedRow; // NEW: Set Read-only for saved rows
+        input.readOnly = isSavedRow || isMarkedForDeletion; // UPDATED
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'area';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (isSavedRow ? 'read-only' : ''); // NEW: Add read-only class
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         td.style.width = fixedWidths[4]; // Apply inline width
@@ -600,8 +717,9 @@ function handleAttendanceData(data) {
             }
             
             td = tr.insertCell();
-            // REMOVED: isScheduleLocked check for cursor feedback
-            td.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out cursor-pointer';
+            // REMOVED: isScheduleLocked check
+            // UPDATED: Gawing default ang 'not-allowed' cursor kung deleted
+            td.className = 'cell-container text-center border-r border-b transition duration-100 ease-in-out ' + (isMarkedForDeletion ? 'cursor-not-allowed' : 'cursor-pointer');
             
             // EDITED: I-apply ang inline width sa data cells
             td.style.width = dateColWidth;
@@ -615,17 +733,154 @@ function handleAttendanceData(data) {
             td.dataset.dayKey = dayKeyUnpadded; // Use Unpadded for data attributes
             td.dataset.shiftKey = trimmedShift;
             td.dataset.originalId = employee.id; 
-            td.addEventListener('click', handleCellClick);
+            
+            // UPDATED: Pindutin lang kung HINDI marked for deletion
+            if (!isMarkedForDeletion) {
+                td.addEventListener('click', handleCellClick);
+            }
         }
     }
     
     tableContainer.appendChild(table);
   }
 
-  // NEW FUNCTION: Handle Edit/Unlock Button Click (No change here, only affects employee info)
+  // NEW FUNCTION: Handle Delete Row Toggle
+  function handleDeleteRowToggle(event) {
+      const button = event.currentTarget;
+      const row = button.closest('tr');
+      const stableKey = button.dataset.stableKey;
+      const isCurrentlyDeleted = button.dataset.isDeleted === 'true';
+      const inputs = row.querySelectorAll('.personnel-info-input');
+      
+      const employee = currentContract.employees.find(e => e.id === stableKey) || { 
+          id: '', 
+          name: '', 
+          position: '', 
+          area: '' 
+      };
+      
+      // I-retrieve ang pending change
+      let pendingChange = pendingEmployeeInfoChanges[stableKey] || {
+          id: employee.id, 
+          name: employee.name, 
+          position: employee.position, 
+          area: employee.area,
+          isNew: !employee.id,
+          originalEmployeeId: employee.id,
+          isDeleted: false // Default to false
+      };
+      
+      if (!isCurrentlyDeleted) {
+          // MARK FOR DELETION
+          // Gagamit ng custom modal UI imbes na window.confirm()
+          const customConfirm = (message, onConfirm, onCancel) => {
+              const modalHtml = `
+                  <div id="delete-confirm-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 z-[60] flex justify-center items-center p-4">
+                      <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
+                          <h3 class="text-lg font-bold mb-4 text-red-700">Confirm Deletion</h3>
+                          <p class="text-gray-700 mb-6">${message}</p>
+                          <div class="flex justify-end space-x-3">
+                              <button id="delete-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+                              <button id="delete-confirm-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Confirm Delete</button>
+                          </div>
+                      </div>
+                  </div>
+              `;
+              document.body.insertAdjacentHTML('beforeend', modalHtml);
+              
+              document.getElementById('delete-confirm-btn').addEventListener('click', () => {
+                  document.getElementById('delete-confirm-modal').remove();
+                  onConfirm();
+              });
+              
+              document.getElementById('delete-cancel-btn').addEventListener('click', () => {
+                  document.getElementById('delete-confirm-modal').remove();
+                  onCancel();
+              });
+          };
+
+          customConfirm(`Are you sure you want to mark employee "${employee.name || stableKey}" (ID: ${employee.id}) for deletion? This will clear all schedule changes and data locally. You must click 'Save All Changes' to permanently delete from Sheets.`, 
+            () => { // On Confirm
+                pendingChange.isDeleted = true;
+                pendingEmployeeInfoChanges[stableKey] = pendingChange;
+                
+                // Clear inputs and Attendance Changes for this row
+                inputs.forEach(input => {
+                    input.value = '';
+                    input.readOnly = true;
+                    input.classList.add('read-only');
+                });
+                
+                // I-clear ang attendance changes sa pendingAttendanceChanges
+                Object.keys(pendingAttendanceChanges).forEach(key => {
+                    if (key.startsWith(employee.id + '_')) {
+                        delete pendingAttendanceChanges[key];
+                    }
+                });
+                
+                // I-disable ang Edit button
+                const editButton = row.querySelector('.edit-row-btn');
+                if (editButton) {
+                    editButton.dataset.locked = 'true';
+                    editButton.classList.remove('text-green-600', 'hover:bg-green-200');
+                    editButton.classList.add('text-blue-600', 'hover:bg-blue-200');
+                    editButton.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    `; 
+                }
+
+                button.dataset.isDeleted = 'true';
+                button.classList.add('bg-red-400');
+                showNotification(`Employee ${employee.id} marked for DELETION. Click Save All Changes to proceed.`, false);
+                renderAttendancePlan(); 
+            }, 
+            () => { // On Cancel (do nothing)
+              
+            }
+          );
+          
+      } else {
+          // UNDO DELETION (Revert to Original Data)
+          delete pendingEmployeeInfoChanges[stableKey];
+          
+          // Ibalik ang original values
+          inputs.forEach(input => {
+              const field = input.dataset.field;
+              input.value = employee[field];
+              // I-lock lang kung saved row
+              input.readOnly = isSavedRow;
+              input.classList.toggle('read-only', isSavedRow);
+          });
+          
+          // I-check kung may pending update sa ibang fields (maliban sa deletion), kung wala, i-delete ang key
+          if (Object.keys(pendingEmployeeInfoChanges[stableKey] || {}).length === 0) {
+              delete pendingEmployeeInfoChanges[stableKey];
+          }
+
+          button.dataset.isDeleted = 'false';
+          button.classList.remove('bg-red-400');
+          showNotification(`Deletion for Employee ${employee.id} UNDONE.`, true);
+          renderAttendancePlan(); 
+      }
+      
+  }
+  
+  // NEW FUNCTION: Handle Edit/Unlock Button Click (UPDATED for Deletion)
   function handleEditRowToggle(event) {
       const button = event.currentTarget;
       const row = button.closest('tr');
+      const stableKey = button.dataset.stableKey;
+      
+      // Kunin ang current pending info para sa deletion check
+      const pendingInfo = pendingEmployeeInfoChanges[stableKey];
+      // Kung marked for deletion, huwag mag-allow ng edit
+      if (pendingInfo && pendingInfo.isDeleted) {
+          showNotification('Cannot edit: Row is marked for deletion. Undo deletion first.', false);
+          return;
+      }
+      
       // Inputs now start from the second TD (Personnel ID)
       const inputs = row.querySelectorAll('.personnel-info-input'); 
       const isLocked = button.dataset.locked === 'true';
@@ -689,8 +944,12 @@ function handleAttendanceData(data) {
           area: employee.area,
           isNew: !employee.id,
           // Store the original ID for save logic (needed if ID changes)
-          originalEmployeeId: employee.id 
+          originalEmployeeId: employee.id,
+          isDeleted: false // UPDATED: Default is not deleted
       };
+      
+      // Huwag mag-allow ng changes kung marked for deletion
+      if (pendingChange.isDeleted) return;
 
       // --- NEW VALIDATION AND FORMATTING LOGIC ---
       if (field === 'id') {
@@ -704,7 +963,7 @@ function handleAttendanceData(data) {
                return; 
           }
           
-          // --- DUPLICATE CHECK (NEW ADDITION) ---
+          // --- DUPLICATE ID CHECK ---
           if (cleanId) {
               // Pass new ID, original saved ID, and current row number
               if (isDuplicateId(cleanId, employee.id, employee.no)) { 
@@ -718,7 +977,7 @@ function handleAttendanceData(data) {
                   return;
               }
           }
-          // --- END DUPLICATE CHECK ---
+          // --- END DUPLICATE ID CHECK ---
 
           pendingChange[field] = cleanId;
       } else {
@@ -735,6 +994,16 @@ function handleAttendanceData(data) {
           // I-set ang input value sa cleaned value para makita ng user agad
           input.value = cleanedValue;
           pendingChange[field] = cleanedValue.trim();
+          
+          // --- NEW: DUPLICATE NAME CHECK (LOCAL WARNING ONLY) ---
+          if (field === 'name' && pendingChange.name) {
+              // Check for duplicate name using the new value
+              if (isDuplicateName(pendingChange.name, employee.id, employee.no)) {
+                  // UPDATED: Magbigay ng warning lang, pero hindi ire-revert ang input. Ang hard stop check ay nasa save button.
+                  showNotification(`WARNING: Personnel Name "${pendingChange.name}" is already used by another employee. Please use a unique identifier (e.g., add initials/middle name).`, false);
+              }
+          }
+          // --- END DUPLICATE NAME CHECK (LOCAL WARNING ONLY) ---
       }
       // --- END NEW VALIDATION AND FORMATTING LOGIC ---
 
@@ -773,7 +1042,10 @@ function handleAttendanceData(data) {
     const dayOfWeek = dayOfMonth.getDay(); 
 
     // REMOVED: isScheduleLocked check
-    cell.className = 'cell-container text-center border-r border-b cursor-pointer transition duration-100 ease-in-out cursor-pointer';
+    // UPDATED: Huwag magdagdag ng cursor-pointer kung deleted ang row
+    const isDeletedRow = cell.closest('tr').classList.contains('line-through');
+    
+    cell.className = 'cell-container text-center border-r border-b transition duration-100 ease-in-out ' + (isDeletedRow ? 'cursor-not-allowed' : 'cursor-pointer');
     cell.innerHTML = `<div class="p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg">${status}</div>`;
     const innerDiv = cell.querySelector('.attendance-cell-bg');
 
@@ -791,6 +1063,7 @@ function handleAttendanceData(data) {
       } else if (status === 'SH') {
         bgColor = 'status-sh';
         textColor = 'text-yellow-700 font-bold';
+        isWork = true;
       } else {
         bgColor = 'status-work';
         textColor = 'text-green-700 font-bold';
@@ -806,6 +1079,14 @@ function handleAttendanceData(data) {
         bgColor = 'bg-gray-200'; 
     }
     
+    // UPDATED: Kung deleted, gawing light red ang cell
+    if (isDeletedRow) {
+        bgColor = 'bg-red-300';
+        textColor = 'text-red-500';
+        status = 'DELETED';
+        innerDiv.textContent = status;
+    }
+    
      innerDiv.className = `p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg ${bgColor} ${textColor}`;
   }
 
@@ -818,6 +1099,12 @@ function handleAttendanceData(data) {
     const originalId = targetCell.dataset.originalId; 
     const dayKey = targetCell.dataset.dayKey;
     const shiftKey = targetCell.dataset.shiftKey;
+    
+    // UPDATED: Check for deletion status
+    if (targetCell.closest('tr').classList.contains('line-through')) {
+        showNotification('Cannot edit: Row is marked for deletion. Undo deletion first.', false);
+        return;
+    }
     
     if (!personnelId && !originalId) { 
         showNotification('Cannot edit: Personnel ID is empty. Please fill in the ID field first.', false);
@@ -985,9 +1272,90 @@ function handleAttendanceData(data) {
             name: change.name,
             position: change.position,
             area: change.area,
-            isNew: change.originalEmployeeId === '' // Flag para sa bagong row
+            isNew: change.originalEmployeeId === '', // Flag para sa bagong row
+            isDeleted: change.isDeleted || false // UPDATED: I-pass ang deletion flag
         };
-    }).filter(e => e.id.trim() !== '' && e.name.trim() !== ''); // Filter out fully empty rows
+    })
+    // Filter: 1. Deleted rows 2. New rows with content 3. Updated existing rows
+    .filter(e => e.isDeleted || (e.isNew && e.id.trim() !== '' && e.name.trim() !== '') || (!e.isNew && (e.id.trim() !== e.oldPersonnelId || e.name.trim() !== currentContract.employees.find(emp => emp.id === e.oldPersonnelId)?.name || e.position.trim() !== currentContract.employees.find(emp => emp.id === e.oldPersonnelId)?.position || e.area.trim() !== currentContract.employees.find(emp => emp.id === e.oldPersonnelId)?.area))); 
+    
+    // Safety check: Filter out fully empty NEW rows, but allow fully empty DELETED rows to pass
+    // Final check bago ipadala
+    const finalEmpChanges = [];
+    empChanges.forEach(e => {
+        if (e.isDeleted) {
+            finalEmpChanges.push(e); // Allow deleted rows to pass regardless of content
+        } else if (e.isNew && e.id.trim() !== '' && e.name.trim() !== '') {
+            finalEmpChanges.push(e); // Only allow new rows if ID and Name are filled
+        } else if (!e.isNew) {
+            finalEmpChanges.push(e); // Allow updates to existing rows
+        }
+    });
+
+
+    // === CRITICAL 1: FINAL DUPLICATE NAME CHECK BEFORE SAVE ===
+    const namesToCheck = {};
+    let duplicateNameFound = false;
+    
+    // Combine saved (non-deleted) and pending (non-deleted, non-new) names
+    currentContract.employees.forEach(emp => {
+        // Exclude employees that are being deleted
+        const isPendingDelete = pendingEmployeeInfoChanges[emp.id]?.isDeleted;
+        if (!isPendingDelete) {
+            namesToCheck[emp.name.toUpperCase().trim()] = emp.id;
+        }
+    });
+
+    // Check pending changes (New and Updated)
+    for (const change of finalEmpChanges) {
+        if (change.isDeleted) continue; // Skip deleted items
+
+        const nameKey = change.name.toUpperCase().trim();
+        const existingId = namesToCheck[nameKey];
+
+        // Check if the name already exists AND it belongs to a different ID
+        if (existingId && existingId !== change.oldPersonnelId) {
+            duplicateNameFound = true;
+            break;
+        }
+
+        // Add or update the name in the check map
+        namesToCheck[nameKey] = change.id || change.oldPersonnelId;
+    }
+
+    if (duplicateNameFound) {
+        showNotification('FATAL ERROR: Cannot save. Duplicate Personnel Name detected. Please edit the name to be unique (e.g., add initials/middle name) before saving.', false);
+        return; // HARD STOP SAVE
+    }
+    // === END FINAL DUPLICATE NAME CHECK ===
+    
+    // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (Missing Schedule/Status) ===
+    const activeEmployees = getActiveEmployeesInGrid();
+    let incompleteColumnFound = false;
+    let employeeNameIncomplete = '';
+    
+    if (activeEmployees.length === 0 && currentContract.headCount > 0) {
+        showNotification(`FATAL ERROR: Cannot save. Employee rows must be filled up to the Total Head Count (${currentContract.headCount}) before setting the plan.`, false);
+        return;
+    }
+    
+    // Tiyakin na ang bawat empleyado ay may schedule/status sa bawat araw sa kasalukuyang shift
+    for (const employee of activeEmployees) {
+        for (const cell of employee.planCells) {
+            if (cell.status === '') {
+                incompleteColumnFound = true;
+                employeeNameIncomplete = employee.name;
+                break;
+            }
+        }
+        if (incompleteColumnFound) break;
+    }
+
+    if (incompleteColumnFound) {
+        showNotification(`FATAL ERROR: Cannot save. Attendance Plan incomplete for employee: ${employeeNameIncomplete}. All days in the current shift/period must have a status (Work, RD, RH, or SH).`, false);
+        return; // HARD STOP SAVE
+    }
+    // === END CHECK FOR BLANK ATTENDANCE COLUMNS ===
 
 
     const attChanges = Object.keys(pendingAttendanceChanges).map(key => {
@@ -995,13 +1363,13 @@ function handleAttendanceData(data) {
         return { personnelId, dayKey, shift, status: pendingAttendanceChanges[key] };
     });
 
-    if (empChanges.length === 0 && attChanges.length === 0) {
+    if (finalEmpChanges.length === 0 && attChanges.length === 0) {
         showNotification('No changes detected to save.', false);
         return;
     }
     
     // Safety check: Final validation before sending to server (Numeric ID check)
-    if (empChanges.some(e => !PERSONNEL_ID_REGEX.test(e.id.trim()))) {
+    if (finalEmpChanges.some(e => !e.isDeleted && !PERSONNEL_ID_REGEX.test(e.id.trim()))) {
         showNotification('Personnel ID error detected (must be numbers only). Please check your inputs.', false);
         return;
     }
@@ -1026,7 +1394,7 @@ function handleAttendanceData(data) {
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        .saveAllData(sfcRefToSave, contractInfo, empChanges, attChanges, currentYear, currentMonth, currentShift); // PASS ALL CONTEXT
+        .saveAllData(sfcRefToSave, contractInfo, finalEmpChanges, attChanges, currentYear, currentMonth, currentShift); // PASS ALL CONTEXT
   }
 
   function handleSaveAllSuccess(response) {
@@ -1045,10 +1413,18 @@ function handleAttendanceData(data) {
        toggleLoading(false); 
   }
   
-  // --- NEW PRINT LOGIC ---
+  // --- NEW PRINT LOGIC (UPDATED: Check for pending changes first) ---
   function handlePrintPlan() {
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
+        return;
+    }
+    
+    const empChangesCount = Object.keys(pendingEmployeeInfoChanges).length;
+    const attChangesCount = Object.keys(pendingAttendanceChanges).length;
+    
+    if (empChangesCount > 0 || attChangesCount > 0) {
+        showNotification(`Saving required: ${empChangesCount} employee changes and ${attChangesCount} schedule changes are pending. Click "Save All Changes to Sheets" first.`, false);
         return;
     }
     
