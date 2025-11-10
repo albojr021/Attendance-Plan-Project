@@ -78,6 +78,12 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
     </div>
     
     <div class="mb-4 flex justify-end space-x-3 print-hidden">
+        <button id="start-bulk-select-btn" class="p-3 rounded-lg bg-yellow-600 text-white font-extrabold text-lg hover:bg-yellow-700 transition duration-150 shadow-lg flex items-center space-x-2">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
+            </svg>
+            <span>Start Bulk Select</span>
+        </button>
         <button id="print-plan-btn" class="p-3 rounded-lg bg-green-600 text-white font-extrabold text-lg hover:bg-green-700 transition duration-150 shadow-lg flex items-center space-x-2">
              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m0 0l-1 3H4a2 2 0 00-2 2v2a2 2 0 002 2h16a2 2 0 002-2v-2a2 2 0 00-2-2h-3l-1-3m0-8h.01M16 7h.01M12 21v-4a2 2 0 00-2-2h-4a2 2 0 00-2 2v4h16z" />
@@ -130,6 +136,31 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
       </div>
     </div>
   </div>
+
+<div id="floating-bulk-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg">
+        <h3 class="text-xl font-bold mb-4">Apply Bulk Schedule/Status</h3>
+        <p class="text-sm text-gray-600 mb-4">Applying status/schedule to <span id="bulk-cell-count" class="font-bold text-blue-600">0</span> selected cells.</p>
+
+        <div id="bulk-fixed-status-options-container" class="grid grid-cols-2 gap-2 mb-4">
+            </div>
+
+        <div class="border-t pt-4">
+            <label for="bulk-start-time" class="block text-sm font-medium text-gray-700 mb-1">Work Schedule (Start - End Time):</label>
+            <div class="flex space-x-2 items-center">
+                <select id="bulk-start-time" class="w-full p-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></select>
+                <span class="text-lg font-bold">-</span>
+                <select id="bulk-end-time" class="w-full p-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></select>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">Leave blank to apply a fixed status (RD/RH/SH) or to clear schedule.</p>
+        </div>
+
+        <div class="flex justify-end space-x-3 mt-6">
+            <button id="bulk-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+            <button id="bulk-save-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed">Apply Schedule</button>
+        </div>
+    </div>
+</div>
 
   <?!= include('JavaScript'); ?>
 </body>
