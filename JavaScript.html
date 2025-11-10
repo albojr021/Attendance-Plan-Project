@@ -21,6 +21,11 @@
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   // *** FIXED STATUS OPTIONS PARA SA FLOATING DROPDOWN ***
   let selectedCellData = {}; 
+
+  // *** NEW: Global state para sa Bulk Selection ***
+  let isBulkSelectionMode = false;
+  let bulkSelectedCells = []; // Stores the TD elements of selected cells
+  // ---------------------------------------------
   
   // *** NEW: Global state para sa tracking ng changes ***
   let pendingAttendanceChanges = {}; // Key: personnelId_DayKey_ShiftKey, Value: Status
@@ -270,6 +275,12 @@
     
     // *** NEW: Listener for Print Button ***
     document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
+
+    // *** NEW: Attach Bulk Listeners ***
+    // Note: startBulkSelectionMode listener is set in exitBulkSelectionMode as a "once" listener for safety
+    document.getElementById('start-bulk-select-btn').addEventListener('click', startBulkSelectionMode);
+    document.getElementById('bulk-cancel-btn').addEventListener('click', exitBulkSelectionMode);
+    document.getElementById('bulk-save-btn').addEventListener('click', (event) => saveBulkSchedule(event, null));
     
     // REMOVED: Schedule Lock Toggle Button Listener
     
@@ -742,6 +753,22 @@ function handleAttendanceData(data) {
     }
     
     tableContainer.appendChild(table);
+    
+    // NEW: I-check kung nasa bulk mode at i-apply ulit ang click handler (para sa re-render)
+    if (isBulkSelectionMode) {
+        document.querySelectorAll('.cell-container').forEach(cell => {
+            // Tiyakin na ang cells na may ID ay napapalitan ng selection handler
+            if (cell.dataset.personnelId || cell.dataset.originalId) {
+                cell.removeEventListener('click', handleCellClick);
+                cell.addEventListener('click', handleCellSelectionClick);
+                cell.classList.add('cursor-crosshair');
+                // I-restore ang visual selection kung nasa bulkSelectedCells pa
+                if (bulkSelectedCells.some(selectedCell => selectedCell.dataset.dayKey === cell.dataset.dayKey && selectedCell.dataset.personnelId === cell.dataset.personnelId)) {
+                     cell.classList.add('cell-selected');
+                }
+            }
+        });
+    }
   }
 
   // NEW FUNCTION: Handle Delete Row Toggle
@@ -1045,7 +1072,10 @@ function handleAttendanceData(data) {
     // UPDATED: Huwag magdagdag ng cursor-pointer kung deleted ang row
     const isDeletedRow = cell.closest('tr').classList.contains('line-through');
     
-    cell.className = 'cell-container text-center border-r border-b transition duration-100 ease-in-out ' + (isDeletedRow ? 'cursor-not-allowed' : 'cursor-pointer');
+    // NEW: I-check kung nasa bulk mode para sa cursor
+    const cursorClass = isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer';
+
+    cell.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${isDeletedRow ? 'cursor-not-allowed' : cursorClass} ${isBulkSelectionMode && cell.classList.contains('cell-selected') ? 'cell-selected' : ''}`;
     cell.innerHTML = `<div class="p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg">${status}</div>`;
     const innerDiv = cell.querySelector('.attendance-cell-bg');
 
@@ -1092,7 +1122,8 @@ function handleAttendanceData(data) {
 
 
   function handleCellClick(event) {
-    // REMOVED: isScheduleLocked check
+    // *** NEW LOGIC: Huwag buksan ang modal kung nasa bulk selection mode ***
+    if (isBulkSelectionMode) return; 
     
     const targetCell = event.currentTarget;
     const personnelId = targetCell.dataset.personnelId; 
@@ -1228,6 +1259,19 @@ function handleAttendanceData(data) {
              setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
              return;
         }
+        
+        // === NEW VALIDATION: End Time MUST NOT be before Start Time ===
+        const [startTime, endTime] = finalStatus.split('-');
+        const startTimeValue = parseInt(startTime.replace(':', ''), 10);
+        const endTimeValue = parseInt(endTime.replace(':', ''), 10);
+        
+        if (endTimeValue < startTimeValue) {
+             showNotification('FATAL ERROR: End Time cannot be earlier than Start Time. Please correct the schedule.', false);
+             // Re-open modal to allow correction
+             setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
+             return;
+        }
+        // === END NEW VALIDATION ===
     }
 
     const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
@@ -1258,6 +1302,13 @@ function handleAttendanceData(data) {
     const currentYear = currentPlanningDate.getFullYear();
     const currentMonth = currentPlanningDate.getMonth();
     const currentShift = document.getElementById('shift-period-select').value;
+    
+    // NEW: Check if in Bulk Selection Mode and force exit
+    if (isBulkSelectionMode) {
+        exitBulkSelectionMode();
+        showNotification('Bulk Selection Mode was active. Please review the selection before saving.', false);
+        // We will continue the save process, but this is a good warning
+    }
 
 
     // CRITICAL FIX 4: I-convert ang pendingEmployeeInfoChanges bago ipadala sa server.
@@ -1452,6 +1503,238 @@ function handleAttendanceData(data) {
         });
     }, { once: true }); 
   }
+
+
+// --- NEW: BULK SELECTION LOGIC ---
+
+// Helper function to update bulkSelectedCells array and visuals
+function toggleCellSelection(cellElement) {
+    // Check if the cell is already in the array (using reference equality for DOM elements)
+    const index = bulkSelectedCells.indexOf(cellElement);
+    
+    if (index > -1) {
+        // Remove selection
+        bulkSelectedCells.splice(index, 1);
+        cellElement.classList.remove('cell-selected');
+    } else {
+        // Add selection
+        bulkSelectedCells.push(cellElement);
+        cellElement.classList.add('cell-selected');
+    }
+    document.getElementById('bulk-cell-count').textContent = bulkSelectedCells.length;
+    document.getElementById('bulk-save-btn').disabled = bulkSelectedCells.length === 0;
+}
+
+
+// New handler for cell clicks during bulk mode
+function handleCellSelectionClick(event) {
+    const targetCell = event.currentTarget;
+    
+    // Safety check: Cannot select cells without ID or if the row is marked for deletion
+    if (targetCell.closest('tr').classList.contains('line-through')) {
+        showNotification('Cannot select: Row is marked for deletion.', false);
+        return;
+    }
+    if (!targetCell.dataset.personnelId && !targetCell.dataset.originalId) { 
+        showNotification('Cannot select: Personnel ID is empty for this row.', false);
+        return;
+    }
+    
+    toggleCellSelection(targetCell);
+}
+
+// Function to start the bulk selection process
+function startBulkSelectionMode() {
+    if (isBulkSelectionMode) return; // Already in mode
+
+    isBulkSelectionMode = true;
+    bulkSelectedCells = []; // Clear previous selection
+
+    // 1. I-clear at i-set ang bagong click handler sa lahat ng cells
+    document.querySelectorAll('.cell-container').forEach(cell => {
+        // I-alis ang old handler (handleCellClick)
+        cell.removeEventListener('click', handleCellClick);
+        // I-dagdag ang new handler (handleCellSelectionClick)
+        cell.addEventListener('click', handleCellSelectionClick);
+        cell.classList.add('cursor-crosshair'); // Visual cue for selection mode
+    });
+    
+    // 2. I-update ang UI ng Bulk Button
+    const bulkBtn = document.getElementById('start-bulk-select-btn');
+    bulkBtn.textContent = 'Apply Selection';
+    bulkBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
+    bulkBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+    // We add the openBulkScheduleModal listener here
+    bulkBtn.removeEventListener('click', startBulkSelectionMode); // Remove old listener
+    bulkBtn.addEventListener('click', openBulkScheduleModal); 
+
+    showNotification('Bulk Selection Mode: Click cells to select them. Click "Apply Selection" when finished.', true);
+}
+
+
+// Function to return to normal mode (called after save or cancel)
+function exitBulkSelectionMode() {
+    isBulkSelectionMode = false;
+    
+    // 1. I-restore ang original click handler at i-clear ang selection
+    document.querySelectorAll('.cell-container').forEach(cell => {
+        cell.removeEventListener('click', handleCellSelectionClick);
+        // I-restore ang old handler (handleCellClick)
+        cell.addEventListener('click', handleCellClick); 
+        cell.classList.remove('cell-selected', 'cursor-crosshair');
+    });
+    
+    bulkSelectedCells = [];
+    document.getElementById('bulk-cell-count').textContent = '0';
+    
+    // 2. I-restore ang UI ng Bulk Button
+    const bulkBtn = document.getElementById('start-bulk-select-btn');
+    bulkBtn.textContent = 'Start Bulk Select';
+    bulkBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+    bulkBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
+    bulkBtn.removeEventListener('click', openBulkScheduleModal); // Remove modal open listener
+    bulkBtn.addEventListener('click', startBulkSelectionMode); // Re-add start mode listener
+
+    // Ensure the modal is hidden
+    document.getElementById('floating-bulk-modal').classList.add('hidden');
+
+    showNotification('Bulk Selection Mode ended.', false);
+}
+
+
+// Function to open the Bulk Modal
+function openBulkScheduleModal() {
+    if (bulkSelectedCells.length === 0) {
+        showNotification('Please select at least one cell first.', false);
+        return;
+    }
+    
+    const modal = document.getElementById('floating-bulk-modal');
+    const inputStartTime = document.getElementById('bulk-start-time');
+    const inputEndTime = document.getElementById('bulk-end-time');
+    const fixedOptionsContainer = document.getElementById('bulk-fixed-status-options-container');
+
+    // 1. Populate Fixed Status Options
+    fixedOptionsContainer.innerHTML = '';
+    fixedStatusOptions.forEach(option => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = option.label;
+        button.value = option.value;
+        // Use a simpler style for bulk buttons
+        button.className = `w-full px-4 py-2 text-sm rounded-lg border hover:shadow-md transition duration-150 ${option.color} bg-opacity-50 border-gray-300`;
+        // Pass the fixed value directly to the save function
+        button.addEventListener('click', (e) => saveBulkSchedule(e, option.value)); 
+        fixedOptionsContainer.appendChild(button);
+    });
+    
+    // 2. Populate Time Options (Same as single modal)
+    inputStartTime.innerHTML = '<option value="">-- Start Time --</option>';
+    inputEndTime.innerHTML = '<option value="">-- End Time --</option>';
+
+    TIME_OPTIONS.forEach(time => {
+        let optionStart = document.createElement('option');
+        optionStart.value = time;
+        optionStart.textContent = time;
+        inputStartTime.appendChild(optionStart);
+        
+        let optionEnd = document.createElement('option');
+        optionEnd.value = time;
+        optionEnd.textContent = time;
+        inputEndTime.appendChild(optionEnd);
+    });
+    
+    // Clear time selection from previous use
+    inputStartTime.value = '';
+    inputEndTime.value = '';
+
+    // 3. Set display count and open
+    document.getElementById('bulk-cell-count').textContent = bulkSelectedCells.length;
+    modal.classList.remove('hidden');
+    document.getElementById('bulk-save-btn').disabled = bulkSelectedCells.length === 0;
+}
+
+// Function to save the schedule to all selected cells
+function saveBulkSchedule(event, fixedStatusValue) {
+    document.getElementById('floating-bulk-modal').classList.add('hidden');
+    
+    let finalStatus = '';
+    
+    if (event.type === 'click' && fixedStatusValue !== null) {
+        // Fixed status button was clicked (e.g., RD, RH, SH, or Clear)
+        finalStatus = fixedStatusValue;
+    } else {
+        // 'Apply Schedule' button was clicked (Schedule input is primary)
+        const inputStartTime = document.getElementById('bulk-start-time').value.trim();
+        const inputEndTime = document.getElementById('bulk-end-time').value.trim();
+
+        if (inputStartTime && inputEndTime) {
+            finalStatus = `${inputStartTime}-${inputEndTime}`;
+        } else if (inputStartTime || inputEndTime) {
+             showNotification('Please select both start and end times, or use the fixed status buttons.', false); 
+             // Re-open modal to allow correction
+             setTimeout(openBulkScheduleModal, 100); 
+             return;
+        } else {
+            // Both time inputs are blank, treat as clearing the schedule status
+            finalStatus = '';
+        }
+    }
+    
+    // Check if a time schedule was entered
+    if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
+        // Tiyakin na ang resultang string ay HH:MM-HH:MM (11 characters)
+        if (finalStatus.length !== 11 || finalStatus.charAt(5) !== '-') {
+             showNotification('Invalid schedule format detected.', false);
+             setTimeout(openBulkScheduleModal, 100); 
+             return;
+        }
+        
+        // === NEW VALIDATION: End Time MUST NOT be before Start Time ===
+        const [startTime, endTime] = finalStatus.split('-');
+        const startTimeValue = parseInt(startTime.replace(':', ''), 10);
+        const endTimeValue = parseInt(endTime.replace(':', ''), 10);
+        
+        if (endTimeValue < startTimeValue) {
+             showNotification('FATAL ERROR: End Time cannot be earlier than Start Time. Please correct the schedule.', false);
+             // Re-open modal to allow correction
+             setTimeout(openBulkScheduleModal, 100); 
+             return;
+        }
+        // === END NEW VALIDATION ===
+    }
+    
+    let changesAppliedCount = 0;
+
+    bulkSelectedCells.forEach(cellElement => {
+        const personnelId = cellElement.dataset.personnelId; 
+        const originalId = cellElement.dataset.originalId; 
+        const dayKey = cellElement.dataset.dayKey;
+        const shiftKey = cellElement.dataset.shiftKey;
+        
+        if (!personnelId) return; // Skip if no ID
+
+        const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
+        const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
+
+        const originalStatus = currentContract.planMap[originalPlanKey] || '';
+        
+        // Update pending changes
+        if (originalStatus !== finalStatus) {
+            pendingAttendanceChanges[currentPlanKey] = finalStatus; 
+        } else {
+            delete pendingAttendanceChanges[currentPlanKey];
+        }
+        
+        // Update cell visuals
+        updateCellVisuals(cellElement, finalStatus, dayKey);
+        changesAppliedCount++;
+    });
+    
+    // Exit bulk mode and show success notification
+    exitBulkSelectionMode();
+    showNotification(`Bulk schedule applied to ${changesAppliedCount} cells. Click "Save All Changes" to save to Sheets.`, true);
+}
 
 
   // --- INITIALIZATION ---
