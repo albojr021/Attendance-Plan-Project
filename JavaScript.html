@@ -273,11 +273,10 @@
     // *** NEW: Listener for Save All Button ***
     document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
     
-    // *** NEW: Listener for Print Button ***
+    // *** NEW: Listener for Print Button (Calls server function) ***
     document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
 
     // *** NEW: Attach Bulk Listeners ***
-    // Note: startBulkSelectionMode listener is set in exitBulkSelectionMode as a "once" listener for safety
     document.getElementById('start-bulk-select-btn').addEventListener('click', startBulkSelectionMode);
     document.getElementById('bulk-cancel-btn').addEventListener('click', exitBulkSelectionMode);
     document.getElementById('bulk-save-btn').addEventListener('click', (event) => saveBulkSchedule(event, null));
@@ -728,9 +727,11 @@ function handleAttendanceData(data) {
             }
             
             td = tr.insertCell();
-            // REMOVED: isScheduleLocked check
-            // UPDATED: Gawing default ang 'not-allowed' cursor kung deleted
-            td.className = 'cell-container text-center border-r border-b transition duration-100 ease-in-out ' + (isMarkedForDeletion ? 'cursor-not-allowed' : 'cursor-pointer');
+            // UPDATED: Gamitin ang bulk mode logic sa pagpili ng cursor
+            const isSelected = bulkSelectedCells.includes(td);
+            const cursorClass = isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer';
+            
+            td.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${isMarkedForDeletion ? 'cursor-not-allowed' : cursorClass} ${isSelected ? 'cell-selected' : ''}`;
             
             // EDITED: I-apply ang inline width sa data cells
             td.style.width = dateColWidth;
@@ -747,28 +748,19 @@ function handleAttendanceData(data) {
             
             // UPDATED: Pindutin lang kung HINDI marked for deletion
             if (!isMarkedForDeletion) {
+                // Initial listener setup is handleCellClick. Bulk mode will overwrite this.
                 td.addEventListener('click', handleCellClick);
+                
+                // NEW: Kung nasa bulk mode, i-override ang listener at visual
+                if (isBulkSelectionMode) {
+                    td.removeEventListener('click', handleCellClick);
+                    td.addEventListener('click', handleCellSelectionClick);
+                }
             }
         }
     }
     
     tableContainer.appendChild(table);
-    
-    // NEW: I-check kung nasa bulk mode at i-apply ulit ang click handler (para sa re-render)
-    if (isBulkSelectionMode) {
-        document.querySelectorAll('.cell-container').forEach(cell => {
-            // Tiyakin na ang cells na may ID ay napapalitan ng selection handler
-            if (cell.dataset.personnelId || cell.dataset.originalId) {
-                cell.removeEventListener('click', handleCellClick);
-                cell.addEventListener('click', handleCellSelectionClick);
-                cell.classList.add('cursor-crosshair');
-                // I-restore ang visual selection kung nasa bulkSelectedCells pa
-                if (bulkSelectedCells.some(selectedCell => selectedCell.dataset.dayKey === cell.dataset.dayKey && selectedCell.dataset.personnelId === cell.dataset.personnelId)) {
-                     cell.classList.add('cell-selected');
-                }
-            }
-        });
-    }
   }
 
   // NEW FUNCTION: Handle Delete Row Toggle
@@ -1073,9 +1065,11 @@ function handleAttendanceData(data) {
     const isDeletedRow = cell.closest('tr').classList.contains('line-through');
     
     // NEW: I-check kung nasa bulk mode para sa cursor
+    const isSelected = bulkSelectedCells.includes(cell);
     const cursorClass = isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer';
 
-    cell.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${isDeletedRow ? 'cursor-not-allowed' : cursorClass} ${isBulkSelectionMode && cell.classList.contains('cell-selected') ? 'cell-selected' : ''}`;
+    cell.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${isDeletedRow ? 'cursor-not-allowed' : cursorClass} ${isSelected ? 'cell-selected' : ''}`;
+    
     cell.innerHTML = `<div class="p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg">${status}</div>`;
     const innerDiv = cell.querySelector('.attendance-cell-bg');
 
@@ -1465,20 +1459,10 @@ function handleAttendanceData(data) {
   }
   
   // --- NEW PRINT LOGIC (UPDATED: Check for pending changes first) ---
-  function handlePrintPlan() {
-    if (!currentContract) {
-        showNotification('Please select a Contract Group ID first.', false);
-        return;
-    }
-    
-    const empChangesCount = Object.keys(pendingEmployeeInfoChanges).length;
-    const attChangesCount = Object.keys(pendingAttendanceChanges).length;
-    
-    if (empChangesCount > 0 || attChangesCount > 0) {
-        showNotification(`Saving required: ${empChangesCount} employee changes and ${attChangesCount} schedule changes are pending. Click "Save All Changes to Sheets" first.`, false);
-        return;
-    }
-    
+
+function triggerPrint(refNum) {
+    showNotification(`Print Reference #${refNum} generated and logged. Printing now...`, true);
+
     // 1. Tanggalin ang mga blangkong row
     const emptyRows = document.querySelectorAll('.print-empty-row');
     emptyRows.forEach(row => row.classList.add('print-hidden'));
@@ -1502,7 +1486,68 @@ function handleAttendanceData(data) {
             input.classList.remove('print-read-only');
         });
     }, { once: true }); 
-  }
+}
+
+
+function handlePrintPlan() {
+    if (!currentContract) {
+        showNotification('Please select a Contract Group ID first.', false);
+        return;
+    }
+    
+    // Check 1: Pending Changes
+    const empChangesCount = Object.keys(pendingEmployeeInfoChanges).length;
+    const attChangesCount = Object.keys(pendingAttendanceChanges).length;
+    
+    if (empChangesCount > 0 || attChangesCount > 0) {
+        showNotification(`Saving required: ${empChangesCount} employee changes and ${attChangesCount} schedule changes are pending. Click "Save All Changes to Sheets" first.`, false);
+        return;
+    }
+    
+    // Check 2: All Data Integrity (Same as Save All) - Prevent printing incomplete plans
+    const activeEmployees = getActiveEmployeesInGrid();
+    let incompleteColumnFound = false;
+    
+    for (const employee of activeEmployees) {
+        for (const cell of employee.planCells) {
+            if (cell.status === '') {
+                incompleteColumnFound = true;
+                break;
+            }
+        }
+        if (incompleteColumnFound) break;
+    }
+
+    if (incompleteColumnFound) {
+        showNotification(`FATAL ERROR: Cannot print. Attendance Plan is incomplete. All days in the current shift/period must have a status (Work, RD, RH, or SH).`, false);
+        return;
+    }
+
+    // 3. Prepare Context for Logging
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+    
+    const contractInfo = {
+        payor: currentContract.payorCompany,
+        agency: currentContract.agency,
+        serviceType: currentContract.serviceType,
+        headCount: currentContract.headCount
+    };
+
+    toggleLoading(true);
+
+    // 4. Call Server to Log Print Action and get Ref #
+    google.script.run
+        .withSuccessHandler((refNum) => {
+            toggleLoading(false);
+            triggerPrint(refNum);
+        })
+        .withFailureHandler((error) => {
+            handleError(error);
+        })
+        .logPrintAction(currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift);
+}
 
 
 // --- NEW: BULK SELECTION LOGIC ---
