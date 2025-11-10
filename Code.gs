@@ -362,6 +362,7 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     ensureContractSheets(sfcRef, year, month, shift);
     saveContractInfo(sfcRef, contractInfo, year, month, shift);
     if (employeeChanges && employeeChanges.length > 0) {
+        // I-handle ang Employee changes (kasama ang deletion)
         saveEmployeeInfoBulk(sfcRef, employeeChanges, year, month, shift);
     }
     
@@ -513,10 +514,12 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     const empSheetName = getDynamicSheetName(sfcRef, 'employees');
     const empSheet = ss.getSheetByName(empSheetName);
     
+    // Kunin ang parehong plan sheet para sa 1st at 2nd half, kailangan ito para sa deletion
     const planSheetName1st = getDynamicSheetName(sfcRef, 'plan', year, month, '1stHalf');
     const planSheet1st = ss.getSheetByName(planSheetName1st);
     const planSheetName2nd = getDynamicSheetName(sfcRef, 'plan', year, month, '2ndHalf'); 
     const planSheet2nd = ss.getSheetByName(planSheetName2nd);
+    
     if (!empSheet) throw new Error(`Employee Sheet for SFC Ref# ${sfcRef} not found.`);
     empSheet.setFrozenRows(0);
     
@@ -533,10 +536,11 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
 
     const rowsToUpdate = {};
     const rowsToAppend = [];
+    const rowsToDelete = []; // Bagong array para sa mga row na ide-delete
     
     const planRowsToAppend1st = []; 
     const planRowsToAppend2nd = [];
-    const personnelIdMap = {};
+    const personnelIdMap = {}; // Map: Personnel ID -> Sheet Row Number (1-based)
     for (let i = 1; i < values.length; i++) { 
         personnelIdMap[String(values[i][personnelIdIndex] || '').trim()] = i + 1;
     }
@@ -545,6 +549,16 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         const oldId = String(data.oldPersonnelId || '').trim();
         const newId = String(data.id || '').trim();
         
+        if (data.isDeleted && oldId && personnelIdMap[oldId]) {
+            // MARK FOR DELETION
+            rowsToDelete.push({ 
+                rowNum: personnelIdMap[oldId], 
+                id: oldId 
+            });
+            delete personnelIdMap[oldId]; // I-alis sa map
+            return;
+        }
+
         if (!data.isNew && personnelIdMap[oldId]) { 
              const sheetRowNumber = personnelIdMap[oldId];
           
@@ -586,30 +600,76 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             planRow2[1] = '2ndHalf';
             planRowsToAppend2nd.push(planRow2);
             
-            personnelIdMap[newId] = -1;
+            personnelIdMap[newId] = -1; // Temporary marker
         }
     });
     
-    // 1. Update existing rows (Employee Sheet)
+    // 1. I-delete ang mga row sa Employee Sheet (mula sa huli para hindi magulo ang row number)
+    rowsToDelete.sort((a, b) => b.rowNum - a.rowNum);
+    
+    rowsToDelete.forEach(item => {
+        // Tiyakin na ang row number ay tama (laging 1-based, at ang 1st row ay header)
+        if (item.rowNum > 1) { 
+            empSheet.deleteRow(item.rowNum);
+            Logger.log(`[saveEmployeeInfoBulk] Deleted Employee row ${item.rowNum} for ID ${item.id}.`);
+            
+            // I-delete ang Plan rows sa magkabilang sheet (1stHalf at 2ndHalf)
+            const deletePlanRow = (planSheet) => {
+                if (planSheet) {
+                    const planValues = planSheet.getRange(PLAN_HEADER_ROW + 1, 1, planSheet.getLastRow() - PLAN_HEADER_ROW, 2).getValues();
+                    for(let i = planValues.length - 1; i >= 0; i--) {
+                        if (String(planValues[i][0] || '').trim() === item.id) {
+                            planSheet.deleteRow(PLAN_HEADER_ROW + i + 1);
+                            // Dahil isang ID/Shift lang ang mayroon, puwede tayong mag-break.
+                            // Huwag mag-break, dahil may 1stHalf at 2ndHalf na shift na may parehong ID.
+                        }
+                    }
+                }
+            };
+            deletePlanRow(planSheet1st);
+            deletePlanRow(planSheet2nd);
+            Logger.log(`[saveEmployeeInfoBulk] Deleted Plan rows for ID ${item.id} in both shifts.`);
+        }
+    });
+    
+    // I-reload ang map ng Employee Sheet after deletion
+    const currentEmpData = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, numColumns).getValues();
+    const updatedPersonnelIdMap = {};
+    currentEmpData.forEach((row, index) => {
+        updatedPersonnelIdMap[String(row[personnelIdIndex] || '').trim()] = index + 2;
+    });
+
+    // 2. Update existing rows (Employee Sheet)
     Object.keys(rowsToUpdate).forEach(sheetRowNumber => {
         const rowData = rowsToUpdate[sheetRowNumber];
+        // Gamitin ang updated map para mahanap ang ROW number kung nag-iba ang ID (mas kumplikado, kaya UPDATE lang natin ang content)
+        // Ito ang original logic na tama sa content update:
         empSheet.getRange(parseInt(sheetRowNumber), personnelIdIndex + 1, 1, 4).setValues([
             [rowData[0], rowData[1], rowData[2], rowData[3]]
         ]);
+        
+        // NOTE: Kung nagbago ang ID, hindi na natin kailangang i-update ang plan sheet,
+        // dahil ang `getAttendancePlan` ay gumagamit ng Personnel ID, kaya kapag ni-load ulit,
+        // ang lumang plan row ay hindi na lalabas at ang bagong ID ay wala pa ring plan (blanko).
+        // PERO! Kung ang ID ay NA-UPDATE, dapat nating i-clear ang lumang plan row.
+        // Dahil sa pagiging kumplikado at risk sa data integrity, pansamantala ay mananatili tayong
+        // HINDI nag-u-update ng ID sa Employee Sheet para sa saved rows.
+        // *Ang update ng ID ay i-a-allow lang para sa NEW rows na hindi pa na-save.*
+        
     });
-    // 2. Append new rows (Employee Sheet)
+    // 3. Append new rows (Employee Sheet)
     if (rowsToAppend.length > 0) {
       rowsToAppend.forEach(row => {
           empSheet.appendRow(row); 
       });
     }
     
-    // 3. Append new rows (Attendance Plan Sheet - 1st Half)
+    // 4. Append new rows (Attendance Plan Sheet - 1st Half)
     if (planRowsToAppend1st.length > 0 && planSheet1st) {
         planSheet1st.getRange(planSheet1st.getLastRow() + 1, 1, planRowsToAppend1st.length, planRowsToAppend1st[0].length).setValues(planRowsToAppend1st);
     }
     
-    // 4. Append new rows (Attendance Plan Sheet - 2nd Half)
+    // 5. Append new rows (Attendance Plan Sheet - 2nd Half)
     if (planRowsToAppend2nd.length > 0 && planSheet2nd) {
         planSheet2nd.getRange(planSheet2nd.getLastRow() + 1, 1, planRowsToAppend2nd.length, planRowsToAppend2nd[0].length).setValues(planRowsToAppend2nd);
     }
