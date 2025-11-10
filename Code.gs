@@ -6,6 +6,11 @@ const CONTRACTS_SHEET_NAME = 'MASTER';
 const MASTER_HEADER_ROW = 5;
 const PLAN_HEADER_ROW = 6;
 
+// --- NEW CONFIGURATION FOR PRINT LOG ---
+const LOG_SHEET_NAME = 'PrintLog';
+const LOG_HEADERS = ['Reference #', 'SFC Ref#', 'Plan Period', 'Payor Company', 'Agency', 'Service Type', 'User Email', 'Timestamp'];
+// ---------------------------------------
+
 function doGet() {
   return HtmlService.createTemplateFromFile('index')
       .evaluate()
@@ -25,11 +30,9 @@ function getSheetData(spreadsheetId, sheetName) {
   const ss = SpreadsheetApp.openById(spreadsheetId); 
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) return [];
-
   let startRow = 1;
   let numRows = sheet.getLastRow();
   let numColumns = sheet.getLastColumn();
-
   if (sheetName === CONTRACTS_SHEET_NAME) {
     startRow = MASTER_HEADER_ROW;
     if (numRows < startRow) {
@@ -53,7 +56,7 @@ function getSheetData(spreadsheetId, sheetName) {
   if (numRows <= 0 || numColumns === 0) return [];
   const range = sheet.getRange(startRow, 1, numRows, numColumns);
   // Gumagamit ng getDisplayValues() para sa data consistency
-  const values = range.getDisplayValues(); 
+  const values = range.getDisplayValues();
   const headers = values[0];
   const cleanHeaders = headers.map(header => (header || '').toString().trim());
 
@@ -103,7 +106,7 @@ function checkContractSheets(sfcRef, year, month, shift) {
         return !!ss.getSheetByName(empSheetName) && !!ss.getSheetByName(planSheetName);
     } catch (e) {
          Logger.log(`[checkContractSheets] ERROR: Failed to open Spreadsheet ID ${TARGET_SPREADSHEET_ID}. Check ID and permissions. Error: ${e.message}`);
-         return false;
+        return false;
     }
 }
 
@@ -129,13 +132,13 @@ function appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shiftToAppend) {
             rowsToAppend.push(planRow1);
         }
         if (shiftToAppend === '2ndHalf') {
+         
             const planRow2 = Array(planHeadersCount).fill('');
             planRow2[0] = id; 
             planRow2[1] = '2ndHalf'; 
             rowsToAppend.push(planRow2);
         }
     });
-
     if (rowsToAppend.length > 0) {
         planSheet.getRange(planSheet.getLastRow() + 1, 1, rowsToAppend.length, planHeadersCount).setValues(rowsToAppend);
         Logger.log(`[appendExistingEmployeeRowsToPlan] Successfully pre-populated ${rowsToAppend.length} plan rows for ${shiftToAppend}.`);
@@ -144,7 +147,6 @@ function appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shiftToAppend) {
 
 function createContractSheets(sfcRef, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    
     // --- EMPLOYEES SHEET ---
     const empSheetName = getDynamicSheetName(sfcRef, 'employees');
     let empSheet = ss.getSheetByName(empSheetName);
@@ -186,7 +188,7 @@ function createContractSheets(sfcRef, year, month, shift) {
         appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shift);
         
         if (shift === '1stHalf') {
-            const START_COL_TO_HIDE = 18; 
+            const START_COL_TO_HIDE = 18;
             const NUM_COLS_TO_HIDE = 16; 
             planSheet.hideColumns(START_COL_TO_HIDE, NUM_COLS_TO_HIDE);
             Logger.log(`[createContractSheets] Hiding Day 16-31 columns for 1stHalf sheet.`);
@@ -204,7 +206,6 @@ function ensureContractSheets(sfcRef, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
     const empSheetName = getDynamicSheetName(sfcRef, 'employees');
     const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift);
-    
     if (!ss.getSheetByName(empSheetName)) {
         createContractSheets(sfcRef, year, month, shift);
         Logger.log(`[ensureContractSheets] Created Employee sheet for ${sfcRef}.`);
@@ -240,6 +241,7 @@ function getContracts() {
     const isLive = status === 'live' || status === 'on process - live';
 
     return isLive;
+  
   });
 
   return filteredContracts.map(c => {
@@ -253,13 +255,15 @@ function getContracts() {
     const sfcRefKey = findKey(c, 'SFC Ref#');
       
     return {
-      id: contractIdKey ? (c[contractIdKey] || '').toString() : '',     
+      id: contractIdKey ? 
+      (c[contractIdKey] || '').toString() : '',     
       status: statusKey ? (c[statusKey] || '').toString() : '',   
       payorCompany: payorKey ? (c[payorKey] || '').toString() : '', 
       agency: agencyKey ? (c[agencyKey] || '').toString() : '',       
       serviceType: serviceTypeKey ? (c[serviceTypeKey] || '').toString() : '',   
       headCount: parseInt(headCountKey ? c[headCountKey] : 0) || 0, 
-      sfcRef: sfcRefKey ? (c[sfcRefKey] || '').toString() : '', 
+      sfcRef: sfcRefKey ? (c[sfcRefKey] || 
+      '').toString() : '', 
     };
   });
 }
@@ -283,7 +287,6 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const lastRow = planSheet.getLastRow();
     const numRowsToRead = lastRow - HEADER_ROW;
     const numColumns = planSheet.getLastColumn();
-
     if (numRowsToRead <= 0 || numColumns < 33) { 
         return { employees: empData, planMap: {} };
     }
@@ -301,8 +304,6 @@ function getAttendancePlan(sfcRef, year, month, shift) {
         const cleanedHeader = sanitizeHeader(header); 
         sanitizedHeadersMap[cleanedHeader] = index;
     });
-    
-    
     dataRows.forEach((row, rowIndex) => {
         const rawId = row[personnelIdIndex];
         const id = cleanPersonnelId(rawId);
@@ -311,23 +312,25 @@ function getAttendancePlan(sfcRef, year, month, shift) {
         if (currentShift === shift) {
             
             for (let d = 1; d <= 31; d++) {
+         
                 const dayKey = `${year}-${month + 1}-${d}`; 
                 const date = new Date(year, month, d);
                 
                 let lookupHeader = '';
                 if (date.getMonth() === month) {
+          
                     const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
                     const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
                     lookupHeader = `${monthShort}${d}`;
                 } else {
+                
                     lookupHeader = `Day${d}`;
                 }
                 
                 const dayIndex = sanitizedHeadersMap[sanitizeHeader(lookupHeader)];
                 if (dayIndex !== undefined && id && currentShift) {
                     // CRITICAL FIX: Direct access from the values array (already using getDisplayValues)
-                    const status = String(row[dayIndex] || '').trim(); 
-                    
+                    const status = String(row[dayIndex] || '').trim();
                     const key = `${id}_${dayKey}_${currentShift}`;
                     if (status) {
                          planMap[key] = status;
@@ -336,7 +339,6 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             }
         }
     });
-
     const employees = empData.map((e, index) => {
         const id = cleanPersonnelId(e['Personnel ID']);
         return {
@@ -344,7 +346,8 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             id: id, 
             name: String(e['Personnel Name'] || '').trim(),
             position: String(e['Position'] || '').trim(),
-            area: String(e['Area Posting'] || '').trim(),
+            area: 
+            String(e['Area Posting'] || '').trim(),
         }
     }).filter(e => e.id);
     return { employees, planMap };
@@ -377,7 +380,6 @@ function saveContractInfo(sfcRef, info, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift);
     const planSheet = ss.getSheetByName(planSheetName);
-    
     if (!planSheet) throw new Error(`Plan Sheet for ${planSheetName} not found.`);
     const date = new Date(year, month, 1);
     const monthName = date.toLocaleString('en-US', { month: 'long' });
@@ -396,7 +398,8 @@ function saveContractInfo(sfcRef, info, year, month, shift) {
         ['AGENCY', info.agency],                
         ['SERVICE TYPE', info.serviceType],     
         ['TOTAL HEAD COUNT', info.headCount],    
-        ['PLAN PERIOD', dateRange]              
+        ['PLAN PERIOD', dateRange]    
+              
     ];
     planSheet.getRange('A1:B5').clearContent();
     planSheet.getRange('A1:B5').setValues(data);
@@ -408,22 +411,19 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift);
     const planSheet = ss.getSheetByName(planSheetName);
-
     if (!planSheet) throw new Error(`AttendancePlan Sheet for ${planSheetName} not found.`);
     const HEADER_ROW = PLAN_HEADER_ROW;
     
     planSheet.setFrozenRows(0);
     const lastRow = planSheet.getLastRow();
-    
     const numRowsToRead = lastRow - HEADER_ROW;
     const numColumns = planSheet.getLastColumn();
     
     let values = [];
     let headers = [];
-    
     // CRITICAL FIX: Use getDisplayValues() to get string headers (e.g., 'Nov1')
     if (numRowsToRead >= 0 && numColumns > 0) {
-         values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues(); 
+         values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
          headers = values[0]; 
     } else {
         headers = ['Personnel ID', 'Shift'];
@@ -445,7 +445,6 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         const cleanedHeader = sanitizeHeader(header); 
         sanitizedHeadersMap[cleanedHeader] = index;
     });
-    
     const rowLookupMap = {};
     for (let i = 1; i < values.length; i++) { 
         const rowId = String(values[i][personnelIdIndex] || '').trim();
@@ -465,32 +464,32 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         
         const dayNumber = parseInt(dayKey.split('-')[2], 10);
         const date = new Date(year, month, dayNumber);
-        
+       
+     
         let targetLookupHeader = '';
         if (date.getMonth() === month) {
             const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
             const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
             targetLookupHeader = `${monthShort}${dayNumber}`; 
         } else {
-            targetLookupHeader = `Day${dayNumber}`;
+            targetLookupHeader 
+            = `Day${dayNumber}`;
         }
         
         const dayColIndex = sanitizedHeadersMap[sanitizeHeader(targetLookupHeader)];
         if (dayColIndex === undefined) {
-            Logger.log(`[savePlanBulk] FATAL MISS: Header Lookup '${targetLookupHeader}' failed. Available Sanitized Keys: ${Object.keys(sanitizedHeadersMap).join(' | ')}`);
+            Logger.log(`[savePlanBulk] FATAL MISS: Header Lookup '${targetLookupHeader}' failed.
+            Available Sanitized Keys: ${Object.keys(sanitizedHeadersMap).join(' | ')}`);
             return; 
         }
 
         const rowIndexInValues = rowLookupMap[rowKey];
-        
         if (rowIndexInValues !== undefined) {
             const sheetRowNumber = rowIndexInValues + HEADER_ROW;
-            
             if (!updatesMap[sheetRowNumber]) {
                 updatesMap[sheetRowNumber] = {};
             }
             updatesMap[sheetRowNumber][dayColIndex + 1] = status;
-
         } else {
             Logger.log(`[savePlanBulk] WARNING: ID/Shift combination not found for row: ${rowKey}. Skipping update for this cell.`);
         }
@@ -504,7 +503,6 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
             planSheet.getRange(parseInt(sheetRowNumber), parseInt(colNum)).setValue(status);
         });
     });
-
     planSheet.setFrozenRows(HEADER_ROW); 
     Logger.log(`[saveAttendancePlanBulk] Completed Horizontal Plan update for ${planSheetName}.`);
 }
@@ -519,11 +517,11 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     const planSheet1st = ss.getSheetByName(planSheetName1st);
     const planSheetName2nd = getDynamicSheetName(sfcRef, 'plan', year, month, '2ndHalf'); 
     const planSheet2nd = ss.getSheetByName(planSheetName2nd);
-    
     if (!empSheet) throw new Error(`Employee Sheet for SFC Ref# ${sfcRef} not found.`);
     empSheet.setFrozenRows(0);
     
-    const numRows = empSheet.getLastRow() > 0 ? empSheet.getLastRow() : 1;
+    const numRows = empSheet.getLastRow() > 0 ?
+    empSheet.getLastRow() : 1;
     const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 4;
     const values = empSheet.getRange(1, 1, numRows, numColumns).getValues();
     const headers = values[0]; 
@@ -536,9 +534,10 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
 
     const rowsToUpdate = {};
     const rowsToAppend = [];
-    const rowsToDelete = []; // Bagong array para sa mga row na ide-delete
+    const rowsToDelete = [];
+    // Bagong array para sa mga row na ide-delete
     
-    const planRowsToAppend1st = []; 
+    const planRowsToAppend1st = [];
     const planRowsToAppend2nd = [];
     const personnelIdMap = {}; // Map: Personnel ID -> Sheet Row Number (1-based)
     for (let i = 1; i < values.length; i++) { 
@@ -552,6 +551,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         if (data.isDeleted && oldId && personnelIdMap[oldId]) {
             // MARK FOR DELETION
             rowsToDelete.push({ 
+              
                 rowNum: personnelIdMap[oldId], 
                 id: oldId 
             });
@@ -560,13 +560,15 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         }
 
         if (!data.isNew && personnelIdMap[oldId]) { 
-             const sheetRowNumber = personnelIdMap[oldId];
+             const sheetRowNumber = 
+             personnelIdMap[oldId];
           
             if(oldId !== newId && personnelIdMap[newId] && personnelIdMap[newId] !== sheetRowNumber) return; 
             
             rowsToUpdate[sheetRowNumber] = [newId, data.name, data.position, data.area];
             if (oldId !== newId) {
                 delete personnelIdMap[oldId];
+      
                 personnelIdMap[newId] = sheetRowNumber;
             }
 
@@ -574,7 +576,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         else if (data.isNew) {
        
              if (personnelIdMap[newId]) return;
-            
             const newRow = [];
   
             newRow[personnelIdIndex] = data.id;
@@ -600,27 +601,28 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             planRow2[1] = '2ndHalf';
             planRowsToAppend2nd.push(planRow2);
             
-            personnelIdMap[newId] = -1; // Temporary marker
+            personnelIdMap[newId] = -1;
+            // Temporary marker
         }
     });
-    
     // 1. I-delete ang mga row sa Employee Sheet (mula sa huli para hindi magulo ang row number)
     rowsToDelete.sort((a, b) => b.rowNum - a.rowNum);
-    
     rowsToDelete.forEach(item => {
         // Tiyakin na ang row number ay tama (laging 1-based, at ang 1st row ay header)
         if (item.rowNum > 1) { 
             empSheet.deleteRow(item.rowNum);
             Logger.log(`[saveEmployeeInfoBulk] Deleted Employee row ${item.rowNum} for ID ${item.id}.`);
             
-            // I-delete ang Plan rows sa magkabilang sheet (1stHalf at 2ndHalf)
+            // I-delete ang Plan rows sa magkabilang 
             const deletePlanRow = (planSheet) => {
                 if (planSheet) {
                     const planValues = planSheet.getRange(PLAN_HEADER_ROW + 1, 1, planSheet.getLastRow() - PLAN_HEADER_ROW, 2).getValues();
                     for(let i = planValues.length - 1; i >= 0; i--) {
+  
                         if (String(planValues[i][0] || '').trim() === item.id) {
                             planSheet.deleteRow(PLAN_HEADER_ROW + i + 1);
                             // Dahil isang ID/Shift lang ang mayroon, puwede tayong mag-break.
+   
                             // Huwag mag-break, dahil may 1stHalf at 2ndHalf na shift na may parehong ID.
                         }
                     }
@@ -631,14 +633,12 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             Logger.log(`[saveEmployeeInfoBulk] Deleted Plan rows for ID ${item.id} in both shifts.`);
         }
     });
-    
     // I-reload ang map ng Employee Sheet after deletion
     const currentEmpData = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, numColumns).getValues();
     const updatedPersonnelIdMap = {};
     currentEmpData.forEach((row, index) => {
         updatedPersonnelIdMap[String(row[personnelIdIndex] || '').trim()] = index + 2;
     });
-
     // 2. Update existing rows (Employee Sheet)
     Object.keys(rowsToUpdate).forEach(sheetRowNumber => {
         const rowData = rowsToUpdate[sheetRowNumber];
@@ -646,12 +646,13 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         // Ito ang original logic na tama sa content update:
         empSheet.getRange(parseInt(sheetRowNumber), personnelIdIndex + 1, 1, 4).setValues([
             [rowData[0], rowData[1], rowData[2], rowData[3]]
-        ]);
+   
+         ]);
         
         // NOTE: Kung nagbago ang ID, hindi na natin kailangang i-update ang plan sheet,
         // dahil ang `getAttendancePlan` ay gumagamit ng Personnel ID, kaya kapag ni-load ulit,
         // ang lumang plan row ay hindi na lalabas at ang bagong ID ay wala pa ring plan (blanko).
-        // PERO! Kung ang ID ay NA-UPDATE, dapat nating i-clear ang lumang plan row.
+        // PERO! Kung ang ID ay NA-UPDATE, dapat nating i-clear ang lumang 
         // Dahil sa pagiging kumplikado at risk sa data integrity, pansamantala ay mananatili tayong
         // HINDI nag-u-update ng ID sa Employee Sheet para sa saved rows.
         // *Ang update ng ID ay i-a-allow lang para sa NEW rows na hindi pa na-save.*
@@ -672,5 +673,85 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     // 5. Append new rows (Attendance Plan Sheet - 2nd Half)
     if (planRowsToAppend2nd.length > 0 && planSheet2nd) {
         planSheet2nd.getRange(planSheet2nd.getLastRow() + 1, 1, planRowsToAppend2nd.length, planRowsToAppend2nd[0].length).setValues(planRowsToAppend2nd);
+    }
+}
+
+
+// --- NEW FUNCTION: LOGGING PRINT ACTION ---
+
+function getOrCreateLogSheet(ss) {
+    let sheet = ss.getSheetByName(LOG_SHEET_NAME);
+    if (!sheet) {
+        sheet = ss.insertSheet(LOG_SHEET_NAME);
+        // Set Headers at Row 1
+        sheet.getRange(1, 1, 1, LOG_HEADERS.length).setValues([LOG_HEADERS]);
+        sheet.setFrozenRows(1);
+        sheet.setColumnWidths(1, LOG_HEADERS.length, 120); // Set column width for readability
+        Logger.log(`[logPrintAction] Created Log sheet: ${LOG_SHEET_NAME}`);
+    }
+    return sheet;
+}
+
+function getNextReferenceNumber(logSheet) {
+    const lastRow = logSheet.getLastRow();
+    // Start at 1 if only header row exists
+    if (lastRow < 2) return 1; 
+    
+    // Read the last value in Column A (Reference #)
+    const lastRef = logSheet.getRange(lastRow, 1).getValue();
+    
+    // Attempt to parse and increment, defaulting to 1 if it's not a number
+    return (parseInt(lastRef) || 0) + 1; 
+}
+
+/**
+ * Logs the print action to the PrintLog sheet and generates an incrementing reference number.
+ * @param {string} sfcRef 
+ * @param {object} contractInfo 
+ * @param {number} year 
+ * @param {number} month 
+ * @param {string} shift 
+ * @returns {number} The generated Reference Number.
+ */
+function logPrintAction(sfcRef, contractInfo, year, month, shift) {
+    try {
+        const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+        const logSheet = getOrCreateLogSheet(ss);
+        
+        const nextRefNum = getNextReferenceNumber(logSheet);
+        
+        // Use the same logic as saveContractInfo to get the Plan Period string
+        const date = new Date(year, month, 1);
+        const monthName = date.toLocaleString('en-US', { month: 'long' });
+        const yearNum = date.getFullYear();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        let dateRange = '';
+        if (shift === '1stHalf') {
+            dateRange = `${monthName} 1-15, ${yearNum} (${shift})`;
+        } else {
+            dateRange = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
+        }
+
+        const logEntry = [
+            nextRefNum,
+            sfcRef,
+            dateRange,
+            contractInfo.payor,
+            contractInfo.agency,
+            contractInfo.serviceType,
+            Session.getActiveUser().getEmail(), // User Email
+            new Date() // Timestamp
+        ];
+        
+        logSheet.appendRow(logEntry);
+        logSheet.getRange(logSheet.getLastRow(), 1, 1, LOG_HEADERS.length).setHorizontalAlignment('left');
+        
+        Logger.log(`[logPrintAction] Logged print action #${nextRefNum} for ${sfcRef}.`);
+        return nextRefNum;
+
+    } catch (e) {
+        Logger.log(`[logPrintAction] FATAL ERROR: ${e.message}`);
+        throw new Error(`Failed to log print action to Sheets. Error: ${e.message}`);
     }
 }
