@@ -578,7 +578,7 @@ function handleAttendanceData(data) {
         
         // 1. Employee Info Cells (Fixed Columns)
         // No. (Now includes the Edit Button/Icon)
-        let td = tr.insertCell();
+        td = tr.insertCell();
         td.className = 'sticky-col text-center p-0 bg-gray-50 font-bold border-r border-b z-10 freeze-1 relative'; // Added relative for absolute positioning of button
         td.style.width = fixedWidths[0]; // Apply inline width
         td.style.minWidth = fixedWidths[0]; 
@@ -1044,13 +1044,40 @@ function handleAttendanceData(data) {
       }
       // --- END NEW VALIDATION AND FORMATTING LOGIC ---
 
-
+      
       if (field === 'id') {
+          
+          // CRITICAL FIX 2 (SCHEDULE CLEARING): If the ID is now blank, clear pending schedule data and visuals
+          if (pendingChange.id === '') {
+              const row = input.closest('tr');
+              // Gagamitin ang lumang ID na nakaimbak sa cell dataset para hanapin ang pending schedules
+              const oldIdInDataset = row.querySelector('.cell-container')?.dataset.personnelId;
+              
+              if (oldIdInDataset) {
+                  // 1. Clear pending attendance changes associated with the OLD ID
+                  Object.keys(pendingAttendanceChanges).forEach(key => {
+                      if (key.startsWith(oldIdInDataset + '_')) { 
+                          delete pendingAttendanceChanges[key];
+                      }
+                  });
+                  
+                  // 2. Clear cell visuals and update dataset personnelId to reflect blank ID
+                  row.querySelectorAll('.cell-container').forEach(cell => {
+                       const dayKey = cell.dataset.dayKey;
+                       cell.dataset.personnelId = pendingChange.id; // Set new ID (which is '')
+                       updateCellVisuals(cell, '', dayKey); // Clear visual
+                  });
+                  showNotification('Schedule cleared locally as Personnel ID was made blank.', false);
+              }
+          }
+
           // Manwal na i-update ang dataset.personnelId ng attendance cells
           input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
-              cell.dataset.personnelId = pendingChange.id; 
+              cell.dataset.personnelId = pendingChange.id;
           });
       }
+      
+
       
       // Tiyakin na ang comparison ay ginagawa sa pagitan ng current pending data at saved data (employee.id/name/etc)
       const isChanged = (pendingChange.id !== employee.id || 
@@ -1065,6 +1092,31 @@ function handleAttendanceData(data) {
       } else {
           // Tanggalin gamit ang stableLookupKey
           delete pendingEmployeeInfoChanges[oldPersonnelKey];
+          
+          // Old logic for clearing schedule if ID/Name is reverted back to original (empty) state
+          if (field === 'id' || field === 'name') {
+              const row = input.closest('tr');
+              const attendanceId = row.querySelector('.cell-container')?.dataset.personnelId; 
+
+              if (attendanceId) {
+                  // Kung ang change ay reversion pabalik sa original value (at ang original value ay hindi blangko)
+                  // Ang logic na ito ay redundant na ngayon dahil sa Fix 2 (dedikado para sa blanking ng ID)
+                  // Pero pananatilihin natin ito para sa kaligtasan, pero gagamitin lang natin kung ang original ID ay may laman.
+                  if (employee.id !== '') {
+                      Object.keys(pendingAttendanceChanges).forEach(key => {
+                          if (key.startsWith(attendanceId + '_')) { 
+                              delete pendingAttendanceChanges[key];
+                          }
+                      });
+                      
+                      row.querySelectorAll('.cell-container').forEach(cell => {
+                           const dayKey = cell.dataset.dayKey;
+                           cell.dataset.personnelId = employee.id; 
+                           updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
+                      });
+                  }
+              }
+          }
       }
       
       // CRITICAL FIX 5: TANGGALIN ANG renderAttendancePlan() CALL DITO PARA HINDI MAWALA ANG FOCUS
@@ -1138,8 +1190,8 @@ function handleAttendanceData(data) {
     if (isBulkSelectionMode) return; 
     
     const targetCell = event.currentTarget;
-    const personnelId = targetCell.dataset.personnelId; 
-    const originalId = targetCell.dataset.originalId; 
+    const personnelId = (targetCell.dataset.personnelId || '').trim(); // Gamitin ang ID na kasalukuyang naka-link sa cell
+    const originalId = (targetCell.dataset.originalId || '').trim(); 
     const dayKey = targetCell.dataset.dayKey;
     const shiftKey = targetCell.dataset.shiftKey;
     
@@ -1149,8 +1201,9 @@ function handleAttendanceData(data) {
         return;
     }
     
-    if (!personnelId && !originalId) { 
-        showNotification('Cannot edit: Personnel ID is empty. Please fill in the ID field first.', false);
+    // CRITICAL FIX 1 (Validation): Block if Personnel ID is not filled with a valid numeric ID
+    if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) { 
+        showNotification('Cannot edit: Personnel ID is either empty or invalid (must be numbers only). Please correct the ID field first.', false);
         return;
     }
 
@@ -1354,6 +1407,13 @@ function handleAttendanceData(data) {
             finalEmpChanges.push(e); // Allow updates to existing rows
         }
     });
+    
+    // === CRITICAL 3: FINAL CHECK FOR EMPTY ID/NAME ON ACTIVE ROWS (FIX for User Issue) ===
+    if (finalEmpChanges.some(e => !e.isDeleted && (e.id.trim() === '' || e.name.trim() === ''))) {
+        showNotification('FATAL ERROR: Cannot save. All active employee rows being saved must have both a Personnel ID and a Personnel Name. Please check your inputs.', false);
+        return; // HARD STOP SAVE
+    }
+    // === END FINAL CHECK FOR EMPTY ID/NAME ===
 
 
     // === CRITICAL 1: FINAL DUPLICATE NAME CHECK BEFORE SAVE ===
@@ -1600,8 +1660,11 @@ function handleCellSelectionClick(event) {
         showNotification('Cannot select: Row is marked for deletion.', false);
         return;
     }
-    if (!targetCell.dataset.personnelId && !targetCell.dataset.originalId) { 
-        showNotification('Cannot select: Personnel ID is empty for this row.', false);
+    
+    // CRITICAL VALIDATION for Bulk Select
+    const personnelId = (targetCell.dataset.personnelId || '').trim();
+    if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) { 
+        showNotification('Cannot select: Personnel ID is empty or invalid (must be numbers only). Please correct the ID field first.', false);
         return;
     }
     
@@ -1777,7 +1840,8 @@ function saveBulkSchedule(event, fixedStatusValue) {
         const dayKey = cellElement.dataset.dayKey;
         const shiftKey = cellElement.dataset.shiftKey;
         
-        if (!personnelId) return; // Skip if no ID
+        // Validation should have already happened in handleCellSelectionClick, but a final check is safe
+        if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) return; // Skip if invalid ID
 
         const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
         const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
