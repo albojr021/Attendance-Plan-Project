@@ -1692,39 +1692,82 @@ function handleAttendanceData(data) {
 
   // --- NEW PRINT LOGIC (UPDATED: Check for pending changes first) ---
 
-function triggerPrint(refNum, dynamicallyHiddenRows = []) {
-    showNotification(`Print Reference #${refNum} generated and logged. Printing now...`, true);
+function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift) {
+    showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
 
-    // 1. Tanggalin ang mga blangkong row (existing static check)
+    // I-set up ang Modal at Buttons handlers (Ito ay isang self-contained function)
+    const setupModalAndPrint = () => {
+        const modal = document.getElementById('print-confirm-modal');
+        const message = document.getElementById('print-confirm-message');
+        const okBtn = document.getElementById('confirm-print-ok-btn');
+        const cancelBtn = document.getElementById('confirm-print-cancel-btn');
+        
+        // Ipakita ang Reference Number sa prompt
+        message.innerHTML = `We need to verify if the document was successfully printed. Did you proceed with printing the document (Reference #: <span class="font-bold text-blue-600">${refNum}</span>)?`;
+        
+        // Function para i-restore ang UI at i-clear ang handlers
+        const restoreUI = () => {
+            modal.classList.add('hidden');
+            emptyRows.forEach(row => row.classList.remove('print-hidden'));
+            dynamicallyHiddenRows.forEach(row => row.classList.remove('print-hidden'));
+            inputs.forEach(input => {
+                input.classList.remove('print-read-only');
+            });
+            window.onafterprint = null; // CRITICAL: I-clear ang onafterprint
+            // I-remove ang event listeners sa buttons para hindi mag-duplicate
+            okBtn.removeEventListener('click', handleOk);
+            cancelBtn.removeEventListener('click', handleCancel);
+        };
+
+        // OK Handler (User confirmed the print was successful)
+        const handleOk = () => {
+            restoreUI();
+            
+            // Tawagin ang Apps Script function na magre-record ng log
+            google.script.run
+                .withSuccessHandler(() => {
+                    console.log(`Successfully recorded print log entry #${refNum}.`);
+                    showNotification(`Print action (Ref# ${refNum}) successfully logged.`, true);
+                })
+                .withFailureHandler((error) => {
+                    console.error(`Failed to record print log entry #${refNum}:`, error);
+                    showNotification(`Warning: Failed to record print log (Ref# ${refNum}). Error: ${error.message}`, false);
+                })
+                .recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift);
+        };
+
+        // Cancel Handler (User discarded the log)
+        const handleCancel = () => {
+            restoreUI();
+            showNotification(`Print log (Ref# ${refNum}) discarded by user.`, false);
+        };
+        
+        // Magdagdag ng listeners para sa modal buttons
+        okBtn.addEventListener('click', handleOk);
+        cancelBtn.addEventListener('click', handleCancel);
+
+        // Ang onafterprint event ay magdidisplay lamang ng confirmation modal
+        window.onafterprint = function() {
+            // Tiyakin na nag-fire lang ito isang beses sa print dialog exit
+            modal.classList.remove('hidden');
+        };
+    };
+    
+    // 1. Tanggalin ang mga blangkong row at i-apply ang print-hidden
     const emptyRows = document.querySelectorAll('.print-empty-row');
     emptyRows.forEach(row => row.classList.add('print-hidden'));
-    
-    // NEW: I-apply ang print-hidden class sa mga dynamically filtered rows
     dynamicallyHiddenRows.forEach(row => row.classList.add('print-hidden'));
 
-    // 2. I-convert ang input fields sa read-only text (para ma-print ang values)
+    // 2. I-convert ang input fields sa read-only text
     const inputs = document.querySelectorAll('#attendance-table-container input');
-    
     inputs.forEach(input => {
-        // Tiyakin na read-only ang lahat ng inputs habang nagpi-print.
         input.classList.add('print-read-only');
     });
 
-    // 3. I-trigger ang print dialog
-    window.print();
+    // 3. I-setup ang modal handlers at i-trigger ang print
+    setupModalAndPrint();
 
-    // 4. Ibalik ang mga tinanggal na element pagkatapos ng print (sa 'afterprint' event)
-    window.addEventListener('afterprint', () => {
-        emptyRows.forEach(row => row.classList.remove('print-hidden'));
-        
-        // NEW: Ibalik ang mga dynamically hidden rows
-        dynamicallyHiddenRows.forEach(row => row.classList.remove('print-hidden'));
-        
-        inputs.forEach(input => {
-            // Tanggalin ang temporary print class
-            input.classList.remove('print-read-only');
-        });
-    }, { once: true }); 
+    window.print();
 }
 
 
@@ -1743,14 +1786,11 @@ function handlePrintPlan() {
         return;
     }
     
-    // --- REMOVED HARD-STOP: Plan Completion Check ---
-    // (Pinalitan ng dynamic filtering sa ibaba)
-    
     // 2. Apply Dynamic Filtering for Clean Print
     const dynamicallyHiddenRows = filterEmptyScheduleRows();
     
     if (dynamicallyHiddenRows.length > 0) {
-        showNotification(`Note: Hiding ${dynamicallyHiddenRows.length} employee row(s) with no schedule plan for a clean print.`, true);
+        showNotification(`Note: Hiding ${dynamicallyHiddenRows.length} employee row(s) with no schedule plan for a clean print. Generating Print Reference...`, true);
     }
 
     // 3. Prepare Context for Logging
@@ -1767,12 +1807,12 @@ function handlePrintPlan() {
 
     toggleLoading(true);
 
-    // 4. Call Server to Log Print Action and get Ref #
+    // 4. Call Server to ONLY GENERATE Print Action and get Ref # (Hindi pa magre-record!)
     google.script.run
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
-            // Pass the dynamically hidden rows to triggerPrint
-            triggerPrint(refNum, dynamicallyHiddenRows); 
+            // Pass the generated refNum and ALL context to triggerPrint
+            triggerPrint(refNum, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
         })
         .withFailureHandler((error) => {
             // Ensure dynamically hidden rows are restored on error
