@@ -696,6 +696,7 @@ function handleAttendanceData(data) {
 
         // 2. Attendance Plan Cells (Dynamic Dates)
         const currentPersonnelId = displayId; // Gamitin ang ID na na-save o pending
+        let hasScheduleForShift = false; // NEW TRACKER
 
         for (let d = startDay; d <= endDay; d++) {
             // CRITICAL FIX: Direct Unpadded DayKey format (YYYY-M-D) na tugma sa Sheets
@@ -725,6 +726,11 @@ function handleAttendanceData(data) {
                  if (savedStatusUnpadded !== '') {
                     status = savedStatusUnpadded;
                  }
+            }
+
+            // NEW: Check if there is any status for the shift
+            if (status !== '') {
+                hasScheduleForShift = true; 
             }
             
             td = tr.insertCell();
@@ -1510,7 +1516,7 @@ function handleAttendanceData(data) {
     // === END FINAL DUPLICATE NAME CHECK ===
     
     // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (Missing Schedule/Status) ===
-    // Note: Kailangan nating i-re-run ang getActiveEmployeesInGrid pero isasama na ang planCells
+    // Note: Kukunin natin ang LAHAT ng rows sa grid at iva-validate lang ang may laman.
     const activeEmployeesForPlanCheck = [];
     document.querySelectorAll('#attendance-table-container tbody tr').forEach(row => {
         const stableKey = row.dataset.stableKey;
@@ -1615,14 +1621,59 @@ function handleAttendanceData(data) {
        toggleLoading(false); 
   }
   
+  // --- NEW FUNCTION: DYNAMIC ROW FILTERING ---
+  function filterEmptyScheduleRows() {
+    const rowsToHide = [];
+    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+
+    gridRows.forEach(row => {
+        const isMarkedForDeletion = row.classList.contains('line-through');
+        const isAlreadyBlank = row.classList.contains('print-empty-row');
+        
+        // Skip if already deleted or already marked as a fully blank row
+        if (isMarkedForDeletion || isAlreadyBlank) return; 
+
+        // Check if the row has valid Employee Info
+        const idInput = row.querySelector('[data-field="id"]');
+        const nameInput = row.querySelector('[data-field="name"]');
+        const displayId = (idInput?.value || '').trim();
+        const displayName = (nameInput?.value || '').trim();
+        
+        // Only consider hiding rows that actually have employee info but no schedule
+        if (!displayId && !displayName) return; 
+
+        let isScheduleBlank = true;
+        // Check all schedule cells for the current shift
+        row.querySelectorAll('.cell-container').forEach(cell => {
+            const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+            // Check for actual status (time schedule or RD/RH/SH)
+            if (status !== '' && status !== 'DELETED') { 
+                isScheduleBlank = false;
+            }
+        });
+
+        // If employee info exists, but schedule is blank, hide the row for printing
+        if (isScheduleBlank) {
+            row.classList.add('print-hidden'); // Use the existing print-hidden class for dynamic hiding
+            rowsToHide.push(row);
+        }
+    });
+    return rowsToHide;
+  }
+  // --- END DYNAMIC ROW FILTERING ---
+
+
   // --- NEW PRINT LOGIC (UPDATED: Check for pending changes first) ---
 
-function triggerPrint(refNum) {
+function triggerPrint(refNum, dynamicallyHiddenRows = []) {
     showNotification(`Print Reference #${refNum} generated and logged. Printing now...`, true);
 
-    // 1. Tanggalin ang mga blangkong row
+    // 1. Tanggalin ang mga blangkong row (existing static check)
     const emptyRows = document.querySelectorAll('.print-empty-row');
     emptyRows.forEach(row => row.classList.add('print-hidden'));
+    
+    // NEW: I-apply ang print-hidden class sa mga dynamically filtered rows
+    dynamicallyHiddenRows.forEach(row => row.classList.add('print-hidden'));
 
     // 2. I-convert ang input fields sa read-only text (para ma-print ang values)
     const inputs = document.querySelectorAll('#attendance-table-container input');
@@ -1638,6 +1689,10 @@ function triggerPrint(refNum) {
     // 4. Ibalik ang mga tinanggal na element pagkatapos ng print (sa 'afterprint' event)
     window.addEventListener('afterprint', () => {
         emptyRows.forEach(row => row.classList.remove('print-hidden'));
+        
+        // NEW: Ibalik ang mga dynamically hidden rows
+        dynamicallyHiddenRows.forEach(row => row.classList.remove('print-hidden'));
+        
         inputs.forEach(input => {
             // Tanggalin ang temporary print class
             input.classList.remove('print-read-only');
@@ -1661,23 +1716,14 @@ function handlePrintPlan() {
         return;
     }
     
-    // Check 2: All Data Integrity (Same as Save All) - Prevent printing incomplete plans
-    const activeEmployees = getActiveEmployeesInGrid();
-    let incompleteColumnFound = false;
+    // --- REMOVED HARD-STOP: Plan Completion Check ---
+    // (Pinalitan ng dynamic filtering sa ibaba)
     
-    for (const employee of activeEmployees) {
-        for (const cell of employee.planCells) {
-            if (cell.status === '') {
-                incompleteColumnFound = true;
-                break;
-            }
-        }
-        if (incompleteColumnFound) break;
-    }
-
-    if (incompleteColumnFound) {
-        showNotification(`FATAL ERROR: Cannot print. Attendance Plan is incomplete. All days in the current shift/period must have a status (Work, RD, RH, or SH).`, false);
-        return;
+    // 2. Apply Dynamic Filtering for Clean Print
+    const dynamicallyHiddenRows = filterEmptyScheduleRows();
+    
+    if (dynamicallyHiddenRows.length > 0) {
+        showNotification(`Note: Hiding ${dynamicallyHiddenRows.length} employee row(s) with no schedule plan for a clean print.`, true);
     }
 
     // 3. Prepare Context for Logging
@@ -1698,9 +1744,12 @@ function handlePrintPlan() {
     google.script.run
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
-            triggerPrint(refNum);
+            // Pass the dynamically hidden rows to triggerPrint
+            triggerPrint(refNum, dynamicallyHiddenRows); 
         })
         .withFailureHandler((error) => {
+            // Ensure dynamically hidden rows are restored on error
+            dynamicallyHiddenRows.forEach(row => row.classList.remove('print-hidden'));
             handleError(error);
         })
         .logPrintAction(currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift);
@@ -1708,27 +1757,11 @@ function handlePrintPlan() {
 
 
 // --- NEW: BULK SELECTION LOGIC ---
+// [REST OF THE BULK LOGIC IS UNCHANGED]
+// ...
+// ...
+// ...
 
-// Helper function to update bulkSelectedCells array and visuals
-function toggleCellSelection(cellElement) {
-    // Check if the cell is already in the array (using reference equality for DOM elements)
-    const index = bulkSelectedCells.indexOf(cellElement);
-    
-    if (index > -1) {
-        // Remove selection
-        bulkSelectedCells.splice(index, 1);
-        cellElement.classList.remove('cell-selected');
-    } else {
-        // Add selection
-        bulkSelectedCells.push(cellElement);
-        cellElement.classList.add('cell-selected');
-    }
-    document.getElementById('bulk-cell-count').textContent = bulkSelectedCells.length;
-    document.getElementById('bulk-save-btn').disabled = bulkSelectedCells.length === 0;
-}
-
-
-// New handler for cell clicks during bulk mode
 function handleCellSelectionClick(event) {
     const targetCell = event.currentTarget;
     const row = targetCell.closest('tr');
