@@ -166,25 +166,14 @@
         const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         
         // I-check kung ang row ay may Personnel ID at Name
-        if (displayId.trim() && displayName.trim()) {
-            // Kunin ang active schedule cells
-            const planCells = row.querySelectorAll('.cell-container');
-            
-            const cellData = [];
-            planCells.forEach(cell => {
-                // Gamitin ang innerHTML para kunin ang displayed status (Schedule, RD, RH, SH, o '')
-                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-                const dayKey = cell.dataset.dayKey;
-                
-                cellData.push({ dayKey, status });
-            });
-
-            activeEmployees.push({
-                id: displayId.trim(),
-                name: displayName.trim(),
-                planCells: cellData
-            });
-        }
+        // NOTE: Dito tayo nagre-rely sa displayId at displayName para sa validation
+        
+        activeEmployees.push({
+            id: displayId.trim(),
+            name: displayName.trim(),
+            // Only capture plan cells for the completeness check later
+            planCells: [] 
+        });
     });
     
     return activeEmployees;
@@ -1051,22 +1040,24 @@ function handleAttendanceData(data) {
           if (pendingChange.id === '') {
               const row = input.closest('tr');
               // Gagamitin ang lumang ID na nakaimbak sa cell dataset para hanapin ang pending schedules
-              // Note: Gamitin natin ang oldPersonnelKey (stable key) na siyang ID bago ito naging blangko
               const oldIdInDataset = row.querySelector('.cell-container')?.dataset.personnelId; 
               
               if (oldIdInDataset) {
                   // 1. Clear pending attendance changes associated with the OLD ID
                   Object.keys(pendingAttendanceChanges).forEach(key => {
+                      // Gamitin ang oldIdInDataset (which is the ID before it was cleared) para sa lookup
                       if (key.startsWith(oldIdInDataset + '_')) { 
                           delete pendingAttendanceChanges[key];
                       }
                   });
                   
-                  // 2. Clear cell visuals and update dataset personnelId to reflect blank ID
+                  // 2. Clear cell visuals
                   row.querySelectorAll('.cell-container').forEach(cell => {
                        const dayKey = cell.dataset.dayKey;
+                       // We must update the dataset FIRST to reflect the new blank ID
                        cell.dataset.personnelId = pendingChange.id; // Set new ID (which is '')
-                       updateCellVisuals(cell, '', dayKey); // Clear visual
+                       // Then force a visual clear
+                       updateCellVisuals(cell, '', dayKey); 
                   });
                   showNotification('Schedule cleared locally as Personnel ID was made blank.', false);
               }
@@ -1101,8 +1092,6 @@ function handleAttendanceData(data) {
 
               if (attendanceId) {
                   // Kung ang change ay reversion pabalik sa original value (at ang original value ay hindi blangko)
-                  // Ang logic na ito ay redundant na ngayon dahil sa Fix 2 (dedikado para sa blanking ng ID)
-                  // Pero pananatilihin natin ito para sa kaligtasan, pero gagamitin lang natin kung ang original ID ay may laman.
                   if (employee.id !== '') {
                       Object.keys(pendingAttendanceChanges).forEach(key => {
                           if (key.startsWith(attendanceId + '_')) { 
@@ -1113,6 +1102,7 @@ function handleAttendanceData(data) {
                       row.querySelectorAll('.cell-container').forEach(cell => {
                            const dayKey = cell.dataset.dayKey;
                            cell.dataset.personnelId = employee.id; 
+                           // Ibalik sa saved status, o blanko kung walang saved status
                            updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
                       });
                   }
@@ -1417,9 +1407,65 @@ function handleAttendanceData(data) {
         }
     });
     
+    
     // === CRITICAL 3: FINAL CHECK FOR EMPTY ID/NAME ON ACTIVE ROWS (FIX for User Issue) ===
-    if (finalEmpChanges.some(e => !e.isDeleted && (e.id.trim() === '' || e.name.trim() === ''))) {
-        showNotification('FATAL ERROR: Cannot save. All active employee rows being saved must have both a Personnel ID and a Personnel Name. Please check your inputs.', false);
+    // Kukunin natin ang LAHAT ng rows sa grid at iva-validate lang ang may laman.
+    const allRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    
+    // Hanapin ang unang row na may ID O Name, pero hindi kumpleto.
+    const incompleteRow = Array.from(allRows).find(row => {
+        const idInput = row.querySelector('[data-field="id"]');
+        const nameInput = row.querySelector('[data-field="name"]');
+        const positionInput = row.querySelector('[data-field="position"]'); // NEW
+        const areaInput = row.querySelector('[data-field="area"]');         // NEW
+
+        const displayId = (idInput?.value || '').trim();
+        const displayName = (nameInput?.value || '').trim();
+        const displayPosition = (positionInput?.value || '').trim();       // NEW
+        const displayArea = (areaInput?.value || '').trim();               // NEW
+        
+        // 1. Skip rows marked for deletion
+        if (row.classList.contains('line-through')) return false; 
+        
+        // 2. Only validate if EITHER ID, Name, Position, or Area has content.
+        if (displayId || displayName || displayPosition || displayArea) {
+             // CRITICAL: Check if ANY of the four required fields is blank
+             return displayId === '' || 
+                    displayName === '' || 
+                    displayPosition === '' || 
+                    displayArea === '';        
+        }
+        
+        // 3. Skip completely blank placeholder rows.
+        return false; 
+    });
+
+    if (incompleteRow) {
+        const rowElement = incompleteRow;
+        const rowNo = rowElement.querySelector('.sticky-col:first-child > span').textContent.trim();
+
+        let idInput = incompleteRow.querySelector('[data-field="id"]');
+        let nameInput = incompleteRow.querySelector('[data-field="name"]');
+        let positionInput = incompleteRow.querySelector('[data-field="position"]');
+        let areaInput = incompleteRow.querySelector('[data-field="area"]');
+        
+        const displayId = (idInput?.value || '').trim();
+        const displayName = (nameInput?.value || '').trim();
+        const displayPosition = (positionInput?.value || '').trim();
+        const displayArea = (areaInput?.value || '').trim();
+        
+        let missingField = '';
+        if (displayId === '') missingField = 'Personnel ID';
+        else if (displayName === '') missingField = 'Personnel Name';
+        else if (displayPosition === '') missingField = 'Position';
+        else if (displayArea === '') missingField = 'Area Posting';
+        
+        // Gumawa ng user-friendly identifier
+        const identifier = displayId || displayName ? 
+                           `${displayId || displayName}` : 
+                           `Row ${rowNo}`;
+                           
+        showNotification(`FATAL ERROR: Cannot save. ${identifier} is missing a required ${missingField}. All active employee rows must have all four info fields (ID, Name, Position, Area Posting).`, false);
         return; // HARD STOP SAVE
     }
     // === END FINAL CHECK FOR EMPTY ID/NAME ===
@@ -1464,17 +1510,39 @@ function handleAttendanceData(data) {
     // === END FINAL DUPLICATE NAME CHECK ===
     
     // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (Missing Schedule/Status) ===
-    const activeEmployees = getActiveEmployeesInGrid();
+    // Note: Kailangan nating i-re-run ang getActiveEmployeesInGrid pero isasama na ang planCells
+    const activeEmployeesForPlanCheck = [];
+    document.querySelectorAll('#attendance-table-container tbody tr').forEach(row => {
+        const stableKey = row.dataset.stableKey;
+        const pendingInfo = pendingEmployeeInfoChanges[stableKey];
+        
+        if (pendingInfo && pendingInfo.isDeleted) return; 
+
+        const employee = currentContract.employees.find(e => e.id === stableKey) || { id: '', name: '' };
+        const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
+        const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
+        
+        if (displayId.trim() && displayName.trim()) { // Only proceed if ID and Name are valid
+            const planCells = [];
+            row.querySelectorAll('.cell-container').forEach(cell => {
+                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                const dayKey = cell.dataset.dayKey;
+                planCells.push({ dayKey, status });
+            });
+            activeEmployeesForPlanCheck.push({ id: displayId.trim(), name: displayName.trim(), planCells });
+        }
+    });
+
     let incompleteColumnFound = false;
     let employeeNameIncomplete = '';
     
-    if (activeEmployees.length === 0 && currentContract.headCount > 0) {
+    if (activeEmployeesForPlanCheck.length === 0 && currentContract.headCount > 0) {
         showNotification(`FATAL ERROR: Cannot save. Employee rows must be filled up to the Total Head Count (${currentContract.headCount}) before setting the plan.`, false);
         return;
     }
     
     // Tiyakin na ang bawat empleyado ay may schedule/status sa bawat araw sa kasalukuyang shift
-    for (const employee of activeEmployees) {
+    for (const employee of activeEmployeesForPlanCheck) {
         for (const cell of employee.planCells) {
             if (cell.status === '') {
                 incompleteColumnFound = true;
