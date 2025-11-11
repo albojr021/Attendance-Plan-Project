@@ -748,7 +748,8 @@ function handleAttendanceData(data) {
             updateCellVisuals(td, status, dayKeyUnpadded); // Gamitin ang status na nahanap
 
             // Add click listener
-            td.dataset.personnelId = trimmedCurrentId; 
+            // CRITICAL FIX: Huwag mag-rely sa cell dataset para sa Personnel ID/ShiftKey. Gagamitin ang ID na galing sa input.
+            // Maglalagay lang tayo ng minimal info dito:
             td.dataset.dayKey = dayKeyUnpadded; // Use Unpadded for data attributes
             td.dataset.shiftKey = trimmedShift;
             td.dataset.originalId = employee.id; 
@@ -1046,7 +1047,8 @@ function handleAttendanceData(data) {
           if (pendingChange.id === '') {
               const row = input.closest('tr');
               // Gagamitin ang lumang ID na nakaimbak sa cell dataset para hanapin ang pending schedules
-              const oldIdInDataset = row.querySelector('.cell-container')?.dataset.personnelId; 
+              // CRITICAL: Since we stopped relying on cell dataset for ID, we must get the ID from the input's old value
+              const oldIdInDataset = employee.id; 
               
               if (oldIdInDataset) {
                   // 1. Clear pending attendance changes associated with the OLD ID
@@ -1060,8 +1062,6 @@ function handleAttendanceData(data) {
                   // 2. Clear cell visuals
                   row.querySelectorAll('.cell-container').forEach(cell => {
                        const dayKey = cell.dataset.dayKey;
-                       // We must update the dataset FIRST to reflect the new blank ID
-                       cell.dataset.personnelId = pendingChange.id; // Set new ID (which is '')
                        // Then force a visual clear
                        updateCellVisuals(cell, '', dayKey); 
                   });
@@ -1069,10 +1069,12 @@ function handleAttendanceData(data) {
               }
           }
 
-          // Manwal na i-update ang dataset.personnelId ng attendance cells
+          // CRITICAL FIX: Tanggalin ang manual dataset update. Hayaan ang `handleCellClick`/`handleCellSelectionClick` na kumuha ng ID mula sa input.
+          /*
           input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
               cell.dataset.personnelId = pendingChange.id;
           });
+          */
       }
       
 
@@ -1094,7 +1096,8 @@ function handleAttendanceData(data) {
           // Old logic for clearing schedule if ID/Name is reverted back to original (empty) state
           if (field === 'id' || field === 'name') {
               const row = input.closest('tr');
-              const attendanceId = row.querySelector('.cell-container')?.dataset.personnelId; 
+              // CRITICAL FIX: Kunin ang ID mula sa employee.id (original saved ID)
+              const attendanceId = employee.id; 
 
               if (attendanceId) {
                   // Kung ang change ay reversion pabalik sa original value (at ang original value ay hindi blangko)
@@ -1107,7 +1110,8 @@ function handleAttendanceData(data) {
                       
                       row.querySelectorAll('.cell-container').forEach(cell => {
                            const dayKey = cell.dataset.dayKey;
-                           cell.dataset.personnelId = employee.id; 
+                           // CRITICAL: Huwag i-update ang cell dataset. Hayaan ang renderAttendancePlan() na mag-handle nito sa susunod na load.
+                           // cell.dataset.personnelId = employee.id; 
                            // Ibalik sa saved status, o blanko kung walang saved status
                            updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
                       });
@@ -1209,8 +1213,8 @@ function handleAttendanceData(data) {
         return;
     }
 
-    // NEW: I-update ang cell dataset para sumalamin sa na-validate na ID
-    targetCell.dataset.personnelId = personnelId; 
+    // NEW: Tanggalin ang manual dataset update dito
+    // targetCell.dataset.personnelId = personnelId; 
     
     const planKey = `${personnelId}_${dayKey}_${shiftKey}`;
     
@@ -1219,7 +1223,7 @@ function handleAttendanceData(data) {
                           : currentContract.planMap[`${originalId}_${dayKey}_${shiftKey}`] || '';
 
     selectedCellData = {
-      personnelId, 
+      personnelId, // Use the ID from the input field
       originalId,  
       dayKey,
       shiftKey,
@@ -1757,10 +1761,22 @@ function handlePrintPlan() {
 
 
 // --- NEW: BULK SELECTION LOGIC ---
-// [REST OF THE BULK LOGIC IS UNCHANGED]
-// ...
-// ...
-// ...
+
+// CRITICAL FIX: Add missing toggleCellSelection function
+function toggleCellSelection(cell) {
+    const index = bulkSelectedCells.indexOf(cell);
+    if (index > -1) {
+        // Deselect
+        bulkSelectedCells.splice(index, 1);
+        cell.classList.remove('cell-selected');
+    } else {
+        // Select
+        bulkSelectedCells.push(cell);
+        cell.classList.add('cell-selected');
+    }
+    document.getElementById('bulk-cell-count').textContent = bulkSelectedCells.length;
+}
+
 
 function handleCellSelectionClick(event) {
     const targetCell = event.currentTarget;
@@ -1772,7 +1788,7 @@ function handleCellSelectionClick(event) {
         return;
     }
     
-    // CRITICAL VALIDATION for Bulk Select
+    // CRITICAL FIX for Bulk Select: Kunin ang ID sa input field, hindi sa dataset
     const idInput = row.querySelector('[data-field="id"]');
     const personnelId = (idInput?.value || '').trim();
     
@@ -1798,6 +1814,7 @@ function startBulkSelectionMode() {
         // I-dagdag ang new handler (handleCellSelectionClick)
         cell.addEventListener('click', handleCellSelectionClick);
         cell.classList.add('cursor-crosshair'); // Visual cue for selection mode
+        cell.classList.remove('cell-selected'); // Ensure initial state is not selected
     });
     
     // 2. I-update ang UI ng Bulk Button
@@ -1948,7 +1965,11 @@ function saveBulkSchedule(event, fixedStatusValue) {
     let changesAppliedCount = 0;
 
     bulkSelectedCells.forEach(cellElement => {
-        const personnelId = cellElement.dataset.personnelId; 
+        const row = cellElement.closest('tr');
+        // CRITICAL FIX: Kunin ang personnelId sa input field
+        const idInput = row.querySelector('[data-field="id"]');
+        const personnelId = (idInput?.value || '').trim();
+        
         const originalId = cellElement.dataset.originalId; 
         const dayKey = cellElement.dataset.dayKey;
         const shiftKey = cellElement.dataset.shiftKey;
