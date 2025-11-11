@@ -1051,7 +1051,8 @@ function handleAttendanceData(data) {
           if (pendingChange.id === '') {
               const row = input.closest('tr');
               // Gagamitin ang lumang ID na nakaimbak sa cell dataset para hanapin ang pending schedules
-              const oldIdInDataset = row.querySelector('.cell-container')?.dataset.personnelId;
+              // Note: Gamitin natin ang oldPersonnelKey (stable key) na siyang ID bago ito naging blangko
+              const oldIdInDataset = row.querySelector('.cell-container')?.dataset.personnelId; 
               
               if (oldIdInDataset) {
                   // 1. Clear pending attendance changes associated with the OLD ID
@@ -1190,7 +1191,12 @@ function handleAttendanceData(data) {
     if (isBulkSelectionMode) return; 
     
     const targetCell = event.currentTarget;
-    const personnelId = (targetCell.dataset.personnelId || '').trim(); // Gamitin ang ID na kasalukuyang naka-link sa cell
+    const row = targetCell.closest('tr'); // <-- CRITICAL: Kunin ang row
+    
+    // CRITICAL FIX: Kunin ang Personnel ID direkta sa input field (Source of Truth)
+    const idInput = row.querySelector('[data-field="id"]');
+    const personnelId = (idInput?.value || '').trim(); 
+    
     const originalId = (targetCell.dataset.originalId || '').trim(); 
     const dayKey = targetCell.dataset.dayKey;
     const shiftKey = targetCell.dataset.shiftKey;
@@ -1207,6 +1213,9 @@ function handleAttendanceData(data) {
         return;
     }
 
+    // NEW: I-update ang cell dataset para sumalamin sa na-validate na ID
+    targetCell.dataset.personnelId = personnelId; 
+    
     const planKey = `${personnelId}_${dayKey}_${shiftKey}`;
     
     const currentStatus = pendingAttendanceChanges[planKey] !== undefined 
@@ -1654,6 +1663,7 @@ function toggleCellSelection(cellElement) {
 // New handler for cell clicks during bulk mode
 function handleCellSelectionClick(event) {
     const targetCell = event.currentTarget;
+    const row = targetCell.closest('tr');
     
     // Safety check: Cannot select cells without ID or if the row is marked for deletion
     if (targetCell.closest('tr').classList.contains('line-through')) {
@@ -1662,7 +1672,9 @@ function handleCellSelectionClick(event) {
     }
     
     // CRITICAL VALIDATION for Bulk Select
-    const personnelId = (targetCell.dataset.personnelId || '').trim();
+    const idInput = row.querySelector('[data-field="id"]');
+    const personnelId = (idInput?.value || '').trim();
+    
     if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) { 
         showNotification('Cannot select: Personnel ID is empty or invalid (must be numbers only). Please correct the ID field first.', false);
         return;
