@@ -67,9 +67,21 @@
   // --- NEW HELPER: Normalize Name for Comparison (Removes all non-alphanumeric) ---
   function normalizeNameForComparison(name) {
       if (!name) return '';
-      // Strip all characters that are NOT a letter (A-Z) or a number (0-9).
-      // Ito ang magco-convert sa "ALBO, J-R A." at "ALBO J-R A." sa "ALBOJRA"
-      return name.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      
+      // CRITICAL FIX: To handle shuffled names (e.g., "JUAN DELA CRUZ" vs "DELA CRUZ JUAN")
+      // 1. Convert to uppercase
+      const upperName = name.toUpperCase();
+      
+      // 2. Remove all non-letter characters (except spaces for splitting)
+      let cleanedName = upperName.replace(/[^A-Z\s]/g, ''); 
+      
+      // 3. Split into words, sort alphabetically, and join
+      const sortedWords = cleanedName.split(/\s+/) // Split by one or more spaces
+                                   .filter(word => word.length > 0) // Remove accidental empty strings
+                                   .sort()
+                                   .join(''); // Join them back without spaces
+      
+      return sortedWords;
   }
   // --- END HELPER ---
 
@@ -1014,14 +1026,25 @@ function handleAttendanceData(data) {
 
           pendingChange[field] = cleanId;
       } else {
-          // 2. Formatting: Convert to CAPSLOCK and remove special characters
+          // 2. Formatting: Convert to CAPSLOCK and remove unwanted characters
           let cleanedValue = newValue.toUpperCase();
-          // FIX: Alisin ang characters na hindi kasama sa SAFE_TEXT_REGEX (NGAYON KASAMA NA ANG DASH)
-          cleanedValue = cleanedValue.replace(/[^A-Z0-9\s.,-]/g, ''); 
+          let regexToUse = '';
+          
+          if (field === 'name') {
+              // UPDATED FIX: Only remove 0-9 and other extraneous characters.
+              // We explicitly ALLOW A-Z, spaces, period (.), comma (,), and dash (-).
+              // This regex removes everything NOT in that allowed set (including 0-9).
+              regexToUse = /[^A-Z\s.,-]/g; 
+          } else {
+              // Logic for Position/Area (allow A-Z, 0-9, spaces, period, comma, dash)
+              regexToUse = /[^A-Z0-9\s.,-]/g; 
+          }
+
+          cleanedValue = cleanedValue.replace(regexToUse, ''); 
           
           if (cleanedValue !== newValue.toUpperCase()) {
               // Kung may inalis na special character, magbigay ng notification
-              showNotification(`Special characters removed from ${field}.`, false);
+              showNotification(`Special characters and/or numbers removed from ${field}.`, false);
           }
           
           // I-set ang input value sa cleaned value para makita ng user agad
