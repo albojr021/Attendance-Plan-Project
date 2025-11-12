@@ -1618,6 +1618,7 @@ function handleAttendanceData(data) {
         } else if (e.isExistingEmployeeAdded) {
              // CRITICAL FIX 7 REVISION: Allow existing master employees being added to a plan sheet to pass
              // This ensures they are processed by saveEmployeeInfoBulk for the PLAN SHEET append.
+             // Only if all info fields are complete
              if (e.id.trim() !== '' && e.name.trim() !== '' && e.position.trim() !== '' && e.area.trim() !== '') {
                  finalEmpChanges.push(e);
              }
@@ -1713,13 +1714,26 @@ function handleAttendanceData(data) {
             if (!isPendingDelete && !lockedIdRefMap[emp.id]) {
                 // CRITICAL FIX: I-normalize ang pangalan bago i-store sa map
                 const normalizedName = normalizeNameForComparison(emp.name);
-                namesToCheck[normalizedName] = emp.id;
+                // Tanging ang saved master employees na HINDI sa finalEmpChanges ang dapat i-check
+                // Dito lang mag-i-store ng ID kung ang employee ay HINDI kasama sa finalEmpChanges list
+                const isPendingUpdate = finalEmpChanges.some(change => change.oldPersonnelId === emp.id);
+                if (!isPendingUpdate) {
+                   namesToCheck[normalizedName] = emp.id;
+                }
             }
         });
 
         // Check pending changes (New and Updated)
         for (const change of finalEmpChanges) {
             if (change.isDeleted) continue; // Skip deleted items
+
+            // CRITICAL FIX: Allow employees already existing in the master list 
+            // but being added to the plan (isExistingEmployeeAdded) to bypass the
+            // name conflict check with the master list.
+            if (change.isExistingEmployeeAdded) {
+                // We trust the ID check on the backend. This employee is already in the master.
+                continue; 
+            }
 
             const normalizedNameKey = normalizeNameForComparison(change.name);
             const existingId = namesToCheck[normalizedNameKey];
