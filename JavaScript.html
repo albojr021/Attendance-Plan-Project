@@ -621,35 +621,21 @@ function handleAttendanceData(data) {
         
         td.innerHTML = innerHTML;
         
-        if (isSavedRow) {
+        if (isSavedRow || !isRowBlank) { // Check for saved row or if it's a new row with content
             // Container para sa Edit at Delete Icons
             const actionContainer = document.createElement('div');
             // NEW CLASS: Flex container para sa dalawang icon
             actionContainer.className = 'absolute top-1/2 right-0 transform -translate-y-1/2 flex space-x-0.5 pr-1 print-hidden';
             
-            // Edit Button (Pen icon) for saved rows - POSITIONED INSIDE THE NO. CELL
-            const editButton = document.createElement('button');
-            editButton.type = 'button';
-            // NEW CLASS: 'action-icon'
-            editButton.className = `action-icon p-1 text-blue-600 hover:bg-blue-200 transition duration-150 edit-row-btn rounded-full ${isPrintLocked ? 'cursor-not-allowed opacity-40' : ''}`; // NEW: Lock Visual
-            editButton.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-            `;
-            editButton.dataset.locked = (isMarkedForDeletion || isPrintLocked) ? 'true' : 'true'; // Force locked if marked for deletion or printed
-            editButton.dataset.stableKey = stableLookupKey;
+            // NOTE: Tinanggal ang EDIT button dito.
             
-            // I-disable ang Edit button kung naka-lock
-            if (!isPrintLocked && !isMarkedForDeletion) {
-               editButton.addEventListener('click', handleEditRowToggle);
-            }
-
             // DELETE Button (Trash icon) for saved rows
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
             // NEW CLASS: 'action-icon' at color red
-            deleteButton.className = `action-icon p-1 text-red-600 hover:bg-red-200 transition duration-150 delete-row-btn rounded-full ${isMarkedForDeletion ? 'bg-red-400' : ''} ${isPrintLocked ? 'cursor-not-allowed opacity-40' : ''}`; // NEW: Lock Visual
+            // DELETE is allowed if NOT print locked
+            const isDeleteDisabled = isPrintLocked;
+            deleteButton.className = `action-icon p-1 text-red-600 hover:bg-red-200 transition duration-150 delete-row-btn rounded-full ${isMarkedForDeletion ? 'bg-red-400' : ''} ${isDeleteDisabled ? 'cursor-not-allowed opacity-40' : ''}`; // NEW: Lock Visual
             deleteButton.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -659,15 +645,16 @@ function handleAttendanceData(data) {
             deleteButton.dataset.isDeleted = isMarkedForDeletion ? 'true' : 'false';
             
             // I-disable ang Delete button kung naka-lock
-            if (!isPrintLocked) {
+            if (!isDeleteDisabled) {
                deleteButton.addEventListener('click', handleDeleteRowToggle);
             }
             
             // I-append ang icons sa container
-            actionContainer.appendChild(editButton);
             actionContainer.appendChild(deleteButton);
             td.appendChild(actionContainer);
-        } else if (!isRowBlank) {
+        }
+        
+        if (!isRowBlank && !isSavedRow) {
              // Indicator for New Row (TEMP_N)
              const newLabel = document.createElement('span');
              newLabel.textContent = 'NEW';
@@ -683,7 +670,7 @@ function handleAttendanceData(data) {
         input.value = displayId;
         input.placeholder = 'ID';
         input.maxLength = 20; 
-        // UPDATED: Read-only kung saved, marked for deletion, O LOCKED
+        // CRITICAL FIX: I-lock ang input kung saved row o marked for deletion o LOCKED, (Tanging ang NEW rows lang ang editable)
         input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; 
         input.dataset.oldPersonnelId = stableLookupKey; 
         input.dataset.field = 'id';
@@ -702,7 +689,8 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayName; // Gamitin ang display value
         input.placeholder = 'Full Name';
-        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; // UPDATED
+        // CRITICAL FIX: I-lock ang input kung saved row
+        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; 
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'name';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
@@ -717,7 +705,8 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayPosition; // Gamitin ang display value
         input.placeholder = 'Position';
-        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; // UPDATED
+        // CRITICAL FIX: I-lock ang input kung saved row
+        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; 
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'position';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
@@ -732,7 +721,8 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayArea; // Gamitin ang display value
         input.placeholder = 'Area';
-        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; // UPDATED
+        // CRITICAL FIX: I-lock ang input kung saved row
+        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; 
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'area';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
@@ -743,7 +733,8 @@ function handleAttendanceData(data) {
 
 
         // Add event listeners for Personnel Info updates (No auto-save)
-        if (!isPrintLocked && !isMarkedForDeletion) {
+        // CRITICAL FIX: Ang event listener ay para lang sa HINDI saved, HINDI deleted, at HINDI locked rows (i.e., NEW rows)
+        if (!isSavedRow && !isPrintLocked && !isMarkedForDeletion) {
             tr.querySelectorAll('.personnel-info-input').forEach(infoInput => {
                 infoInput.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
             });
@@ -915,18 +906,7 @@ function handleAttendanceData(data) {
                     }
                 });
                 
-                // I-disable ang Edit button
-                const editButton = row.querySelector('.edit-row-btn');
-                if (editButton) {
-                    editButton.dataset.locked = 'true';
-                    editButton.classList.remove('text-green-600', 'hover:bg-green-200');
-                    editButton.classList.add('text-blue-600', 'hover:bg-blue-200');
-                    editButton.innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                    `; 
-                }
+                // TANGGALIN: I-disable ang Edit button (wala na nito)
 
                 button.dataset.isDeleted = 'true';
                 button.classList.add('bg-red-400');
@@ -946,7 +926,7 @@ function handleAttendanceData(data) {
           inputs.forEach(input => {
               const field = input.dataset.field;
               input.value = employee[field];
-              // I-lock lang kung saved row
+              // CRITICAL FIX: I-lock ang input kung saved row (permanent lock)
               input.readOnly = isSavedRow;
               input.classList.toggle('read-only', isSavedRow);
           });
@@ -964,69 +944,8 @@ function handleAttendanceData(data) {
       
   }
   
-  // NEW FUNCTION: Handle Edit/Unlock Button Click (UPDATED for Deletion)
-  function handleEditRowToggle(event) {
-      const button = event.currentTarget;
-      const row = button.closest('tr');
-      const stableKey = button.dataset.stableKey;
-      
-      // Kunin ang current pending info para sa deletion check
-      const pendingInfo = pendingEmployeeInfoChanges[stableKey];
-      // Kung marked for deletion, huwag mag-allow ng edit
-      if (pendingInfo && pendingInfo.isDeleted) {
-          showNotification('Cannot edit: Row is marked for deletion. Undo deletion first.', false);
-          return;
-      }
-      
-      // NEW LOCK CHECK
-      const employee = currentContract.employees.find(e => e.id === stableKey) || { id: '' };
-      if (lockedIdRefMap[employee.id]) {
-          showNotification('Cannot edit: This employee\'s schedule has been printed and locked (Ref #'+ lockedIdRefMap[employee.id] +').', false);
-          return;
-      }
-      
-      // Inputs now start from the second TD (Personnel ID)
-      const inputs = row.querySelectorAll('.personnel-info-input'); 
-      const isLocked = button.dataset.locked === 'true';
+  // TINANGGAL: handleEditRowToggle function
 
-      if (isLocked) {
-          // Unlock the inputs
-          inputs.forEach(input => {
-              input.readOnly = false;
-              input.classList.remove('read-only');
-          });
-
-          // Change button to Lock/Save icon
-          button.dataset.locked = 'false';
-          button.classList.remove('text-blue-600', 'hover:bg-blue-200');
-          button.classList.add('text-green-600', 'hover:bg-green-200');
-          button.innerHTML = `
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-          `; // Checkmark icon
-          showNotification('Row unlocked. Remember to click "Save All Changes" to save edits.', false);
-
-      } else {
-          // Relock the inputs (Save is handled by saveAllChanges, this only visually locks)
-          inputs.forEach(input => {
-              input.readOnly = true;
-              input.classList.add('read-only');
-          });
-
-          // Change button back to Edit icon
-          button.dataset.locked = 'true';
-          button.classList.remove('text-green-600', 'hover:bg-green-200');
-          button.classList.add('text-blue-600', 'hover:bg-blue-200');
-          button.innerHTML = `
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-          `; // Pen icon
-          showNotification('Row locked. Changes are tracked locally.', true);
-      }
-  }
-  
   // REMOVED: handleScheduleLockToggle function
 
   // REMOVED: updateScheduleLockUI function
@@ -1052,10 +971,13 @@ function handleAttendanceData(data) {
           isDeleted: false // UPDATED: Default is not deleted
       };
       
-      // Huwag mag-allow ng changes kung marked for deletion O LOCKED
-      if (pendingChange.isDeleted || lockedIdRefMap[employee.id]) {
-          showNotification('Cannot edit: Row is locked by print Ref #'+ lockedIdRefMap[employee.id] +'.', false);
-          return;
+      // CRITICAL FIX: Huwag mag-allow ng changes kung HINDI new row.
+      if (employee.id || pendingChange.isDeleted || lockedIdRefMap[employee.id]) {
+           // Dapat na-prevent na ito ng readOnly property, pero safety check pa rin
+           showNotification('Cannot edit: Saved row is locked. You must delete and re-add to change info.', false);
+           // I-revert ang input value
+           input.value = employee[field];
+           return;
       }
 
 
@@ -1119,7 +1041,7 @@ function handleAttendanceData(data) {
               // Check for duplicate name using the new value
               if (isDuplicateName(pendingChange.name, employee.id, employee.no)) {
                   // UPDATED: Magbigay ng warning lang, pero hindi ire-revert ang input. Ang hard stop check ay nasa save button.
-                  showNotification(`WARNING: Personnel Name "${pendingChange.name}" is already used by another employee. Please use a unique identifier (e.g., add initials/middle name).`, false);
+                  showNotification(`WARNING: Personnel Name "${pendingChange.name}" is already used by another employee. Please use a unique identifier (e.g., add initials/middle name) before saving.`, false);
               }
           }
           // --- END DUPLICATE NAME CHECK (LOCAL WARNING ONLY) ---
@@ -1505,7 +1427,7 @@ function handleAttendanceData(data) {
         };
     })
     // Filter: 1. Deleted rows 2. New rows with content 3. Updated existing rows
-    .filter(e => e.isDeleted || (e.isNew && e.id.trim() !== '' && e.name.trim() !== '') || (!e.isNew && (e.id.trim() !== e.oldPersonnelId || e.name.trim() !== currentContract.employees.find(emp => emp.id === e.oldPersonnelId)?.name || e.position.trim() !== currentContract.employees.find(emp => emp.id === e.oldPersonnelId)?.position || e.area.trim() !== currentContract.employees.find(emp => emp.id === e.oldPersonnelId)?.area))); 
+    .filter(e => e.isDeleted || (e.isNew && e.id.trim() !== '' && e.name.trim() !== '')); 
     
     // Safety check: Filter out fully empty NEW rows, but allow fully empty DELETED rows to pass
     // Final check bago ipadala
@@ -1515,9 +1437,9 @@ function handleAttendanceData(data) {
             finalEmpChanges.push(e); // Allow deleted rows to pass regardless of content
         } else if (e.isNew && e.id.trim() !== '' && e.name.trim() !== '') {
             finalEmpChanges.push(e); // Only allow new rows if ID and Name are filled
-        } else if (!e.isNew) {
-            finalEmpChanges.push(e); // Allow updates to existing rows
         }
+        // Since editing of saved rows is removed, we only need to check for DELETED or NEW rows.
+        // Updates to existing rows' info fields are no longer possible.
     });
     
     
@@ -2024,8 +1946,6 @@ function handlePrintPlan() {
              }
         });
 
-        // Tanging ang rows na may AKTUAL na schedule O ang mga NAKA-LOCK na ang dapat i-lock ULIT.
-        // PERO: Ang layunin mo ay HUWAG i-lock ang NA after print, kaya TANGGALIN ang LOCKED check dito
         // Tanging ang rows na may AKTUAL na schedule lang ang kailangang i-lock/i-log.
         if (id && PERSONNEL_ID_REGEX.test(id) && hasActualSchedule) {
             printedPersonnelIds.push(id);
