@@ -31,6 +31,13 @@
         box-shadow: 0 0 0 1px #2563eb; /* blue-600 ring */
         transition: border 0.1s;
     }
+    
+    /* NEW: Style for Locked Rows */
+    .locked-row {
+        /* I-overwrite ang background color ng row/cells para sa visual cue */
+        background-color: #e5e7eb !important; /* bg-gray-200 */
+    }
+
 
     /* Styling para sa Attendance Input field (Schedule) */
     .attendance-input {
@@ -231,6 +238,12 @@
         {
             display: none !important;
         }
+        
+        /* NEW: Tanggalin ang locked row style sa print, gawing normal */
+        .locked-row {
+            background-color: white !important;
+            opacity: 1 !important;
+        }
 
         /* 2. I-reset ang body at margin */
         body {
@@ -362,12 +375,25 @@
             vertical-align: middle;
         }
         
+        /* --- CRITICAL FIX: I-reset ang lahat ng kulay sa puti at itim --- */
+        .attendance-cell-bg,
+        .attendance-grid .status-work,
+        .attendance-grid .status-rd,
+        .attendance-grid .status-rh,
+        .attendance-grid .status-sh,
+        .attendance-grid .locked-row .attendance-cell-bg { 
+            background-color: white !important; /* Force White Background */
+            color: black !important;             /* Force Black Text */
+            /* Mahalaga: Huwag pilitin ang browser na i-print ang color, bagkus i-reset ang lahat */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
         /* Inner cell content (status/schedule) - pareho ang size (0.5rem) */
         .attendance-cell-bg {
             padding: 1px 1px !important; 
             font-size: 0.5rem !important; 
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+            font-weight: bold; /* Keep bold for visibility */
             line-height: 1;
             min-height: 0;
             height: auto;
