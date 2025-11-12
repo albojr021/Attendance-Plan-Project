@@ -1801,20 +1801,25 @@ function handleAttendanceData(data) {
         // Only consider hiding rows that actually have employee info but no schedule
         if (!displayId && !displayName) return; 
 
-        let isScheduleBlank = true;
+        let hasValidSchedule = false; // EDITED: Use the dedicated check
         // Check all schedule cells for the current shift
         row.querySelectorAll('.cell-container').forEach(cell => {
             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
             // Check for actual status (time schedule or RD/RH/SH)
+            // CRITICAL: Ang LOCKED ay may planong na-print na, kaya dapat i-print ulit.
             if (status !== '' && status !== 'NA' && status !== 'DELETED') { // NA is a plan, so not blank
-                isScheduleBlank = false;
+                hasValidSchedule = true;
             }
         });
-
-        // If employee info exists, but schedule is blank, hide the row for printing
-        if (isScheduleBlank) {
-            row.classList.add('print-hidden'); // Use the existing print-hidden class for dynamic hiding
-            rowsToHide.push(row);
+        
+        // Check if the row is locked (meaning it was previously printed and should be printed again)
+        const stableKey = row.dataset.stableKey;
+        const isLocked = !!lockedIdRefMap[stableKey];
+        
+        // If employee info exists, but schedule is blank AND it's NOT locked, hide the row for printing
+        if (!hasValidSchedule && !isLocked) {
+             row.classList.add('print-hidden'); // Use the existing print-hidden class for dynamic hiding
+             rowsToHide.push(row);
         }
     });
     return rowsToHide;
@@ -1852,15 +1857,20 @@ function handleAttendanceData(data) {
         row.querySelectorAll('.cell-container').forEach(cell => {
             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
             
-            // Treat anything other than '', 'NA', 'LOCKED', 'DELETED' as a valid schedule.
-            // Note: LOCKED means it's a previously printed schedule (Valid Schedule).
+            // Treat anything other than '', 'NA', 'DELETED' as a valid schedule.
+            // Note: LOCKED is already excluded from this check because locked rows are excluded from the `printedPersonnelIds` list (see below)
             if (status !== '' && status !== 'NA' && status !== 'DELETED') { 
                 hasValidSchedule = true;
             }
         });
         
-        // If the row has NO actual schedule, we exclude it from the print.
-        if (!hasValidSchedule) { 
+        // CRITICAL FIX: I-check kung locked ang row (na-print na), kung oo, i-print ulit ito.
+        const stableKey = row.dataset.stableKey;
+        const isLocked = !!lockedIdRefMap[stableKey];
+        
+        // If the row has NO actual schedule (only NA/Blank) AND it's NOT locked, we exclude it from the print.
+        // Ang rows na may schedule O NAKA-LOCK ay ipi-print.
+        if (!hasValidSchedule && !isLocked) { 
             row.classList.add('print-hidden');
             dynamicallyHiddenRows.push(row); // Use the parameter array to track what was hidden
             return;
@@ -2004,21 +2014,37 @@ function handlePrintPlan() {
         const idInput = row.querySelector('[data-field="id"]');
         const id = (idInput?.value || '').trim();
         const stableKey = row.dataset.stableKey;
+        
+        // NEW CRITICAL LOGIC: I-check kung may AKTUAL na schedule ang row (hindi NA, BLANK, o DELETED)
+        let hasActualSchedule = false;
+        row.querySelectorAll('.cell-container').forEach(cell => {
+             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+             if (status !== '' && status !== 'NA' && status !== 'DELETED' && status !== 'LOCKED') {
+                 hasActualSchedule = true;
+             }
+        });
 
-        // Skip rows that are already locked
-        if (lockedIdRefMap[stableKey]) return;
-
-        // Only include rows with a valid ID (assuming completeness check passed on save)
-        if (id && PERSONNEL_ID_REGEX.test(id)) {
+        // Tanging ang rows na may AKTUAL na schedule O ang mga NAKA-LOCK na ang dapat i-lock ULIT.
+        // PERO: Ang layunin mo ay HUWAG i-lock ang NA after print, kaya TANGGALIN ang LOCKED check dito
+        // Tanging ang rows na may AKTUAL na schedule lang ang kailangang i-lock/i-log.
+        if (id && PERSONNEL_ID_REGEX.test(id) && hasActualSchedule) {
             printedPersonnelIds.push(id);
+            isPlanPrintable = true;
+        }
+        
+        // CRITICAL: Kung locked na ang row, hindi na ito kailangang idagdag sa printedPersonnelIds.
+        // Ito ay para lamang sa pag-log ng BAGONG lock.
+        // Ipagpalagay natin na ang LOCKED rows ay may plan na (isPlanPrintable = true)
+        if(!!lockedIdRefMap[stableKey]) {
             isPlanPrintable = true;
         }
     });
     
-    // NEW LOCK CHECK: If no IDs are printable (all are locked), prevent print
+    // NEW LOCK CHECK: If no IDs are printable (all are NA/Blank), prevent print
+    // Gumamit ng printedPersonnelIds.length > 0 para sa lockable rows.
     if (!isPlanPrintable) {
-         if (currentContract.employees.length > 0 && printedPersonnelIds.length === 0) {
-             showNotification('Cannot print: All available employee rows for this period are already locked (printed).', false);
+         if (currentContract.employees.length > 0) {
+             showNotification('Cannot print: No employee data with an **actual schedule** found. Please add a plan (Work/RD/RH/SH) before printing.', false);
              return;
          } else if (currentContract.employees.length === 0) {
              showNotification('Cannot print: No employee data available for printing.', false);
@@ -2027,10 +2053,9 @@ function handlePrintPlan() {
     }
 
 
-    // 3. Apply Dynamic Filtering for Clean Print (Initial filter for empty rows)
-    const dynamicallyHiddenRows = filterEmptyScheduleRows(); // This still hides rows with only BLANKs, not NA
-
-    // The real filtering for NA/Blanks happens inside triggerPrint now via applySequentialPrintNumberingAndHiding
+    // 3. Apply Dynamic Filtering for Clean Print
+    // Ang rows na NA/Blank ay tatanggalin sa print sa loob ng filterEmptyScheduleRows
+    const dynamicallyHiddenRows = filterEmptyScheduleRows(); 
 
     // 4. Prepare Context for Logging
     const currentYear = currentPlanningDate.getFullYear();
@@ -2051,6 +2076,7 @@ function handlePrintPlan() {
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
             // Pass the generated refNum, ALL context, and the LIST OF PRINTED IDs to triggerPrint
+            // Ang listahan na ito ay naglalaman na lamang ng IDs na may AKTUAL na schedule (hindi NA/BLANK)
             triggerPrint(refNum, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
         .withFailureHandler((error) => {
