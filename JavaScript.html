@@ -12,7 +12,7 @@
   // *** DATE NAVIGATION VARIABLE ***
   let currentPlanningDate = new Date(); 
   // Ang status codes
-  const fixedStatusCodes = ['RD', 'RH', 'SH', '']; 
+  const fixedStatusCodes = ['RD', 'RH', 'SH', '', 'NA']; // ADDED 'NA'
   const shiftPeriods = [
     { key: '1stHalf', label: '1st Half (1st to 15th)' },
     { key: '2ndHalf', label: '2nd Half (16th to End)' }
@@ -32,7 +32,8 @@
   // UPDATED: Ngayon may `isDeleted` property na
   let pendingEmployeeInfoChanges = {}; // Key: original/oldPersonnelId, Value: {id, name, position, area, isNew, isDeleted}
   
-  // REMOVED: isScheduleLocked global state
+  // NEW: Global state for locked ID map {ID: Ref#}
+  let lockedIdRefMap = {};
   // ---------------------------------------------
 
   const fixedStatusOptions = [
@@ -40,6 +41,8 @@
     { value: 'RH', label: 'Regular Holiday (RH)', color: 'status-rh text-blue-700' },
     { value: 'SH', label: 'Special Holiday (SH)', color: 'status-sh text-yellow-700' },
     { value: '', label: 'Clear/Blank (Work Schedule)', color: 'bg-gray-200 text-gray-700' },
+    // NEW: Not Applicable / Excluded Status
+    { value: 'NA', label: 'Not Applicable (NA) / Excluded', color: 'status-na text-gray-500' },
   ];
   
   // NEW: Global variable para sa validation (HH:MM-HH:MM) - HINDI NA GANOONG KA-STRICT DAHIL SA TYPE="TIME"
@@ -310,6 +313,7 @@
           document.getElementById('plan-action-area').classList.add('hidden');
           document.getElementById('initial-placeholder').classList.remove('hidden');
           currentContract = null;
+          lockedIdRefMap = {}; // Clear locked IDs
           sessionStorage.removeItem(CONTRACT_ID_CACHE_KEY); 
           return;
       }
@@ -386,6 +390,7 @@ function showBlankPlan() {
     
     currentContract.employees = currentContract.employees || []; // Ensure employees array is available
     currentContract.planMap = {}; // Start with no plan data
+    lockedIdRefMap = {}; // NEW: Walang locked IDs sa blank plan
     
     // Show planning area and render table
     document.getElementById('planning-area').classList.remove('hidden'); 
@@ -420,12 +425,17 @@ function fetchAttendanceData(sfcRef) {
 function handleAttendanceData(data) {
     // data.employees: [{no, id, name, position, area}, ...]
     // data.planMap: {personnelId_DayKey_ShiftKey: Status, ...}
+    // data.lockedIdRefMap: {ID: Ref#}
     currentContract.employees = data.employees;
     currentContract.planMap = data.planMap;
     
+    // UPDATED: Store the map directly
+    lockedIdRefMap = data.lockedIdRefMap || {}; 
+    const lockedIds = Object.keys(lockedIdRefMap); // For compatibility check
+    
     // Show planning area and render table
     document.getElementById('planning-area').classList.remove('hidden'); 
-    showNotification('Attendance Plan loaded successfully!', true);
+    showNotification(`Attendance Plan loaded successfully! (Locked Rows: ${lockedIds.length})`, true);
 
     renderAttendancePlan();
     toggleLoading(false);
@@ -459,6 +469,9 @@ function handleAttendanceData(data) {
 
     const startDay = selectedShift === '1stHalf' ? 1 : 16;
     const endDay = selectedShift === '1stHalf' ? 15 : daysInMonth;
+    
+    // Get locked IDs array for cell checking
+    const lockedIds = Object.keys(lockedIdRefMap);
 
     const tableContainer = document.getElementById('attendance-table-container');
     tableContainer.innerHTML = '';
@@ -556,6 +569,11 @@ function handleAttendanceData(data) {
         const isSavedRow = !!employee.id;
         // NEW LOGIC: Tiyakin kung marked for deletion
         const isMarkedForDeletion = pendingInfo && pendingInfo.isDeleted; 
+        
+        // NEW LOGIC: Check for Print Lock using the MAP
+        const lockedRefNum = lockedIdRefMap[employee.id]; // Get the Reference # directly
+        const isPrintLocked = !!lockedRefNum && !isMarkedForDeletion; 
+        
 
         // ** PRINTING LOGIC START: Check for blank row **
         // Kung walang Personnel ID at Name, at wala ring pending changes (maliban sa ID na blangko), i-marka para sa pagtatago sa print
@@ -571,9 +589,11 @@ function handleAttendanceData(data) {
              tr.classList.add('print-empty-row'); 
         }
         
-        // NEW: Kung marked for deletion, magdagdag ng visual cue
+        // NEW: Kung marked for deletion o LOCKED, magdagdag ng visual cue
         if (isMarkedForDeletion) {
             tr.classList.add('bg-red-200', 'opacity-50', 'line-through');
+        } else if (isPrintLocked) {
+             tr.classList.add('bg-gray-300', 'opacity-80', 'locked-row'); // NEW: Locked row visual
         }
 
         
@@ -586,7 +606,20 @@ function handleAttendanceData(data) {
         
         // Content for No. cell: Number and (optionally) Edit Button
         // UPDATED: Gamitin ang CSS class `py-2` para magbigay ng vertical padding
-        td.innerHTML = `<span class="block py-2">${employee.no}</span>`;
+        let innerHTML = `<span class="block py-2">${employee.no}</span>`;
+        
+        if (isPrintLocked) {
+             // NEW BADGE for Reference # (Added to the No. column)
+            innerHTML += `
+                <div class="absolute top-1/2 left-1 transform -translate-y-1/2 print-hidden flex items-center space-x-1">
+                    <span class="text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Locked by Print Ref. #${lockedRefNum}">
+                        🔒 REF ${lockedRefNum}
+                    </span>
+                </div>
+            `;
+        }
+        
+        td.innerHTML = innerHTML;
         
         if (isSavedRow) {
             // Container para sa Edit at Delete Icons
@@ -598,21 +631,25 @@ function handleAttendanceData(data) {
             const editButton = document.createElement('button');
             editButton.type = 'button';
             // NEW CLASS: 'action-icon'
-            editButton.className = 'action-icon p-1 text-blue-600 hover:bg-blue-200 transition duration-150 edit-row-btn rounded-full';
+            editButton.className = `action-icon p-1 text-blue-600 hover:bg-blue-200 transition duration-150 edit-row-btn rounded-full ${isPrintLocked ? 'cursor-not-allowed opacity-40' : ''}`; // NEW: Lock Visual
             editButton.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
             `;
-            editButton.dataset.locked = isMarkedForDeletion ? 'true' : 'true'; // Force locked if marked for deletion
+            editButton.dataset.locked = (isMarkedForDeletion || isPrintLocked) ? 'true' : 'true'; // Force locked if marked for deletion or printed
             editButton.dataset.stableKey = stableLookupKey;
-            editButton.addEventListener('click', handleEditRowToggle);
             
+            // I-disable ang Edit button kung naka-lock
+            if (!isPrintLocked && !isMarkedForDeletion) {
+               editButton.addEventListener('click', handleEditRowToggle);
+            }
+
             // DELETE Button (Trash icon) for saved rows
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
             // NEW CLASS: 'action-icon' at color red
-            deleteButton.className = `action-icon p-1 text-red-600 hover:bg-red-200 transition duration-150 delete-row-btn rounded-full ${isMarkedForDeletion ? 'bg-red-400' : ''}`;
+            deleteButton.className = `action-icon p-1 text-red-600 hover:bg-red-200 transition duration-150 delete-row-btn rounded-full ${isMarkedForDeletion ? 'bg-red-400' : ''} ${isPrintLocked ? 'cursor-not-allowed opacity-40' : ''}`; // NEW: Lock Visual
             deleteButton.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -620,7 +657,11 @@ function handleAttendanceData(data) {
             `;
             deleteButton.dataset.stableKey = stableLookupKey;
             deleteButton.dataset.isDeleted = isMarkedForDeletion ? 'true' : 'false';
-            deleteButton.addEventListener('click', handleDeleteRowToggle);
+            
+            // I-disable ang Delete button kung naka-lock
+            if (!isPrintLocked) {
+               deleteButton.addEventListener('click', handleDeleteRowToggle);
+            }
             
             // I-append ang icons sa container
             actionContainer.appendChild(editButton);
@@ -642,8 +683,8 @@ function handleAttendanceData(data) {
         input.value = displayId;
         input.placeholder = 'ID';
         input.maxLength = 20; 
-        // UPDATED: Read-only kung saved o marked for deletion
-        input.readOnly = isSavedRow || isMarkedForDeletion; 
+        // UPDATED: Read-only kung saved, marked for deletion, O LOCKED
+        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; 
         input.dataset.oldPersonnelId = stableLookupKey; 
         input.dataset.field = 'id';
         // NEW: Idagdag ang employee.no para sa duplicate check
@@ -661,7 +702,7 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayName; // Gamitin ang display value
         input.placeholder = 'Full Name';
-        input.readOnly = isSavedRow || isMarkedForDeletion; // UPDATED
+        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; // UPDATED
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'name';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
@@ -676,7 +717,7 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayPosition; // Gamitin ang display value
         input.placeholder = 'Position';
-        input.readOnly = isSavedRow || isMarkedForDeletion; // UPDATED
+        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; // UPDATED
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'position';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
@@ -691,7 +732,7 @@ function handleAttendanceData(data) {
         input.type = 'text';
         input.value = displayArea; // Gamitin ang display value
         input.placeholder = 'Area';
-        input.readOnly = isSavedRow || isMarkedForDeletion; // UPDATED
+        input.readOnly = isSavedRow || isMarkedForDeletion || isPrintLocked; // UPDATED
         input.dataset.oldPersonnelId = stableLookupKey; // Gumamit ng stable key
         input.dataset.field = 'area';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
@@ -702,9 +743,12 @@ function handleAttendanceData(data) {
 
 
         // Add event listeners for Personnel Info updates (No auto-save)
-        tr.querySelectorAll('.personnel-info-input').forEach(infoInput => {
-            infoInput.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
-        });
+        if (!isPrintLocked && !isMarkedForDeletion) {
+            tr.querySelectorAll('.personnel-info-input').forEach(infoInput => {
+                infoInput.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
+            });
+        }
+
 
         // 2. Attendance Plan Cells (Dynamic Dates)
         const currentPersonnelId = displayId; // Gamitin ang ID na na-save o pending
@@ -748,9 +792,11 @@ function handleAttendanceData(data) {
             td = tr.insertCell();
             // UPDATED: Gamitin ang bulk mode logic sa pagpili ng cursor
             const isSelected = bulkSelectedCells.includes(td);
-            const cursorClass = isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer';
+            // UPDATED: Lock Check
+            const isCellLocked = isPrintLocked || isMarkedForDeletion;
+            const cursorClass = isCellLocked ? 'cursor-not-allowed' : (isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer');
             
-            td.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${isMarkedForDeletion ? 'cursor-not-allowed' : cursorClass} ${isSelected ? 'cell-selected' : ''}`;
+            td.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${cursorClass} ${isSelected ? 'cell-selected' : ''}`;
             
             // EDITED: I-apply ang inline width sa data cells
             td.style.width = dateColWidth;
@@ -766,8 +812,8 @@ function handleAttendanceData(data) {
             td.dataset.shiftKey = trimmedShift;
             td.dataset.originalId = employee.id; 
             
-            // UPDATED: Pindutin lang kung HINDI marked for deletion
-            if (!isMarkedForDeletion) {
+            // UPDATED: Pindutin lang kung HINDI marked for deletion O LOCKED
+            if (!isCellLocked) {
                 // Initial listener setup is handleCellClick. Bulk mode will overwrite this.
                 td.addEventListener('click', handleCellClick);
                 
@@ -797,6 +843,12 @@ function handleAttendanceData(data) {
           position: '', 
           area: '' 
       };
+      
+      // NEW LOCK CHECK
+      if (lockedIdRefMap[employee.id]) {
+          showNotification('Cannot delete: This employee\'s schedule has been printed and locked (Ref #'+ lockedIdRefMap[employee.id] +').', false);
+          return;
+      }
       
       // I-retrieve ang pending change
       let pendingChange = pendingEmployeeInfoChanges[stableKey] || {
@@ -926,6 +978,13 @@ function handleAttendanceData(data) {
           return;
       }
       
+      // NEW LOCK CHECK
+      const employee = currentContract.employees.find(e => e.id === stableKey) || { id: '' };
+      if (lockedIdRefMap[employee.id]) {
+          showNotification('Cannot edit: This employee\'s schedule has been printed and locked (Ref #'+ lockedIdRefMap[employee.id] +').', false);
+          return;
+      }
+      
       // Inputs now start from the second TD (Personnel ID)
       const inputs = row.querySelectorAll('.personnel-info-input'); 
       const isLocked = button.dataset.locked === 'true';
@@ -993,8 +1052,12 @@ function handleAttendanceData(data) {
           isDeleted: false // UPDATED: Default is not deleted
       };
       
-      // Huwag mag-allow ng changes kung marked for deletion
-      if (pendingChange.isDeleted) return;
+      // Huwag mag-allow ng changes kung marked for deletion O LOCKED
+      if (pendingChange.isDeleted || lockedIdRefMap[employee.id]) {
+          showNotification('Cannot edit: Row is locked by print Ref #'+ lockedIdRefMap[employee.id] +'.', false);
+          return;
+      }
+
 
       // --- NEW VALIDATION AND FORMATTING LOGIC ---
       if (field === 'id') {
@@ -1155,14 +1218,16 @@ function handleAttendanceData(data) {
     const dayOfWeek = dayOfMonth.getDay(); 
 
     // REMOVED: isScheduleLocked check
-    // UPDATED: Huwag magdagdag ng cursor-pointer kung deleted ang row
+    // UPDATED: Huwag magdagdag ng cursor-pointer kung deleted ang row O LOCKED
     const isDeletedRow = cell.closest('tr').classList.contains('line-through');
+    const isLockedRow = cell.closest('tr').classList.contains('locked-row');
     
     // NEW: I-check kung nasa bulk mode para sa cursor
     const isSelected = bulkSelectedCells.includes(cell);
-    const cursorClass = isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer';
+    const isCellLocked = isLockedRow || isDeletedRow;
+    const cursorClass = isCellLocked ? 'cursor-not-allowed' : (isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer');
 
-    cell.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${isDeletedRow ? 'cursor-not-allowed' : cursorClass} ${isSelected ? 'cell-selected' : ''}`;
+    cell.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${cursorClass} ${isSelected ? 'cell-selected' : ''}`;
     
     cell.innerHTML = `<div class="p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg">${status}</div>`;
     const innerDiv = cell.querySelector('.attendance-cell-bg');
@@ -1182,6 +1247,9 @@ function handleAttendanceData(data) {
         bgColor = 'status-sh';
         textColor = 'text-yellow-700 font-bold';
         isWork = true;
+      } else if (status === 'NA') { // NEW: Handle NA status
+        bgColor = 'status-na'; 
+        textColor = 'text-gray-500 font-bold';
       } else {
         bgColor = 'status-work';
         textColor = 'text-green-700 font-bold';
@@ -1197,12 +1265,16 @@ function handleAttendanceData(data) {
         bgColor = 'bg-gray-200'; 
     }
     
-    // UPDATED: Kung deleted, gawing light red ang cell
+    // UPDATED: Kung deleted, gawing light red ang cell. Kung LOCKED, gawing dark gray
     if (isDeletedRow) {
         bgColor = 'bg-red-300';
         textColor = 'text-red-500';
         status = 'DELETED';
         innerDiv.textContent = status;
+    } else if (isLockedRow) { // NEW: Locked Row Visual
+        bgColor = 'bg-gray-400';
+        textColor = 'text-gray-700';
+        innerDiv.textContent = status || 'LOCKED';
     }
     
      innerDiv.className = `p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg ${bgColor} ${textColor}`;
@@ -1210,11 +1282,19 @@ function handleAttendanceData(data) {
 
 
   function handleCellClick(event) {
-    // *** NEW LOGIC: Huwag buksan ang modal kung nasa bulk selection mode ***
+    // *** NEW LOGIC: Huwag buksan ang modal kung nasa bulk selection mode O LOCKED ***
     if (isBulkSelectionMode) return; 
     
     const targetCell = event.currentTarget;
     const row = targetCell.closest('tr'); // <-- CRITICAL: Kunin ang row
+    
+    // NEW LOCK CHECK: Check for deletion and print lock
+    const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
+    if (isCellLocked) {
+        const employee = currentContract.employees.find(e => e.id === targetCell.dataset.originalId) || { id: '' };
+        showNotification('Cannot edit: This employee\'s schedule has been printed and locked (Ref #'+ lockedIdRefMap[employee.id] +').', false);
+        return;
+    }
     
     // CRITICAL FIX: Kunin ang Personnel ID direkta sa input field (Source of Truth)
     const idInput = row.querySelector('[data-field="id"]');
@@ -1223,12 +1303,6 @@ function handleAttendanceData(data) {
     const originalId = (targetCell.dataset.originalId || '').trim(); 
     const dayKey = targetCell.dataset.dayKey;
     const shiftKey = targetCell.dataset.shiftKey;
-    
-    // UPDATED: Check for deletion status
-    if (targetCell.closest('tr').classList.contains('line-through')) {
-        showNotification('Cannot edit: Row is marked for deletion. Undo deletion first.', false);
-        return;
-    }
     
     // CRITICAL FIX 1 (Validation): Block if Personnel ID is not filled with a valid numeric ID
     if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) { 
@@ -1319,6 +1393,12 @@ function handleAttendanceData(data) {
     if (!selectedCellData.personnelId && !selectedCellData.originalId) return; 
 
     const { personnelId, originalId, dayKey, shiftKey, cellElement } = selectedCellData;
+    
+    // NEW LOCK CHECK
+    if (lockedIdRefMap[originalId]) {
+        showNotification('Cannot save: This employee\'s schedule has been printed and locked (Ref #'+ lockedIdRefMap[originalId] +').', false);
+        return;
+    }
 
     let finalStatus;
     
@@ -1447,6 +1527,10 @@ function handleAttendanceData(data) {
     
     // Hanapin ang unang row na may ID O Name, pero hindi kumpleto.
     const incompleteRow = Array.from(allRows).find(row => {
+        // Skip if locked
+        const stableKey = row.dataset.stableKey;
+        if (lockedIdRefMap[stableKey] && !pendingEmployeeInfoChanges[stableKey]?.isDeleted) return false;
+
         const idInput = row.querySelector('[data-field="id"]');
         const nameInput = row.querySelector('[data-field="name"]');
         const positionInput = row.querySelector('[data-field="position"]'); // NEW
@@ -1510,9 +1594,9 @@ function handleAttendanceData(data) {
     
     // Combine saved (non-deleted) and pending (non-deleted, non-new) names
     currentContract.employees.forEach(emp => {
-        // Exclude employees that are being deleted
+        // Exclude employees that are being deleted or are locked (since they can't be changed)
         const isPendingDelete = pendingEmployeeInfoChanges[emp.id]?.isDeleted;
-        if (!isPendingDelete) {
+        if (!isPendingDelete && !lockedIdRefMap[emp.id]) {
             // CRITICAL FIX: I-normalize ang pangalan bago i-store sa map
             const normalizedName = normalizeNameForComparison(emp.name);
             namesToCheck[normalizedName] = emp.id;
@@ -1543,39 +1627,87 @@ function handleAttendanceData(data) {
     // === END FINAL DUPLICATE NAME CHECK ===
     
     // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (Missing Schedule/Status) ===
-    // Note: Kukunin natin ang LAHAT ng rows sa grid at iva-validate lang ang may laman.
-    const activeEmployeesForPlanCheck = [];
+    
+    // 1. Check if "Auto-mark NA" is checked
+    const autoNaChecked = document.getElementById('auto-na-check')?.checked || false;
+    
+    // List to store rows that MUST be checked for completeness
+    const rowsToValidate = [];
+    
     document.querySelectorAll('#attendance-table-container tbody tr').forEach(row => {
         const stableKey = row.dataset.stableKey;
-        const pendingInfo = pendingEmployeeInfoChanges[stableKey];
         
-        if (pendingInfo && pendingInfo.isDeleted) return; 
+        // Skip rows marked for deletion, locked, or completely blank placeholders
+        if (lockedIdRefMap[stableKey] || row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
+        
+        const employee = currentContract.employees.find(e => e.id === stableKey);
+        const employeeId = row.querySelector('[data-field="id"]')?.value; 
+        
+        // Determine if this row has ANY pending changes
+        const hasInfoChange = pendingEmployeeInfoChanges.hasOwnProperty(stableKey); 
+        const hasAttendanceChange = Object.keys(pendingAttendanceChanges).some(key => key.startsWith(employeeId + '_'));
+        const isNewRowWithContent = !employee && employeeId; // New row with ID filled
 
-        const employee = currentContract.employees.find(e => e.id === stableKey) || { id: '', name: '' };
-        const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
-        const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         
-        if (displayId.trim() && displayName.trim()) { // Only proceed if ID and Name are valid
+        if (isNewRowWithContent || hasInfoChange || hasAttendanceChange) {
+            // RULE A: Rows actively being modified (New or Existing with Pending Changes) MUST be validated for completeness.
+            const displayName = row.querySelector('[data-field="name"]')?.value.trim();
             const planCells = [];
             row.querySelectorAll('.cell-container').forEach(cell => {
                 const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-                const dayKey = cell.dataset.dayKey;
-                planCells.push({ dayKey, status });
+                planCells.push({ status });
             });
-            activeEmployeesForPlanCheck.push({ id: displayId.trim(), name: displayName.trim(), planCells });
+            rowsToValidate.push({ id: employeeId, name: displayName, planCells, stableKey });
+            
+        } else if (employee && autoNaChecked) {
+            // RULE B: Existing, untouched rows get Auto-NA if the checkbox is marked.
+            // Iterate over cells and add NA to pendingAttendanceChanges for any blank saved cell.
+            row.querySelectorAll('.cell-container').forEach(cell => {
+                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                if (status === '') {
+                    const dayKey = cell.dataset.dayKey;
+                    const shiftKey = cell.dataset.shiftKey;
+                    const autoNaKey = `${employeeId}_${dayKey}_${shiftKey}`;
+                    
+                    // Add to pending changes as NA
+                    pendingAttendanceChanges[autoNaKey] = 'NA';
+                    
+                    // Update visual immediately for this temporary NA application (optional but helpful)
+                    cell.querySelector('.attendance-cell-bg').textContent = 'NA';
+                    cell.querySelector('.attendance-cell-bg').classList.remove('bg-gray-100', 'text-gray-500');
+                    cell.querySelector('.attendance-cell-bg').classList.add('status-na', 'text-gray-500', 'font-bold');
+                }
+            });
+            
+        } else if (employee) {
+            // RULE C (Fix for Ismael): If Auto-NA is NOT checked, we must check existing untouched rows (like Ismael's)
+            // if their current (saved) plan is incomplete (i.e., has BLANK cells).
+            let isCurrentPlanIncomplete = false;
+            row.querySelectorAll('.cell-container').forEach(cell => {
+                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                if (status === '') { // If the cell's current display is blank
+                     isCurrentPlanIncomplete = true;
+                }
+            });
+            
+            if (isCurrentPlanIncomplete) {
+                 // Force validation on this untouched, incomplete saved row (like Ismael's).
+                 const displayName = row.querySelector('[data-field="name"]')?.value.trim();
+                 const planCells = [];
+                 row.querySelectorAll('.cell-container').forEach(cell => {
+                    const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                    planCells.push({ status });
+                 });
+                 rowsToValidate.push({ id: employeeId, name: displayName, planCells, stableKey });
+            }
         }
     });
 
     let incompleteColumnFound = false;
     let employeeNameIncomplete = '';
-    
-    if (activeEmployeesForPlanCheck.length === 0 && currentContract.headCount > 0) {
-        showNotification(`FATAL ERROR: Cannot save. Employee rows must be filled up to the Total Head Count (${currentContract.headCount}) before setting the plan.`, false);
-        return;
-    }
-    
-    // Tiyakin na ang bawat empleyado ay may schedule/status sa bawat araw sa kasalukuyang shift
-    for (const employee of activeEmployeesForPlanCheck) {
+
+    // Check completeness ONLY for the rows flagged for validation (including those auto-populated by NA)
+    for (const employee of rowsToValidate) {
         for (const cell of employee.planCells) {
             if (cell.status === '') {
                 incompleteColumnFound = true;
@@ -1587,10 +1719,10 @@ function handleAttendanceData(data) {
     }
 
     if (incompleteColumnFound) {
-        showNotification(`FATAL ERROR: Cannot save. Attendance Plan incomplete for employee: ${employeeNameIncomplete}. All days in the current shift/period must have a status (Work, RD, RH, or SH).`, false);
+        showNotification(`FATAL ERROR: Cannot save. Attendance Plan incomplete for employee: ${employeeNameIncomplete}. All days in the current shift/period must have a status (Work, RD, RH, SH, or NA).`, false);
         return; // HARD STOP SAVE
     }
-    // === END CHECK FOR BLANK ATTENDANCE COLUMNS ===
+    // === END CRITICAL 2 CHECK ===
 
 
     const attChanges = Object.keys(pendingAttendanceChanges).map(key => {
@@ -1674,7 +1806,7 @@ function handleAttendanceData(data) {
         row.querySelectorAll('.cell-container').forEach(cell => {
             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
             // Check for actual status (time schedule or RD/RH/SH)
-            if (status !== '' && status !== 'DELETED') { 
+            if (status !== '' && status !== 'NA' && status !== 'DELETED') { // NA is a plan, so not blank
                 isScheduleBlank = false;
             }
         });
@@ -1688,11 +1820,70 @@ function handleAttendanceData(data) {
     return rowsToHide;
   }
   // --- END DYNAMIC ROW FILTERING ---
+  
+  // --- NEW FUNCTION: Sequential Numbering and Hiding ---
 
+  function applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows) {
+    let printNumber = 1;
+    const rowsToHide = [];
+    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
 
-  // --- NEW PRINT LOGIC (UPDATED: Check for pending changes first) ---
+    gridRows.forEach(row => {
+        // --- 1. Identify rows to exclude (A-Deletion/Placeholder, B-NA/Blank Schedule) ---
+        
+        // A. Rows marked for Deletion or already blank placeholders
+        if (row.classList.contains('line-through') || row.classList.contains('print-empty-row')) {
+            row.classList.add('print-hidden');
+            return;
+        }
 
-function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift) {
+        const idInput = row.querySelector('[data-field="id"]');
+        const displayId = (idInput?.value || '').trim();
+
+        // Skip placeholder rows without ID
+        if (!displayId) { 
+             row.classList.add('print-hidden');
+             return;
+        }
+        
+        // B. Check for NA/Blank Exclusion (Row must have at least one valid schedule to be printed)
+        let hasValidSchedule = false;
+
+        row.querySelectorAll('.cell-container').forEach(cell => {
+            const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+            
+            // Treat anything other than '', 'NA', 'LOCKED', 'DELETED' as a valid schedule.
+            // Note: LOCKED means it's a previously printed schedule (Valid Schedule).
+            if (status !== '' && status !== 'NA' && status !== 'DELETED') { 
+                hasValidSchedule = true;
+            }
+        });
+        
+        // If the row has NO actual schedule, we exclude it from the print.
+        if (!hasValidSchedule) { 
+            row.classList.add('print-hidden');
+            dynamicallyHiddenRows.push(row); // Use the parameter array to track what was hidden
+            return;
+        }
+
+        // --- 2. Apply sequential numbering to rows NOT excluded ---
+        const noCellSpan = row.querySelector('.sticky-col:first-child > span:first-child');
+        
+        // We only renumber if the row is NOT hidden and NOT a deleted row.
+        if (noCellSpan && !row.classList.contains('print-hidden')) {
+            // Update the display number, removing any existing number.
+            noCellSpan.textContent = printNumber;
+            printNumber++;
+        }
+    });
+    
+    // We return the original array (dynamicallyHiddenRows) which now contains the new NA/Blank exclusions.
+    return dynamicallyHiddenRows; 
+  }
+  
+  // --- NEW PRINT LOGIC (UPDATED: Check for pending changes first & Locking) ---
+
+function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
 
     // I-set up ang Modal at Buttons handlers (Ito ay isang self-contained function)
@@ -1708,8 +1899,19 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
         // Function para i-restore ang UI at i-clear ang handlers
         const restoreUI = () => {
             modal.classList.add('hidden');
-            emptyRows.forEach(row => row.classList.remove('print-hidden'));
-            dynamicallyHiddenRows.forEach(row => row.classList.remove('print-hidden'));
+            
+            // CRITICAL: Revert print-hidden class for all rows added by this process
+            document.querySelectorAll('.print-hidden').forEach(row => {
+                // Check if the row was explicitly hidden for print and remove the class
+                if (dynamicallyHiddenRows.includes(row) || row.classList.contains('print-empty-row')) {
+                    row.classList.remove('print-hidden');
+                }
+            });
+
+            // CRITICAL: Restore original row numbers (by forcing a full render)
+            // This is the easiest way to undo the sequential numbering
+            reloadPlanAndCheckExistence(); 
+
             inputs.forEach(input => {
                 input.classList.remove('print-read-only');
             });
@@ -1721,19 +1923,22 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
 
         // OK Handler (User confirmed the print was successful)
         const handleOk = () => {
-            restoreUI();
             
-            // Tawagin ang Apps Script function na magre-record ng log
+            // Tawagin ang Apps Script function na magre-record ng log at **MAG-LOCK**
             google.script.run
                 .withSuccessHandler(() => {
-                    console.log(`Successfully recorded print log entry #${refNum}.`);
-                    showNotification(`Print action (Ref# ${refNum}) successfully logged.`, true);
+                    console.log(`Successfully recorded print log entry #${refNum} and locked IDs.`);
+                    showNotification(`Print action (Ref# ${refNum}) successfully logged and locked. Refreshing...`, true);
+                    // CRITICAL: Force reload to apply new locked state and restore UI
+                    restoreUI();
                 })
                 .withFailureHandler((error) => {
                     console.error(`Failed to record print log entry #${refNum}:`, error);
-                    showNotification(`Warning: Failed to record print log (Ref# ${refNum}). Error: ${error.message}`, false);
+                    showNotification(`Warning: Failed to record print log/lock (Ref# ${refNum}). Error: ${error.message}`, false);
+                    // Mag-reload pa rin para ma-check ang estado at restore UI
+                    restoreUI();
                 })
-                .recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift);
+                .recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, printedPersonnelIds); // NEW: Pass printed IDs
         };
 
         // Cancel Handler (User discarded the log)
@@ -1753,18 +1958,19 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
         };
     };
     
-    // 1. Tanggalin ang mga blangkong row at i-apply ang print-hidden
-    const emptyRows = document.querySelectorAll('.print-empty-row');
-    emptyRows.forEach(row => row.classList.add('print-hidden'));
-    dynamicallyHiddenRows.forEach(row => row.classList.add('print-hidden'));
+    // --- STEP 1: Execute Sequential Numbering and Final Exclusion ---
+    const rowsToRestore = applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows); 
 
-    // 2. I-convert ang input fields sa read-only text
+    // 2. Tanggalin ang mga blangkong row at i-apply ang print-hidden
+    document.querySelectorAll('.print-empty-row').forEach(row => row.classList.add('print-hidden'));
+    
+    // 3. I-convert ang input fields sa read-only text
     const inputs = document.querySelectorAll('#attendance-table-container input');
     inputs.forEach(input => {
         input.classList.add('print-read-only');
     });
 
-    // 3. I-setup ang modal handlers at i-trigger ang print
+    // 4. I-setup ang modal handlers at i-trigger ang print
     setupModalAndPrint();
 
     window.print();
@@ -1786,14 +1992,47 @@ function handlePrintPlan() {
         return;
     }
     
-    // 2. Apply Dynamic Filtering for Clean Print
-    const dynamicallyHiddenRows = filterEmptyScheduleRows();
+    // Check 2: Collect list of IDs to be printed (Active rows that are NOT locked)
+    const activeRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    const printedPersonnelIds = [];
+    let isPlanPrintable = false;
+
+    activeRows.forEach(row => {
+        // Skip deleted rows or completely blank placeholder rows
+        if (row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
+        
+        const idInput = row.querySelector('[data-field="id"]');
+        const id = (idInput?.value || '').trim();
+        const stableKey = row.dataset.stableKey;
+
+        // Skip rows that are already locked
+        if (lockedIdRefMap[stableKey]) return;
+
+        // Only include rows with a valid ID (assuming completeness check passed on save)
+        if (id && PERSONNEL_ID_REGEX.test(id)) {
+            printedPersonnelIds.push(id);
+            isPlanPrintable = true;
+        }
+    });
     
-    if (dynamicallyHiddenRows.length > 0) {
-        showNotification(`Note: Hiding ${dynamicallyHiddenRows.length} employee row(s) with no schedule plan for a clean print. Generating Print Reference...`, true);
+    // NEW LOCK CHECK: If no IDs are printable (all are locked), prevent print
+    if (!isPlanPrintable) {
+         if (currentContract.employees.length > 0 && printedPersonnelIds.length === 0) {
+             showNotification('Cannot print: All available employee rows for this period are already locked (printed).', false);
+             return;
+         } else if (currentContract.employees.length === 0) {
+             showNotification('Cannot print: No employee data available for printing.', false);
+             return;
+         }
     }
 
-    // 3. Prepare Context for Logging
+
+    // 3. Apply Dynamic Filtering for Clean Print (Initial filter for empty rows)
+    const dynamicallyHiddenRows = filterEmptyScheduleRows(); // This still hides rows with only BLANKs, not NA
+
+    // The real filtering for NA/Blanks happens inside triggerPrint now via applySequentialPrintNumberingAndHiding
+
+    // 4. Prepare Context for Logging
     const currentYear = currentPlanningDate.getFullYear();
     const currentMonth = currentPlanningDate.getMonth();
     const currentShift = document.getElementById('shift-period-select').value;
@@ -1807,12 +2046,12 @@ function handlePrintPlan() {
 
     toggleLoading(true);
 
-    // 4. Call Server to ONLY GENERATE Print Action and get Ref # (Hindi pa magre-record!)
+    // 5. Call Server to ONLY GENERATE Print Action and get Ref # (Hindi pa magre-record!)
     google.script.run
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
-            // Pass the generated refNum and ALL context to triggerPrint
-            triggerPrint(refNum, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
+            // Pass the generated refNum, ALL context, and the LIST OF PRINTED IDs to triggerPrint
+            triggerPrint(refNum, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
         .withFailureHandler((error) => {
             // Ensure dynamically hidden rows are restored on error
@@ -1845,9 +2084,11 @@ function handleCellSelectionClick(event) {
     const targetCell = event.currentTarget;
     const row = targetCell.closest('tr');
     
-    // Safety check: Cannot select cells without ID or if the row is marked for deletion
-    if (targetCell.closest('tr').classList.contains('line-through')) {
-        showNotification('Cannot select: Row is marked for deletion.', false);
+    // Safety check: Cannot select cells without ID or if the row is marked for deletion OR LOCKED
+    const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
+    if (isCellLocked) {
+        const employee = currentContract.employees.find(e => e.id === targetCell.dataset.originalId) || { id: '' };
+        showNotification('Cannot select: Row is marked for deletion or is locked (Ref #'+ lockedIdRefMap[employee.id] +').', false);
         return;
     }
     
@@ -1874,9 +2115,16 @@ function startBulkSelectionMode() {
     document.querySelectorAll('.cell-container').forEach(cell => {
         // I-alis ang old handler (handleCellClick)
         cell.removeEventListener('click', handleCellClick);
-        // I-dagdag ang new handler (handleCellSelectionClick)
-        cell.addEventListener('click', handleCellSelectionClick);
-        cell.classList.add('cursor-crosshair'); // Visual cue for selection mode
+        
+        // Only add new handler if not locked/deleted
+        const row = cell.closest('tr');
+        const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
+        
+        if (!isCellLocked) {
+           // I-dagdag ang new handler (handleCellSelectionClick)
+           cell.addEventListener('click', handleCellSelectionClick);
+           cell.classList.add('cursor-crosshair'); // Visual cue for selection mode
+        }
         cell.classList.remove('cell-selected'); // Ensure initial state is not selected
     });
     
@@ -1900,8 +2148,13 @@ function exitBulkSelectionMode() {
     // 1. I-restore ang original click handler at i-clear ang selection
     document.querySelectorAll('.cell-container').forEach(cell => {
         cell.removeEventListener('click', handleCellSelectionClick);
-        // I-restore ang old handler (handleCellClick)
-        cell.addEventListener('click', handleCellClick); 
+        // Only restore old handler if not locked/deleted
+        const row = cell.closest('tr');
+        const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
+        if (!isCellLocked) {
+           // I-restore ang old handler (handleCellClick)
+           cell.addEventListener('click', handleCellClick); 
+        }
         cell.classList.remove('cell-selected', 'cursor-crosshair');
     });
     
@@ -2036,6 +2289,9 @@ function saveBulkSchedule(event, fixedStatusValue) {
         const originalId = cellElement.dataset.originalId; 
         const dayKey = cellElement.dataset.dayKey;
         const shiftKey = cellElement.dataset.shiftKey;
+        
+        // NEW LOCK CHECK (Dapat hindi na kailangan dahil tinanggal natin sila sa bulkSelectedCells, but for safety)
+        if (lockedIdRefMap[originalId]) return;
         
         // Validation should have already happened in handleCellSelectionClick, but a final check is safe
         if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) return; // Skip if invalid ID
