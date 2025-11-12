@@ -125,21 +125,24 @@
   }
   // --- END NEW DATALIST FUNCTIONS ---
 
-  // --- NEW: FUNCTION PARA I-CHECK KUNG DUPLICATE ANG ID ---
+  // --- NEW: FUNCTION PARA I-CHECK KUNG DUPLICATE ANG ID (FIXED) ---
   function isDuplicateId(newId, originalSavedId, currentNo) {
       const trimmedNewId = newId.trim();
       if (!trimmedNewId) return false;
-
-      // 1. Check against SAVED employees (using originalSavedId as exclusion)
-      // UPDATED: Check against the FULL MASTER LIST (employeeMasterList)
-      if (employeeMasterList.length > 0) {
-          const savedConflict = employeeMasterList.some(emp => {
-              const savedId = (emp.id || '').trim();
-              // I-check kung nag-match ang ID, PERO hindi ito ang original ID ng row na ine-edit
-              return savedId === trimmedNewId && savedId !== originalSavedId;
-          });
-          if (savedConflict) return true;
-      }
+      
+      // 1. Check against CURRENTLY RENDERED ROWS (employees in the plan/grid)
+      const activeEmployeesInGrid = getActiveEmployeesInGrid();
+      
+      const savedConflict = activeEmployeesInGrid.some(emp => {
+          const savedId = (emp.id || '').trim();
+          
+          // Check 1. If the current row's *saved ID* is NOT the stable key, then it's another employee
+          const isAnotherRow = savedId !== originalSavedId;
+          
+          // Check 2. If the current row's ID matches the new ID.
+          return isAnotherRow && savedId === trimmedNewId; 
+      });
+      if (savedConflict) return true;
 
       // 2. Check against PENDING changes (using row key exclusion)
       const pendingKeys = Object.keys(pendingEmployeeInfoChanges);
@@ -166,16 +169,20 @@
       const normalizedNewName = normalizeNameForComparison(newName); 
       if (!normalizedNewName) return false;
       
-      // 1. Check against SAVED employees (using originalSavedId as exclusion)
-      // UPDATED: Check against the FULL MASTER LIST (employeeMasterList)
-      if (employeeMasterList.length > 0) {
-          const savedConflict = employeeMasterList.some(emp => {
-              const normalizedSavedName = normalizeNameForComparison(emp.name);
-              // I-check kung nag-match ang Name, PERO hindi ito ang original ID ng row na ine-edit
-              return normalizedSavedName === normalizedNewName && (emp.id || '') !== originalSavedId;
-          });
-          if (savedConflict) return true;
-      }
+      // 1. Check against SAVED employees (CURRENTLY RENDERED ROWS)
+      const activeEmployeesInGrid = getActiveEmployeesInGrid();
+      
+      const savedConflict = activeEmployeesInGrid.some(emp => {
+          const normalizedSavedName = normalizeNameForComparison(emp.name);
+          const savedId = (emp.id || '').trim();
+          
+          // Check 1. If the current row's *saved ID* is NOT the stable key, then it's another employee
+          const isAnotherRow = savedId !== originalSavedId;
+          
+          // Check 2. If the name matches the new name.
+          return isAnotherRow && normalizedSavedName === normalizedNewName;
+      });
+      if (savedConflict) return true;
 
       // 2. Check against PENDING changes (using row key exclusion)
       const pendingKeys = Object.keys(pendingEmployeeInfoChanges);
@@ -199,17 +206,15 @@
   }
   // --- END DUPLICATE NAME FUNCTION ---
   
-  // --- HELPER FUNCTION: KUNIN ANG ACTIVE EMPLOYEES SA GRID ---
+  // --- HELPER FUNCTION: KUNIN ANG ACTIVE EMPLOYEES SA GRID (FROM DOM) ---
   function getActiveEmployeesInGrid() {
-    // UPDATED: Use the currently rendered employees
     const activeEmployees = [];
-    
-    // We can rely on currentContract.employees for the currently rendered set
+    // UPDATED: Use the currently rendered employees from the currentContract (which is already filtered)
     const renderedEmployees = currentContract?.employees || [];
     
-    renderedEmployees.forEach((employee, index) => {
-        // Find the stable key from the current rendered set
-        const stableKey = employee.id || `TEMP_${index + 1}`; 
+    // 1. Add currently loaded (non-deleted) employees
+    renderedEmployees.forEach((employee) => {
+        const stableKey = employee.id; // Stable key is the saved ID
         const pendingInfo = pendingEmployeeInfoChanges[stableKey];
         
         // Skip kung marked for deletion
@@ -226,25 +231,27 @@
         });
     });
     
-    // Include newly added rows that are not yet in currentContract.employees
-    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
-    gridRows.forEach(row => {
-        const stableKey = row.dataset.stableKey;
+    // 2. Add newly added/unsaved rows from pendingEmployeeInfoChanges (TEMP_N keys)
+    const pendingKeys = Object.keys(pendingEmployeeInfoChanges);
+    pendingKeys.forEach(stableKey => {
         if (!stableKey.startsWith('TEMP_')) return; // Only check new rows
 
         const pendingInfo = pendingEmployeeInfoChanges[stableKey];
         if (pendingInfo && pendingInfo.isDeleted) return; 
-        if (!pendingInfo) return; // Skip if it's a blank row placeholder
-
+        
         const displayId = pendingInfo.id;
         const displayName = pendingInfo.name;
         
         if (displayId && displayName) {
-             activeEmployees.push({
-                 id: displayId.trim(),
-                 name: displayName.trim(),
-                 planCells: [] 
-             });
+             // Make sure we don't duplicate a row that might have been added to the renderedEmployees list 
+             // in a complex scenario (shouldn't happen with the current logic, but safe to check)
+             if (!activeEmployees.some(e => e.id === displayId.trim())) {
+                 activeEmployees.push({
+                     id: displayId.trim(),
+                     name: displayName.trim(),
+                     planCells: [] 
+                 });
+             }
         }
     });
 
@@ -1090,8 +1097,10 @@ function handleAttendanceData(data) {
       // 1. Find the corresponding master record based on the new value
       let masterRecord = null;
       if (field === 'id') {
+           // Find master record by ID
            masterRecord = employeeMasterList.find(e => e.id === newValue.trim());
       } else if (field === 'name') {
+           // Find master record by Name
            masterRecord = employeeMasterList.find(e => e.name === newValue.trim());
       }
       
@@ -1132,16 +1141,25 @@ function handleAttendanceData(data) {
           // --- DUPLICATE ID CHECK ---
           if (cleanId) {
               // Pass new ID, original saved ID, and current row number
-              if (isDuplicateId(cleanId, employee.id, employee.no)) { 
-                  showNotification(`Personnel ID "${cleanId}" is already used in another row (saved or pending).`, false);
-                  input.value = employee.id; // Revert input
-                  pendingChange.id = employee.id; // Revert pending change
-                  // I-delete kung ang pag-revert ay nagbalik sa original state
-                  if (employee.id === input.value) { 
-                      delete pendingEmployeeInfoChanges[oldPersonnelKey];
-                  }
-                  return;
+              // CRITICAL BYPASS: Only run the internal duplication check if the ID is NOT already known in the Master List
+              const existsInMaster = employeeMasterList.some(e => e.id === cleanId);
+              
+              if (!existsInMaster) { 
+                if (isDuplicateId(cleanId, employee.id, employee.no)) { 
+                    showNotification(`Personnel ID "${cleanId}" is already used in another row (saved or pending).`, false);
+                    
+                    // Revert the input field and pending change to avoid conflict
+                    input.value = employee.id; 
+                    pendingChange.id = employee.id; 
+                    
+                    // If the reversion brings it back to the original state, delete the pending change
+                    if (employee.id === input.value) { 
+                        delete pendingEmployeeInfoChanges[oldPersonnelKey];
+                    }
+                    return;
+                }
               }
+              // If existsInMaster is true (Curry's ID), we skip isDuplicateId, thus allowing the entry.
           }
           // --- END DUPLICATE ID CHECK ---
       } else if (field === 'name' || field === 'position' || field === 'area') {
@@ -1152,8 +1170,7 @@ function handleAttendanceData(data) {
               
               if (field === 'name') {
                   // UPDATED FIX: Only remove 0-9 and other extraneous characters.
-                  // We explicitly ALLOW A-Z, spaces, period (.), comma (,), and dash (-).
-                  // This regex removes everything NOT in that allowed set (including 0-9).
+                  // We explicitly ALLOW A-Z, spaces, period (.), comma (,), and dash (-)
                   regexToUse = /[^A-Z\s.,-]/g; 
               } else {
                   // Logic for Position/Area (allow A-Z, 0-9, spaces, period, comma, dash)
