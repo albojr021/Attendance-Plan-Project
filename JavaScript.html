@@ -1591,6 +1591,9 @@ function handleAttendanceData(data) {
     // CRITICAL FIX 4: I-convert ang pendingEmployeeInfoChanges bago ipadala sa server.
     const empChanges = Object.keys(pendingEmployeeInfoChanges).map(stableKey => {
         const change = pendingEmployeeInfoChanges[stableKey];
+        // NEW: Determine if this is an existing employee being added to a new plan (e.g., Curry)
+        const isMasterEmployee = employeeMasterList.some(masterEmp => masterEmp.id === change.id.trim());
+        const isExistingAddedToPlan = change.originalEmployeeId === '' && isMasterEmployee; // Blank original ID + exists in master
         
         return {
             // Ito ang gagamitin ng server para hanapin ang row
@@ -1601,11 +1604,10 @@ function handleAttendanceData(data) {
             position: change.position,
             area: change.area,
             isNew: change.originalEmployeeId === '', // Flag para sa bagong row
-            isDeleted: change.isDeleted || false // UPDATED: I-pass ang deletion flag
+            isDeleted: change.isDeleted || false, // UPDATED: I-pass ang deletion flag
+            isExistingEmployeeAdded: isExistingAddedToPlan // NEW FLAG for server-side skipping
         };
     })
-    // Filter: 1. Deleted rows 2. New rows with content 3. Updated existing rows
-    .filter(e => e.isDeleted || (e.isNew && e.id.trim() !== '' && e.name.trim() !== '')); 
     
     // Safety check: Filter out fully empty NEW rows, but allow fully empty DELETED rows to pass
     // Final check bago ipadala
@@ -1613,11 +1615,19 @@ function handleAttendanceData(data) {
     empChanges.forEach(e => {
         if (e.isDeleted) {
             finalEmpChanges.push(e); // Allow deleted rows to pass regardless of content
-        } else if (e.isNew && e.id.trim() !== '' && e.name.trim() !== '' && e.position.trim() !== '' && e.area.trim() !== '') {
-            finalEmpChanges.push(e); // Only allow new rows if ALL four info fields are filled
+        } else if (e.isExistingEmployeeAdded) {
+             // CRITICAL FIX 7 REVISION: Allow existing master employees being added to a plan sheet to pass
+             // This ensures they are processed by saveEmployeeInfoBulk for the PLAN SHEET append.
+             if (e.id.trim() !== '' && e.name.trim() !== '' && e.position.trim() !== '' && e.area.trim() !== '') {
+                 finalEmpChanges.push(e);
+             }
         }
-        // Since editing of saved rows is removed, we only need to check for DELETED or NEW rows.
-        // Updates to existing rows' info fields are no longer possible.
+        else if (e.isNew) {
+            // Only allow truly NEW employees (not in master, not flagged as isExistingEmployeeAdded) if ALL four info fields are filled
+            if (e.id.trim() !== '' && e.name.trim() !== '' && e.position.trim() !== '' && e.area.trim() !== '') {
+                 finalEmpChanges.push(e);
+            }
+        }
     });
     
     
@@ -1689,41 +1699,45 @@ function handleAttendanceData(data) {
 
 
     // === CRITICAL 1: FINAL DUPLICATE NAME CHECK BEFORE SAVE ===
-    const namesToCheck = {};
-    let duplicateNameFound = false;
-    
-    // Combine saved (non-deleted) and pending (non-deleted, non-new) names
-    // UPDATED: Check against the FULL master list
-    employeeMasterList.forEach(emp => {
-        // Exclude employees that are being deleted or are locked (since they can't be changed)
-        const isPendingDelete = pendingEmployeeInfoChanges[emp.id]?.isDeleted;
-        if (!isPendingDelete && !lockedIdRefMap[emp.id]) {
-            // CRITICAL FIX: I-normalize ang pangalan bago i-store sa map
-            const normalizedName = normalizeNameForComparison(emp.name);
-            namesToCheck[normalizedName] = emp.id;
+    // *** NEW CHECK: Skip the global check if no employee master changes are being sent ***
+    if (finalEmpChanges.length > 0) { 
+        
+        const namesToCheck = {};
+        let duplicateNameFound = false;
+        
+        // Combine saved (non-deleted) and pending (non-deleted, non-new) names
+        // UPDATED: Check against the FULL master list
+        employeeMasterList.forEach(emp => {
+            // Exclude employees that are being deleted or are locked (since they can't be changed)
+            const isPendingDelete = pendingEmployeeInfoChanges[emp.id]?.isDeleted;
+            if (!isPendingDelete && !lockedIdRefMap[emp.id]) {
+                // CRITICAL FIX: I-normalize ang pangalan bago i-store sa map
+                const normalizedName = normalizeNameForComparison(emp.name);
+                namesToCheck[normalizedName] = emp.id;
+            }
+        });
+
+        // Check pending changes (New and Updated)
+        for (const change of finalEmpChanges) {
+            if (change.isDeleted) continue; // Skip deleted items
+
+            const normalizedNameKey = normalizeNameForComparison(change.name);
+            const existingId = namesToCheck[normalizedNameKey];
+
+            // Check if the name already exists AND it belongs to a different ID
+            if (existingId && existingId !== change.oldPersonnelId) {
+                duplicateNameFound = true;
+                break;
+            }
+
+            // Add or update the name in the check map
+            namesToCheck[normalizedNameKey] = change.id || change.oldPersonnelId;
         }
-    });
 
-    // Check pending changes (New and Updated)
-    for (const change of finalEmpChanges) {
-        if (change.isDeleted) continue; // Skip deleted items
-
-        const normalizedNameKey = normalizeNameForComparison(change.name);
-        const existingId = namesToCheck[normalizedNameKey];
-
-        // Check if the name already exists AND it belongs to a different ID
-        if (existingId && existingId !== change.oldPersonnelId) {
-            duplicateNameFound = true;
-            break;
+        if (duplicateNameFound) {
+            showNotification('FATAL ERROR: Cannot save. Duplicate Personnel Name detected. Please edit the name to be unique (e.g., add initials/middle name) before saving.', false);
+            return; // HARD STOP SAVE
         }
-
-        // Add or update the name in the check map
-        namesToCheck[normalizedNameKey] = change.id || change.oldPersonnelId;
-    }
-
-    if (duplicateNameFound) {
-        showNotification('FATAL ERROR: Cannot save. Duplicate Personnel Name detected. Please edit the name to be unique (e.g., add initials/middle name) before saving.', false);
-        return; // HARD STOP SAVE
     }
     // === END FINAL DUPLICATE NAME CHECK ===
     
