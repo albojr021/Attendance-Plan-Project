@@ -1069,6 +1069,11 @@ function handleAttendanceData(data) {
           isDeleted: false // UPDATED: Default is not deleted
       };
       
+      // === NEW: TRACK PREVIOUS ID FOR SCHEDULE CLEARING ===
+      // Kinukuha ang ID value *bago* ito na-update ng input event
+      const previousIdValue = pendingChange.id; 
+      // ===================================================
+
       // CRITICAL FIX: Huwag mag-allow ng changes kung HINDI new row.
       if (employee.id || pendingChange.isDeleted || lockedIdRefMap[employee.id]) {
            // Dapat na-prevent na ito ng readOnly property, pero safety check pa rin
@@ -1111,7 +1116,7 @@ function handleAttendanceData(data) {
       }
       // --- END NEW AUTO-FILL LOGIC ---
 
-      // --- NEW VALIDATION AND FORMATTING LOGIC ---
+      // --- NEW VALIDATION AND FORMATTING LOGIC (Duplicate checks use the fixed logic from previous turn) ---
       if (field === 'id') {
           // 1. Validation: Only Numbers (allow empty string for now, validated on save)
           const cleanId = pendingChange.id; // Use the value from the pending change (already updated by auto-fill)
@@ -1128,20 +1133,36 @@ function handleAttendanceData(data) {
               // Pass new ID, original saved ID, and current row number
               if (isDuplicateId(cleanId, employee.id, employee.no)) { 
                   showNotification(`Personnel ID "${cleanId}" is already used in another row (saved or pending).`, false);
-                  input.value = employee.id; // Revert input
-                  pendingChange.id = employee.id; // Revert pending change
+                  
+                  // Revert all info fields to original state (Hard Stop)
+                  const nameInput = row.querySelector('[data-field="name"]');
+                  const positionInput = row.querySelector('[data-field="position"]');
+                  const areaInput = row.querySelector('[data-field="area"]');
+                  
+                  // Revert input visuals to original state
+                  input.value = employee.id; 
+                  if (nameInput) nameInput.value = employee.name; 
+                  if (positionInput) positionInput.value = employee.position;
+                  if (areaInput) areaInput.value = employee.area;
+                  
+                  // Revert pending change object
+                  pendingChange.id = employee.id;
+                  pendingChange.name = employee.name; 
+                  pendingChange.position = employee.position; 
+                  pendingChange.area = employee.area;
+                  
                   // I-delete kung ang pag-revert ay nagbalik sa original state
                   if (employee.id === input.value) { 
                       delete pendingEmployeeInfoChanges[oldPersonnelKey];
                   }
-                  return;
+                  return; // HARD STOP
               }
           }
           // --- END DUPLICATE ID CHECK ---
       } else if (field === 'name' || field === 'position' || field === 'area') {
           // 2. Formatting: Convert to CAPSLOCK and remove unwanted characters (ONLY if not auto-filled)
           if (!masterRecord) { // Only apply case/clean if it was a manual entry
-              let cleanedValue = newValue.toUpperCase();
+              let cleanedValue = pendingChange[field].toUpperCase(); // Use pendingChange value
               let regexToUse = '';
               
               if (field === 'name') {
@@ -1156,7 +1177,7 @@ function handleAttendanceData(data) {
 
               cleanedValue = cleanedValue.replace(regexToUse, ''); 
               
-              if (cleanedValue !== newValue.toUpperCase()) {
+              if (cleanedValue !== pendingChange[field].toUpperCase()) { // Compare with the raw uppercase value
                   // Kung may inalis na special character, magbigay ng notification
                   showNotification(`Special characters and/or numbers removed from ${field}.`, false);
               }
@@ -1167,33 +1188,69 @@ function handleAttendanceData(data) {
           }
 
           
-          // --- NEW: DUPLICATE NAME CHECK (LOCAL WARNING ONLY) ---
+          // --- NEW: DUPLICATE NAME CHECK (HARD STOP & REVERSION) ---
           if (field === 'name' && pendingChange.name) {
               // Check for duplicate name using the new value
               if (isDuplicateName(pendingChange.name, employee.id, employee.no)) {
-                  // UPDATED: Magbigay ng warning lang, pero hindi ire-revert ang input. Ang hard stop check ay nasa save button.
-                  showNotification(`WARNING: Personnel Name "${pendingChange.name}" is already used by another employee. Please use a unique identifier (e.g., add initials/middle name) before saving.`, false);
+                  showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee. Please edit the name to be unique (e.g., add initials/middle name).`, false);
+                  
+                  // Revert all info fields to original state (Hard Stop)
+                  const idInput = row.querySelector('[data-field="id"]');
+                  const positionInput = row.querySelector('[data-field="position"]');
+                  const areaInput = row.querySelector('[data-field="area"]');
+                  
+                  // Revert input visuals to original state
+                  input.value = employee.name; 
+                  if (idInput) idInput.value = employee.id; 
+                  if (positionInput) positionInput.value = employee.position;
+                  if (areaInput) areaInput.value = employee.area;
+                  
+                  // Revert pending change object
+                  pendingChange.id = employee.id;
+                  pendingChange.name = employee.name; 
+                  pendingChange.position = employee.position; 
+                  pendingChange.area = employee.area;
+                  
+                  // I-delete kung ang pag-revert ay nagbalik sa original state
+                  if (employee.name === input.value) { 
+                      delete pendingEmployeeInfoChanges[oldPersonnelKey];
+                  }
+                  return; // HARD STOP
               }
           }
-          // --- END DUPLICATE NAME CHECK (LOCAL WARNING ONLY) ---
+          // --- END DUPLICATE NAME CHECK ---
       }
       // --- END NEW VALIDATION AND FORMATTING LOGIC ---
 
       
       if (field === 'id') {
           
-          // CRITICAL FIX 2 (SCHEDULE CLEARING): If the ID is now blank, clear pending schedule data and visuals
-          if (pendingChange.id === '') {
+          // === CRITICAL FIX 6 (SCHEDULE & INFO CLEARING) ===
+          // If the ID is now blank, and the ID *wasn't* blank before, clear all info fields, schedule data and visuals.
+          if (pendingChange.id === '' && previousIdValue !== '') {
               const row = input.closest('tr');
-              // Gagamitin ang lumang ID na nakaimbak sa cell dataset para hanapin ang pending schedules
-              // CRITICAL: Since we stopped relying on cell dataset for ID, we must get the ID from the input's old value
-              const oldIdInDataset = employee.id; 
-              
-              if (oldIdInDataset) {
-                  // 1. Clear pending attendance changes associated with the OLD ID
+              // Gagamitin ang ID value *bago ito binura* para hanapin ang pending schedules
+              const idToClear = previousIdValue; 
+
+              if (idToClear) {
+                  // *** STEP 1: Clear all Personnel Info inputs in the row ***
+                  const nameInput = row.querySelector('[data-field="name"]');
+                  const positionInput = row.querySelector('[data-field="position"]');
+                  const areaInput = row.querySelector('[data-field="area"]');
+                  
+                  // Clear input values
+                  if (nameInput) nameInput.value = '';
+                  if (positionInput) positionInput.value = '';
+                  if (areaInput) areaInput.value = '';
+                  
+                  // *** STEP 2: Update the pending change object (CRITICAL) ***
+                  pendingChange.name = '';
+                  pendingChange.position = '';
+                  pendingChange.area = '';
+
+                  // 1. Clear pending attendance changes associated with the ID that was just cleared
                   Object.keys(pendingAttendanceChanges).forEach(key => {
-                      // Gamitin ang oldIdInDataset (which is the ID before it was cleared) para sa lookup
-                      if (key.startsWith(oldIdInDataset + '_')) { 
+                      if (key.startsWith(idToClear + '_')) { 
                           delete pendingAttendanceChanges[key];
                       }
                   });
@@ -1204,12 +1261,10 @@ function handleAttendanceData(data) {
                        // Then force a visual clear
                        updateCellVisuals(cell, '', dayKey); 
                   });
-                  showNotification('Schedule cleared locally as Personnel ID was made blank.', false);
+                  showNotification('Personnel info and schedule cleared locally as Personnel ID was made blank.', false);
               }
           }
       }
-      
-
       
       // Tiyakin na ang comparison ay ginagawa sa pagitan ng current pending data at saved data (employee.id/name/etc)
       const isChanged = (pendingChange.id !== employee.id || 
@@ -1242,8 +1297,6 @@ function handleAttendanceData(data) {
                       
                       row.querySelectorAll('.cell-container').forEach(cell => {
                            const dayKey = cell.dataset.dayKey;
-                           // CRITICAL: Huwag i-update ang cell dataset. Hayaan ang renderAttendancePlan() na mag-handle nito sa susunod na load.
-                           // cell.dataset.personnelId = employee.id; 
                            // Ibalik sa saved status, o blanko kung walang saved status
                            updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
                       });
