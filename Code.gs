@@ -117,7 +117,7 @@ function checkContractSheets(sfcRef, year, month, shift) {
         return !!ss.getSheetByName(empSheetName) && !!ss.getSheetByName(planSheetName);
     } catch (e) {
          Logger.log(`[checkContractSheets] ERROR: Failed to open Spreadsheet ID ${TARGET_SPREADSHEET_ID}. Check ID and permissions. Error: ${e.message}`);
-        return false;
+         return false;
     }
 }
 
@@ -158,7 +158,7 @@ function appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shiftToAppend) {
 
 function createContractSheets(sfcRef, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-// --- EMPLOYEES SHEET ---
+    // --- EMPLOYEES SHEET ---
     const empSheetName = getDynamicSheetName(sfcRef, 'employees');
     let empSheet = ss.getSheetByName(empSheetName);
     if (!empSheet) {
@@ -196,6 +196,9 @@ function createContractSheets(sfcRef, year, month, shift) {
         planSheet.setFrozenRows(PLAN_HEADER_ROW); 
         
         Logger.log(`[createContractSheets] Created Horizontal Attendance Plan sheet for ${planSheetName} with headers at Row ${PLAN_HEADER_ROW}.`);
+        // Note: appendExistingEmployeeRowsToPlan adds to BOTH 1stHalf and 2ndHalf sheets if they exist.
+        // This is acceptable because the client-side rendering only shows the employees that exist 
+        // in the current shift's plan sheet.
         appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shift);
         
         if (shift === '1stHalf') {
@@ -267,6 +270,7 @@ function getContracts() {
     const sfcRefKey = findKey(c, 'SFC Ref#');
       
     return {
+     
       id: 
       contractIdKey ? 
       (c[contractIdKey] || '').toString() : '',     
@@ -274,7 +278,8 @@ function getContracts() {
       payorCompany: payorKey ? (c[payorKey] || '').toString() : '', 
       agency: agencyKey ? (c[agencyKey] || '').toString() : '',       
       serviceType: serviceTypeKey ? (c[serviceTypeKey] || '').toString() : '',   
-      headCount: parseInt(headCountKey ? c[headCountKey] : 
+      headCount: parseInt(headCountKey ? 
+      c[headCountKey] : 
       0) || 0, 
    
       sfcRef: sfcRefKey ? (c[sfcRefKey] || 
@@ -288,6 +293,24 @@ function cleanPersonnelId(rawId) {
     // Tiyakin na numbers lang at tanggalin ang space/comma
     return idString.replace(/\D/g, '');
 }
+
+// --- NEW FUNCTION: Fetches the clean employee master data for auto-filling/datalist. ---
+function getEmployeeMasterData(sfcRef) {
+    if (!sfcRef) throw new Error("SFC Ref# is required.");
+    
+    // Use the existing getSheetData to read the employee master sheet
+    const masterData = getSheetData(TARGET_SPREADSHEET_ID, getDynamicSheetName(sfcRef, 'employees'));
+
+    // Map and clean the data for client-side use
+    return masterData.map((e, index) => ({
+        // We use the raw ID for the datalist option value/text, but the clean ID for lookup
+        id: cleanPersonnelId(e['Personnel ID']),
+        name: String(e['Personnel Name'] || '').trim(),
+        position: String(e['Position'] || '').trim(),
+        area: String(e['Area Posting'] || '').trim(),
+    })).filter(e => e.id); // Only return rows with a valid ID
+}
+// --- END NEW FUNCTION ---
 
 /**
  * UPDATED FUNCTION: Kumuha ng map ng locked IDs at ang Reference # na nag-lock sa kanila.
@@ -326,6 +349,7 @@ function getLockedPersonnelIds(ss, planSheetName) {
                 // CRITICAL CHECK: Tiyakin na ang ID ay valid (minimum 7 digits for safety).
                 if (cleanId.length >= 7) { 
                      // Store the ID and its corresponding Reference Number
+    
                      // We use the first Ref # found for this ID as the source of truth
                      if (!lockedIdRefMap[cleanId]) { 
                         lockedIdRefMap[cleanId] = refNum;
@@ -343,20 +367,35 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
 
     const empSheetName = getDynamicSheetName(sfcRef, 'employees');
-    const empData = getSheetData(TARGET_SPREADSHEET_ID, empSheetName);
+    // NOTE: empData is the FULL master employee list (used by client for datalist/lookup)
+    const empData = getSheetData(TARGET_SPREADSHEET_ID, empSheetName); 
     const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift);
     const planSheet = ss.getSheetByName(planSheetName);
     // NEW: Kunin ang map ng locked IDs at Reference #
     const lockedIdRefMap = getLockedPersonnelIds(ss, planSheetName);
     const lockedIds = Object.keys(lockedIdRefMap); 
     
-    if (!planSheet) return { employees: empData, planMap: {}, lockedIds: lockedIds, lockedIdRefMap: lockedIdRefMap };
+    // Employee Map for quick lookup
+    const empDetailMap = {};
+    empData.forEach(e => {
+        const id = cleanPersonnelId(e['Personnel ID']);
+        if (id) {
+            empDetailMap[id] = {
+                 id: id, 
+                 name: String(e['Personnel Name'] || '').trim(),
+                 position: String(e['Position'] || '').trim(),
+                 area: String(e['Area Posting'] || '').trim(),
+            };
+        }
+    });
+
+    if (!planSheet) return { employees: [], planMap: {}, lockedIds: lockedIds, lockedIdRefMap: lockedIdRefMap }; // UPDATED: Return empty employees array
     const HEADER_ROW = PLAN_HEADER_ROW;
     const lastRow = planSheet.getLastRow();
     const numRowsToRead = lastRow - HEADER_ROW;
     const numColumns = planSheet.getLastColumn();
     if (numRowsToRead <= 0 || numColumns < 33) { 
-        return { employees: empData, planMap: {}, lockedIds: lockedIds, lockedIdRefMap: lockedIdRefMap };
+        return { employees: [], planMap: {}, lockedIds: lockedIds, lockedIdRefMap: lockedIdRefMap }; // UPDATED: Return empty employees array
     }
 
     // CRITICAL FIX: Use getDisplayValues() to ensure time formats (08:00-17:00) are read as strings.
@@ -368,6 +407,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     
     const planMap = {};
     const sanitizedHeadersMap = {};
+    const employeesInPlan = new Set(); // NEW: Set of IDs that actually have a plan entry for this shift
     headers.forEach((header, index) => {
         const cleanedHeader = sanitizeHeader(header); 
         sanitizedHeadersMap[cleanedHeader] = index;
@@ -378,6 +418,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
         const currentShift = String(row[shiftIndex] || '').trim();
         
         if (currentShift === shift) {
+            employeesInPlan.add(id); // ADD ID to the set
             
             for (let d = 1; d <= 31; d++) {
          
@@ -386,17 +427,20 @@ function getAttendancePlan(sfcRef, year, month, shift) {
                 const date = new Date(year, month, d);
                 
                 let lookupHeader = '';
+         
                 if (date.getMonth() === month) {
  
                 
                     const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
                     const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
+                  
                     lookupHeader = `${monthShort}${d}`;
                
          
                 } else {
                 
                     lookupHeader = `Day${d}`;
+                
                 }
                 
                 const dayIndex = sanitizedHeadersMap[sanitizeHeader(lookupHeader)];
@@ -411,19 +455,34 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             }
         }
     });
-    const employees = empData.map((e, index) => {
-        const id = cleanPersonnelId(e['Personnel ID']);
+    
+    // NEW LOGIC: Only return employee details for those found in the current plan sheet + master data
+    let renderedEmployees = Array.from(employeesInPlan).map(id => {
+         const emp = empDetailMap[id] || { id: id, name: '', position: '', area: '' };
+         // The number (no) is no longer guaranteed to be correct here, but we will recalculate on the client side
+         return {
+            no: 0, // Temporarily set to 0
+            id: emp.id, 
+            name: emp.name,
+            position: emp.position,
+            area: emp.area,
+         }
+    }).filter(e => e.id);
+
+
+    const employees = renderedEmployees.map((e, index) => { // RE-MAP AND ADD SEQUENCE NUMBER
         return {
            no: index + 1, 
-            id: id, 
-            name: String(e['Personnel Name'] || '').trim(),
-            position: String(e['Position'] || '').trim(),
+            id: e.id, 
+            name: e.name,
+            position: e.position,
             area: 
             
-            String(e['Area Posting'] || '').trim(),
+            e.area,
         }
-    }).filter(e => e.id);
-    return { employees, planMap, lockedIds: lockedIds, lockedIdRefMap: lockedIdRefMap }; 
+    }).filter(e => e.id); // Filter out any empty IDs resulting from a broken map
+    
+    return { employees, planMap, lockedIds: lockedIds, lockedIdRefMap: lockedIdRefMap }; // The 'employees' list is now filtered to the current plan content
 }
 
 function updatePlanKeysOnIdChange(sfcRef, employeeChanges) {
@@ -523,7 +582,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     // CRITICAL FIX: Use getDisplayValues() to get string headers (e.g., 'Nov1')
     if (numRowsToRead >= 0 && numColumns > 0) {
          values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-        headers = values[0]; 
+         headers = values[0]; 
     } else {
         headers = ['Personnel ID', 'Shift'];
         for (let i = 1; i <= 31; i++) {
@@ -571,7 +630,8 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
             const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
             targetLookupHeader = `${monthShort}${dayNumber}`; 
         } else {
-         
+      
+           
      
             targetLookupHeader 
             = `Day${dayNumber}`;
@@ -638,8 +698,10 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     const rowsToDelete = [];
     // Bagong array para sa mga row na ide-delete
     
+    // UPDATED: I-declare ang mga ito, ngunit lalagyan lang ng laman ang kasalukuyang shift
     const planRowsToAppend1st = [];
     const planRowsToAppend2nd = [];
+    
     const personnelIdMap = {}; // Map: Personnel ID -> Sheet Row Number (1-based)
     for (let i = 1; i < values.length; i++) { 
         personnelIdMap[String(values[i][personnelIdIndex] || '').trim()] = i + 1;
@@ -651,11 +713,12 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         
         if (data.isDeleted && oldId && personnelIdMap[oldId]) {
             // CRITICAL FIX: Huwag tanggalin sa Employee Master Sheet kung may ID
-            // I-delete lang ang Plan row sa kasalukuyang shift.
+            // I-delete lang ang Plan row sa 
             if (!data.isNew) {
                 // For EXISTING employees, mark for deletion from the PLAN sheet only for the current shift
                 rowsToDelete.push({ 
                     rowNum: -1, // Dummy row num for master sheet
+         
                     id: oldId,
                     isMasterDelete: false // Flag to prevent master sheet deletion
                 });
@@ -665,6 +728,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                     rowNum: personnelIdMap[oldId], 
                     id: oldId,
                     isMasterDelete: true // Flag to delete from master sheet
+          
                 });
                 delete personnelIdMap[oldId]; // I-alis sa map
             }
@@ -677,7 +741,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         if (data.isNew) {
        
              if (personnelIdMap[newId]) return;
-            const newRow = [];
+             const newRow = [];
   
             newRow[personnelIdIndex] = data.id;
             newRow[nameIndex] = data.name;
@@ -690,41 +754,47 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             }
             
             rowsToAppend.push(finalRow);
+            
+            // --- FIXED LOGIC: Only append to the current shift's plan sheet ---
             const planHeadersCount = 33;
-            
-            const planRow1 = Array(planHeadersCount).fill('');
-            planRow1[0] = newId; 
-            planRow1[1] = '1stHalf';
-            planRowsToAppend1st.push(planRow1);
-            
-            const planRow2 = Array(planHeadersCount).fill('');
-            planRow2[0] = newId; 
-            planRow2[1] = '2ndHalf';
-            planRowsToAppend2nd.push(planRow2);
-            
+
+            if (shift === '1stHalf') {
+                const planRow1 = Array(planHeadersCount).fill('');
+                planRow1[0] = newId; 
+                planRow1[1] = '1stHalf';
+                planRowsToAppend1st.push(planRow1);
+            } else if (shift === '2ndHalf') {
+                const planRow2 = Array(planHeadersCount).fill('');
+                planRow2[0] = newId; 
+                planRow2[1] = '2ndHalf';
+                planRowsToAppend2nd.push(planRow2);
+            }
+            // --- END FIXED LOGIC ---
+
             personnelIdMap[newId] = -1;
         }
     });
-    
     // 1. I-delete ang mga row sa Plan Sheet para sa kasalukuyang shift (DELETION ACTION)
     rowsToDelete.forEach(item => {
         // Function para i-delete ang row sa Plan Sheet
         const deletePlanRowForCurrentShift = (planSheet, targetShift) => {
             if (planSheet) {
                 // Basahin lang ang ID at Shift columns
+             
                 const planValues = planSheet.getRange(PLAN_HEADER_ROW + 1, 1, planSheet.getLastRow() - PLAN_HEADER_ROW, 2).getValues();
                 
                 for(let i = planValues.length - 1; i >= 0; i--) {
                     if (String(planValues[i][0] || '').trim() === item.id && String(planValues[i][1] || '').trim() === targetShift) {
+             
                         // Row index sa sheet (1-based)
                         planSheet.deleteRow(PLAN_HEADER_ROW + i + 1);
                         Logger.log(`[saveEmployeeInfoBulk] Deleted Plan row for ID ${item.id} in ${targetShift} shift.`);
+                       
                         return; // Exit after finding and deleting the specific row
                     }
                 }
             }
         };
-        
         // I-delete ang plan row sa kasalukuyang shift
         if (shift === '1stHalf' && planSheet1st) {
              deletePlanRowForCurrentShift(planSheet1st, '1stHalf');
@@ -738,7 +808,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
              Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row ${item.rowNum} for ID ${item.id} from Master Sheet.`);
         }
     });
-
     // 2. Append new rows (Employee Sheet)
     if (rowsToAppend.length > 0) {
       rowsToAppend.forEach(row => {
@@ -780,10 +849,10 @@ function getOrCreateLogSheet(ss) {
         // Fallback para sa transient error (tulad ng na-experience mo)
         if (e.message.includes(`sheet with the name "${LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-            return ss.getSheetByName(LOG_SHEET_NAME);
+             return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
-    // I-re-throw ang iba pang unexpected errors
+        // I-re-throw ang iba pang unexpected errors
     }
 }
 
