@@ -125,78 +125,72 @@
   }
   // --- END NEW DATALIST FUNCTIONS ---
 
-  // --- NEW: FUNCTION PARA I-CHECK KUNG DUPLICATE ANG ID ---
-  function isDuplicateId(newId, originalSavedId, currentNo) {
-      const trimmedNewId = newId.trim();
-      if (!trimmedNewId) return false;
+  // --- NEW FUNCTION: KUNIN ANG ACTIVE IDS SA GRID PARA SA VALIDATION (FIXED LOGIC) ---
+function isDuplicateId(newId, originalSavedId, currentNo) {
+    const trimmedNewId = newId.trim();
+    if (!trimmedNewId) return false;
 
-      // 1. Check against SAVED employees (using originalSavedId as exclusion)
-      // UPDATED: Check against the FULL MASTER LIST (employeeMasterList)
-      if (employeeMasterList.length > 0) {
-          const savedConflict = employeeMasterList.some(emp => {
-              const savedId = (emp.id || '').trim();
-              // I-check kung nag-match ang ID, PERO hindi ito ang original ID ng row na ine-edit
-              return savedId === trimmedNewId && savedId !== originalSavedId;
-          });
-          if (savedConflict) return true;
-      }
+    let duplicateFound = false;
 
-      // 2. Check against PENDING changes (using row key exclusion)
-      const pendingKeys = Object.keys(pendingEmployeeInfoChanges);
-      for (const key of pendingKeys) {
-          // Stable key: original ID (kung meron) o TEMP_N (kung bago)
-          const isCurrentRowPending = (key === originalSavedId) || (key === `TEMP_${currentNo}`);
-          if (isCurrentRowPending) continue; // Skip ang row na kasalukuyang ine-edit
+    // Check only against the IDs of other active rows currently visible in the grid (the current plan).
+    document.querySelectorAll('input[data-field="id"]').forEach(input => {
+        const row = input.closest('tr');
+        const rowKey = row.dataset.stableKey;
+        const currentIdInInput = (input.value || '').trim();
+        
+        // 1. Skip the row currently being validated/edited.
+        if (rowKey === originalSavedId || rowKey === `TEMP_${currentNo}`) {
+            return;
+        }
+        
+        // 2. Skip rows marked for deletion (they are inactive for planning).
+        if (row.classList.contains('line-through')) {
+            return;
+        }
+        
+        // 3. Check for conflict.
+        if (currentIdInInput === trimmedNewId) {
+            duplicateFound = true;
+        }
+    });
 
-          const pendingChange = pendingEmployeeInfoChanges[key];
-          // Tiyakin na hindi deleted ang pending change na ito
-          if (pendingChange.isDeleted) continue; 
+    return duplicateFound;
+}
+// --- END DUPLICATE ID FUNCTION ---
 
-          const pendingId = (pendingChange.id || '').trim();
-          if (pendingId === trimmedNewId) return true;
-      }
-      
-      return false;
-  }
-  // --- END DUPLICATE ID FUNCTION ---
-
-  // *** NEW: FUNCTION PARA I-CHECK KUNG DUPLICATE ANG NAME ***
-  function isDuplicateName(newName, originalSavedId, currentNo) {
-      // CRITICAL FIX: Use the normalization function to ignore special characters for comparison
-      const normalizedNewName = normalizeNameForComparison(newName); 
-      if (!normalizedNewName) return false;
-      
-      // 1. Check against SAVED employees (using originalSavedId as exclusion)
-      // UPDATED: Check against the FULL MASTER LIST (employeeMasterList)
-      if (employeeMasterList.length > 0) {
-          const savedConflict = employeeMasterList.some(emp => {
-              const normalizedSavedName = normalizeNameForComparison(emp.name);
-              // I-check kung nag-match ang Name, PERO hindi ito ang original ID ng row na ine-edit
-              return normalizedSavedName === normalizedNewName && (emp.id || '') !== originalSavedId;
-          });
-          if (savedConflict) return true;
-      }
-
-      // 2. Check against PENDING changes (using row key exclusion)
-      const pendingKeys = Object.keys(pendingEmployeeInfoChanges);
-      for (const key of pendingKeys) {
-          // Stable key: original ID (kung meron) o TEMP_N (kung bago)
-          const isCurrentRowPending = (key === originalSavedId) || (key === `TEMP_${currentNo}`);
-          if (isCurrentRowPending) continue; // Skip ang row na kasalukuyang ine-edit
-
-          const pendingChange = pendingEmployeeInfoChanges[key];
-          // Tiyakin na hindi deleted ang pending change na ito
-          if (pendingChange.isDeleted) continue; 
-
-          // Kunin ang pending name (which may still have special chars), then normalize for comparison
-          const pendingName = (pendingChange.name || '').trim(); 
-          const normalizedPendingName = normalizeNameForComparison(pendingName);
-          
-          if (normalizedPendingName === normalizedNewName) return true;
-      }
-      
-      return false;
-  }
+// *** UPDATED FUNCTION: KUNIN ANG ACTIVE NAMES SA GRID PARA SA VALIDATION (FIXED LOGIC) ***
+function isDuplicateName(newName, originalSavedId, currentNo) {
+    // CRITICAL FIX: Use the normalization function to ignore special characters for comparison
+    const normalizedNewName = normalizeNameForComparison(newName); 
+    if (!normalizedNewName) return false;
+    
+    let duplicateFound = false;
+    
+    // Check only against the names of other active rows currently visible in the grid (the current plan).
+    document.querySelectorAll('input[data-field="name"]').forEach(input => {
+        const row = input.closest('tr');
+        const rowKey = row.dataset.stableKey;
+        const currentNameInInput = (input.value || '').trim();
+        const normalizedCurrentName = normalizeNameForComparison(currentNameInInput);
+        
+        // 1. Skip the row currently being edited/validated
+        if (rowKey === originalSavedId || rowKey === `TEMP_${currentNo}`) {
+            return;
+        }
+        
+        // 2. Skip rows marked for deletion
+        if (row.classList.contains('line-through')) {
+            return;
+        }
+        
+        // 3. Check for conflict (using normalized names)
+        if (normalizedCurrentName === normalizedNewName) {
+            duplicateFound = true;
+        }
+    });
+    
+    return duplicateFound;
+}
   // --- END DUPLICATE NAME FUNCTION ---
   
   // --- HELPER FUNCTION: KUNIN ANG ACTIVE EMPLOYEES SA GRID ---
