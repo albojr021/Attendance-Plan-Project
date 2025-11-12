@@ -9,6 +9,9 @@
   let currentContract = null;
   const CONTRACT_ID_CACHE_KEY = 'current_contract_id'; 
   
+  // *** NEW: Global state for Employee Master Data ***
+  let employeeMasterList = []; // Array of all employees from the master sheet (for datalist/auto-fill)
+  
   // *** DATE NAVIGATION VARIABLE ***
   let currentPlanningDate = new Date(); 
   // Ang status codes
@@ -87,7 +90,40 @@
       return sortedWords;
   }
   // --- END HELPER ---
-
+  
+  // --- NEW FUNCTION: Fetch and Populate Master Employee Data ---
+  function fetchEmployeeMasterData(sfcRef) {
+       google.script.run
+            .withSuccessHandler(populateDataLists)
+            .withFailureHandler(handleError)
+            .getEmployeeMasterData(sfcRef);
+  }
+  
+  function populateDataLists(masterList) {
+      employeeMasterList = masterList; // Store the master list globally
+      const idList = document.getElementById('employee-id-list');
+      const nameList = document.getElementById('employee-name-list');
+      
+      idList.innerHTML = '';
+      nameList.innerHTML = '';
+      
+      employeeMasterList.forEach(emp => {
+          // ID Datalist
+          const idOption = document.createElement('option');
+          idOption.value = emp.id;
+          idOption.textContent = `${emp.name} (${emp.position})`;
+          idList.appendChild(idOption);
+          
+          // Name Datalist
+          const nameOption = document.createElement('option');
+          nameOption.value = emp.name;
+          nameOption.textContent = `${emp.id} (${emp.position})`;
+          nameList.appendChild(nameOption);
+      });
+      
+      console.log(`Datalists populated with ${masterList.length} employees.`);
+  }
+  // --- END NEW DATALIST FUNCTIONS ---
 
   // --- NEW: FUNCTION PARA I-CHECK KUNG DUPLICATE ANG ID ---
   function isDuplicateId(newId, originalSavedId, currentNo) {
@@ -95,8 +131,9 @@
       if (!trimmedNewId) return false;
 
       // 1. Check against SAVED employees (using originalSavedId as exclusion)
-      if (currentContract && currentContract.employees) {
-          const savedConflict = currentContract.employees.some(emp => {
+      // UPDATED: Check against the FULL MASTER LIST (employeeMasterList)
+      if (employeeMasterList.length > 0) {
+          const savedConflict = employeeMasterList.some(emp => {
               const savedId = (emp.id || '').trim();
               // I-check kung nag-match ang ID, PERO hindi ito ang original ID ng row na ine-edit
               return savedId === trimmedNewId && savedId !== originalSavedId;
@@ -130,8 +167,9 @@
       if (!normalizedNewName) return false;
       
       // 1. Check against SAVED employees (using originalSavedId as exclusion)
-      if (currentContract && currentContract.employees) {
-          const savedConflict = currentContract.employees.some(emp => {
+      // UPDATED: Check against the FULL MASTER LIST (employeeMasterList)
+      if (employeeMasterList.length > 0) {
+          const savedConflict = employeeMasterList.some(emp => {
               const normalizedSavedName = normalizeNameForComparison(emp.name);
               // I-check kung nag-match ang Name, PERO hindi ito ang original ID ng row na ine-edit
               return normalizedSavedName === normalizedNewName && (emp.id || '') !== originalSavedId;
@@ -163,34 +201,53 @@
   
   // --- HELPER FUNCTION: KUNIN ANG ACTIVE EMPLOYEES SA GRID ---
   function getActiveEmployeesInGrid() {
+    // UPDATED: Use the currently rendered employees
     const activeEmployees = [];
-    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
     
-    gridRows.forEach(row => {
-        const stableKey = row.dataset.stableKey;
+    // We can rely on currentContract.employees for the currently rendered set
+    const renderedEmployees = currentContract?.employees || [];
+    
+    renderedEmployees.forEach((employee, index) => {
+        // Find the stable key from the current rendered set
+        const stableKey = employee.id || `TEMP_${index + 1}`; 
         const pendingInfo = pendingEmployeeInfoChanges[stableKey];
         
         // Skip kung marked for deletion
         if (pendingInfo && pendingInfo.isDeleted) return; 
 
-        const employee = currentContract.employees.find(e => e.id === stableKey) || { 
-            id: '', name: '', position: '', area: '' 
-        };
-
+        // Get the display ID and name (accounting for pending changes)
         const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
         const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
-        
-        // I-check kung ang row ay may Personnel ID at Name
-        // NOTE: Dito tayo nagre-rely sa displayId at displayName para sa validation
         
         activeEmployees.push({
             id: displayId.trim(),
             name: displayName.trim(),
-            // Only capture plan cells for the completeness check later
             planCells: [] 
         });
     });
     
+    // Include newly added rows that are not yet in currentContract.employees
+    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    gridRows.forEach(row => {
+        const stableKey = row.dataset.stableKey;
+        if (!stableKey.startsWith('TEMP_')) return; // Only check new rows
+
+        const pendingInfo = pendingEmployeeInfoChanges[stableKey];
+        if (pendingInfo && pendingInfo.isDeleted) return; 
+        if (!pendingInfo) return; // Skip if it's a blank row placeholder
+
+        const displayId = pendingInfo.id;
+        const displayName = pendingInfo.name;
+        
+        if (displayId && displayName) {
+             activeEmployees.push({
+                 id: displayId.trim(),
+                 name: displayName.trim(),
+                 planCells: [] 
+             });
+        }
+    });
+
     return activeEmployees;
   }
   // --- END HELPER FUNCTION ---
@@ -314,6 +371,7 @@
           document.getElementById('initial-placeholder').classList.remove('hidden');
           currentContract = null;
           lockedIdRefMap = {}; // Clear locked IDs
+          employeeMasterList = []; // NEW: Clear Master List
           sessionStorage.removeItem(CONTRACT_ID_CACHE_KEY); 
           return;
       }
@@ -323,6 +381,7 @@
       
       if (currentContract) {
           displayContractDetails(currentContract);
+          fetchEmployeeMasterData(currentContract.sfcRef); // NEW: Fetch master list for auto-fill
           checkIfPlanExists(currentContract.sfcRef); 
       }
   }
@@ -388,7 +447,7 @@ function showBlankPlan() {
         return;
     }
     
-    currentContract.employees = currentContract.employees || []; // Ensure employees array is available
+    currentContract.employees = []; // NEW: Start with NO employees rendered in the grid
     currentContract.planMap = {}; // Start with no plan data
     lockedIdRefMap = {}; // NEW: Walang locked IDs sa blank plan
     
@@ -423,7 +482,7 @@ function fetchAttendanceData(sfcRef) {
 
 
 function handleAttendanceData(data) {
-    // data.employees: [{no, id, name, position, area}, ...]
+    // data.employees: [{no, id, name, position, area}, ...] (NOW: This list is filtered to only employees with a plan entry for the current shift)
     // data.planMap: {personnelId_DayKey_ShiftKey: Status, ...}
     // data.lockedIdRefMap: {ID: Ref#}
     currentContract.employees = data.employees;
@@ -537,13 +596,49 @@ function handleAttendanceData(data) {
     // --- TABLE BODY ---
     const tbody = table.createTBody();
 
-    // Add empty rows if no employees are loaded (up to Head Count)
-    const currentEmployeeCount = currentContract.employees.length;
-    const totalRowsToRender = Math.max(currentContract.headCount, currentEmployeeCount);
+    // Get the base list of employees to render (those already in the plan sheet)
+    let rowsToRender = currentContract.employees.slice() || [];
+    
+    // Add pending new employees/deleted employees to the list
+    Object.keys(pendingEmployeeInfoChanges).forEach(stableKey => {
+         const change = pendingEmployeeInfoChanges[stableKey];
+         // Check if this is a NEW row that hasn't been saved yet
+         const isUnsavedNewRow = change.originalEmployeeId === '';
+         
+         // Only add to rendering list if it's a NEW unsaved row with content (and not deleted)
+         // OR if it's a deleted saved row (to show the line-through effect)
+         if (isUnsavedNewRow) {
+             // Avoid adding duplicates (though stable keys should prevent this)
+             if (!rowsToRender.some(e => e.id === change.id || e.id === stableKey)) {
+                 rowsToRender.push({
+                     no: 0, // Will be re-indexed below
+                     id: change.id, 
+                     name: change.name, 
+                     position: change.position, 
+                     area: change.area,
+                     isNew: true,
+                 });
+             }
+         }
+         // Note: Saved/Existing rows marked for deletion are already in currentContract.employees
+    });
+
+    // Determine total rows to render (existing + pending new + placeholders)
+    // We render up to the Head Count OR the number of existing/pending rows, whichever is greater
+    const maxRenderedRows = Math.max(currentContract.headCount, rowsToRender.length);
+    
+    // The rendered employee list is now the list from the plan sheet (rowsToRender), plus placeholders
+    
+    // Re-index the employee list
+    rowsToRender = rowsToRender.map((emp, index) => ({
+        ...emp,
+        no: index + 1 // Assign new sequence number
+    }));
 
 
-    for (let i = 0; i < totalRowsToRender; i++) {
-        const employee = currentContract.employees[i] || { 
+    for (let i = 0; i < maxRenderedRows; i++) {
+        // Use the current employee from the new filtered/indexed list, or a blank placeholder
+        const employee = rowsToRender[i] || { 
             no: i + 1, 
             id: '', 
             name: '', 
@@ -566,7 +661,8 @@ function handleAttendanceData(data) {
         const displayArea = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
         
         // NEW LOGIC: Tiyakin kung saved na ba ang row (may ID)
-        const isSavedRow = !!employee.id;
+        // Check if the original ID (from the sheet) was present, regardless of current changes
+        const isSavedRow = !!(employee.id || (pendingInfo && pendingInfo.originalEmployeeId)); 
         // NEW LOGIC: Tiyakin kung marked for deletion
         const isMarkedForDeletion = pendingInfo && pendingInfo.isDeleted; 
         
@@ -666,6 +762,8 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         let input = document.createElement('input');
         input.type = 'text';
+        // NEW: Add datalist attribute
+        input.setAttribute('list', 'employee-id-list'); 
         // Gamitin ang display value
         input.value = displayId;
         input.placeholder = 'ID';
@@ -687,6 +785,8 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
+        // NEW: Add datalist attribute
+        input.setAttribute('list', 'employee-name-list'); 
         input.value = displayName; // Gamitin ang display value
         input.placeholder = 'Full Name';
         // CRITICAL FIX: I-lock ang input kung saved row
@@ -733,10 +833,12 @@ function handleAttendanceData(data) {
 
 
         // Add event listeners for Personnel Info updates (No auto-save)
-        // CRITICAL FIX: Ang event listener ay para lang sa HINDI saved, HINDI deleted, at HINDI locked rows (i.e., NEW rows)
+        // CRITICAL FIX: Ang event listener ay para lang sa HINDI saved, HINDI deleted, at HINDI locked rows (i.e., NEW rows at BLANK rows)
         if (!isSavedRow && !isPrintLocked && !isMarkedForDeletion) {
             tr.querySelectorAll('.personnel-info-input').forEach(infoInput => {
                 infoInput.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
+                // NEW: Add change listener for auto-fill on select (when datalist is used)
+                infoInput.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
             });
         }
 
@@ -828,6 +930,7 @@ function handleAttendanceData(data) {
       const isCurrentlyDeleted = button.dataset.isDeleted === 'true';
       const inputs = row.querySelectorAll('.personnel-info-input');
       
+      // UPDATED: Find the employee data from the currently rendered list (or a blank object)
       const employee = currentContract.employees.find(e => e.id === stableKey) || { 
           id: '', 
           name: '', 
@@ -927,8 +1030,9 @@ function handleAttendanceData(data) {
               const field = input.dataset.field;
               input.value = employee[field];
               // CRITICAL FIX: I-lock ang input kung saved row (permanent lock)
-              input.readOnly = isSavedRow;
-              input.classList.toggle('read-only', isSavedRow);
+              const isSaved = employeeMasterList.some(e => e.id === employee.id); // Check against full master list
+              input.readOnly = isSaved;
+              input.classList.toggle('read-only', isSaved);
           });
           
           // I-check kung may pending update sa ibang fields (maliban sa deletion), kung wala, i-delete ang key
@@ -980,11 +1084,43 @@ function handleAttendanceData(data) {
            return;
       }
 
+      // --- NEW AUTO-FILL LOGIC ---
+      const row = input.closest('tr');
+      
+      // 1. Find the corresponding master record based on the new value
+      let masterRecord = null;
+      if (field === 'id') {
+           masterRecord = employeeMasterList.find(e => e.id === newValue.trim());
+      } else if (field === 'name') {
+           masterRecord = employeeMasterList.find(e => e.name === newValue.trim());
+      }
+      
+      if (masterRecord) {
+          // 2. Auto-fill all four fields from the master record
+          row.querySelector('[data-field="id"]').value = masterRecord.id;
+          row.querySelector('[data-field="name"]').value = masterRecord.name;
+          row.querySelector('[data-field="position"]').value = masterRecord.position;
+          row.querySelector('[data-field="area"]').value = masterRecord.area;
+          
+          // 3. Update the pending change object with the full master data
+          pendingChange.id = masterRecord.id;
+          pendingChange.name = masterRecord.name;
+          pendingChange.position = masterRecord.position;
+          pendingChange.area = masterRecord.area;
+          
+          showNotification(`Employee details auto-filled for ${masterRecord.name}. Click 'Save All Changes' to save this new entry.`, true);
+
+      } else {
+         // If no master record is found, just continue with normal validation/casing.
+         // And set the pending change field to the current value
+         pendingChange[field] = newValue.trim();
+      }
+      // --- END NEW AUTO-FILL LOGIC ---
 
       // --- NEW VALIDATION AND FORMATTING LOGIC ---
       if (field === 'id') {
           // 1. Validation: Only Numbers (allow empty string for now, validated on save)
-          const cleanId = newValue.trim();
+          const cleanId = pendingChange.id; // Use the value from the pending change (already updated by auto-fill)
           // Check for non-numeric characters only if input is not empty
           if (cleanId && !PERSONNEL_ID_REGEX.test(cleanId)) {
                showNotification('Personnel ID must contain numbers only.', false);
@@ -1008,33 +1144,34 @@ function handleAttendanceData(data) {
               }
           }
           // --- END DUPLICATE ID CHECK ---
+      } else if (field === 'name' || field === 'position' || field === 'area') {
+          // 2. Formatting: Convert to CAPSLOCK and remove unwanted characters (ONLY if not auto-filled)
+          if (!masterRecord) { // Only apply case/clean if it was a manual entry
+              let cleanedValue = newValue.toUpperCase();
+              let regexToUse = '';
+              
+              if (field === 'name') {
+                  // UPDATED FIX: Only remove 0-9 and other extraneous characters.
+                  // We explicitly ALLOW A-Z, spaces, period (.), comma (,), and dash (-).
+                  // This regex removes everything NOT in that allowed set (including 0-9).
+                  regexToUse = /[^A-Z\s.,-]/g; 
+              } else {
+                  // Logic for Position/Area (allow A-Z, 0-9, spaces, period, comma, dash)
+                  regexToUse = /[^A-Z0-9\s.,-]/g; 
+              }
 
-          pendingChange[field] = cleanId;
-      } else {
-          // 2. Formatting: Convert to CAPSLOCK and remove unwanted characters
-          let cleanedValue = newValue.toUpperCase();
-          let regexToUse = '';
-          
-          if (field === 'name') {
-              // UPDATED FIX: Only remove 0-9 and other extraneous characters.
-              // We explicitly ALLOW A-Z, spaces, period (.), comma (,), and dash (-).
-              // This regex removes everything NOT in that allowed set (including 0-9).
-              regexToUse = /[^A-Z\s.,-]/g; 
-          } else {
-              // Logic for Position/Area (allow A-Z, 0-9, spaces, period, comma, dash)
-              regexToUse = /[^A-Z0-9\s.,-]/g; 
+              cleanedValue = cleanedValue.replace(regexToUse, ''); 
+              
+              if (cleanedValue !== newValue.toUpperCase()) {
+                  // Kung may inalis na special character, magbigay ng notification
+                  showNotification(`Special characters and/or numbers removed from ${field}.`, false);
+              }
+              
+              // I-set ang input value sa cleaned value para makita ng user agad
+              input.value = cleanedValue;
+              pendingChange[field] = cleanedValue.trim();
           }
 
-          cleanedValue = cleanedValue.replace(regexToUse, ''); 
-          
-          if (cleanedValue !== newValue.toUpperCase()) {
-              // Kung may inalis na special character, magbigay ng notification
-              showNotification(`Special characters and/or numbers removed from ${field}.`, false);
-          }
-          
-          // I-set ang input value sa cleaned value para makita ng user agad
-          input.value = cleanedValue;
-          pendingChange[field] = cleanedValue.trim();
           
           // --- NEW: DUPLICATE NAME CHECK (LOCAL WARNING ONLY) ---
           if (field === 'name' && pendingChange.name) {
@@ -1076,13 +1213,6 @@ function handleAttendanceData(data) {
                   showNotification('Schedule cleared locally as Personnel ID was made blank.', false);
               }
           }
-
-          // CRITICAL FIX: Tanggalin ang manual dataset update. Hayaan ang `handleCellClick`/`handleCellSelectionClick` na kumuha ng ID mula sa input.
-          /*
-          input.closest('tr').querySelectorAll('.cell-container').forEach(cell => {
-              cell.dataset.personnelId = pendingChange.id;
-          });
-          */
       }
       
 
@@ -1213,8 +1343,9 @@ function handleAttendanceData(data) {
     // NEW LOCK CHECK: Check for deletion and print lock
     const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
     if (isCellLocked) {
-        const employee = currentContract.employees.find(e => e.id === targetCell.dataset.originalId) || { id: '' };
-        showNotification('Cannot edit: This employee\'s schedule has been printed and locked (Ref #'+ lockedIdRefMap[employee.id] +').', false);
+        // UPDATED: Get the original ID from the cell's dataset for the lock lookup
+        const originalId = targetCell.dataset.originalId || '';
+        showNotification('Cannot edit: This employee\'s schedule has been printed and locked (Ref #'+ lockedIdRefMap[originalId] +').', false);
         return;
     }
     
@@ -1435,8 +1566,8 @@ function handleAttendanceData(data) {
     empChanges.forEach(e => {
         if (e.isDeleted) {
             finalEmpChanges.push(e); // Allow deleted rows to pass regardless of content
-        } else if (e.isNew && e.id.trim() !== '' && e.name.trim() !== '') {
-            finalEmpChanges.push(e); // Only allow new rows if ID and Name are filled
+        } else if (e.isNew && e.id.trim() !== '' && e.name.trim() !== '' && e.position.trim() !== '' && e.area.trim() !== '') {
+            finalEmpChanges.push(e); // Only allow new rows if ALL four info fields are filled
         }
         // Since editing of saved rows is removed, we only need to check for DELETED or NEW rows.
         // Updates to existing rows' info fields are no longer possible.
@@ -1515,7 +1646,8 @@ function handleAttendanceData(data) {
     let duplicateNameFound = false;
     
     // Combine saved (non-deleted) and pending (non-deleted, non-new) names
-    currentContract.employees.forEach(emp => {
+    // UPDATED: Check against the FULL master list
+    employeeMasterList.forEach(emp => {
         // Exclude employees that are being deleted or are locked (since they can't be changed)
         const isPendingDelete = pendingEmployeeInfoChanges[emp.id]?.isDeleted;
         if (!isPendingDelete && !lockedIdRefMap[emp.id]) {
@@ -1562,14 +1694,17 @@ function handleAttendanceData(data) {
         // Skip rows marked for deletion, locked, or completely blank placeholders
         if (lockedIdRefMap[stableKey] || row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
         
-        const employee = currentContract.employees.find(e => e.id === stableKey);
+        // UPDATED: Use the inputs for validation since they are the source of truth for unsaved data
         const employeeId = row.querySelector('[data-field="id"]')?.value; 
         
         // Determine if this row has ANY pending changes
         const hasInfoChange = pendingEmployeeInfoChanges.hasOwnProperty(stableKey); 
         const hasAttendanceChange = Object.keys(pendingAttendanceChanges).some(key => key.startsWith(employeeId + '_'));
-        const isNewRowWithContent = !employee && employeeId; // New row with ID filled
-
+        const isNewRowWithContent = stableKey.startsWith('TEMP_') && employeeId; // New row with ID filled
+        
+        // Check if the row has a saved ID (meaning it was loaded from the Plan Sheet)
+        const isSavedInPlan = currentContract.employees.some(e => e.id === stableKey);
+        
         
         if (isNewRowWithContent || hasInfoChange || hasAttendanceChange) {
             // RULE A: Rows actively being modified (New or Existing with Pending Changes) MUST be validated for completeness.
@@ -1581,7 +1716,7 @@ function handleAttendanceData(data) {
             });
             rowsToValidate.push({ id: employeeId, name: displayName, planCells, stableKey });
             
-        } else if (employee && autoNaChecked) {
+        } else if (isSavedInPlan && autoNaChecked) {
             // RULE B: Existing, untouched rows get Auto-NA if the checkbox is marked.
             // Iterate over cells and add NA to pendingAttendanceChanges for any blank saved cell.
             row.querySelectorAll('.cell-container').forEach(cell => {
@@ -1601,8 +1736,8 @@ function handleAttendanceData(data) {
                 }
             });
             
-        } else if (employee) {
-            // RULE C (Fix for Ismael): If Auto-NA is NOT checked, we must check existing untouched rows (like Ismael's)
+        } else if (isSavedInPlan) {
+            // RULE C: If Auto-NA is NOT checked, we must check existing untouched rows
             // if their current (saved) plan is incomplete (i.e., has BLANK cells).
             let isCurrentPlanIncomplete = false;
             row.querySelectorAll('.cell-container').forEach(cell => {
@@ -1613,7 +1748,7 @@ function handleAttendanceData(data) {
             });
             
             if (isCurrentPlanIncomplete) {
-                 // Force validation on this untouched, incomplete saved row (like Ismael's).
+                 // Force validation on this untouched, incomplete saved row.
                  const displayName = row.querySelector('[data-field="name"]')?.value.trim();
                  const planCells = [];
                  row.querySelectorAll('.cell-container').forEach(cell => {
@@ -1692,8 +1827,13 @@ function handleAttendanceData(data) {
       pendingAttendanceChanges = {}; 
       pendingEmployeeInfoChanges = {}; 
       
+      // NEW STEP: Re-fetch the employee master list to update the datalists
+      if (currentContract && currentContract.sfcRef) {
+          fetchEmployeeMasterData(currentContract.sfcRef);
+      }
+      
       // I-fetch ulit ang data para ma-load ang na-save na plan
-      fetchAttendanceData(currentContract.sfcRef); // Pass SFC Ref#
+      reloadPlanAndCheckExistence(); // Use the existing full reload function
   }
 
   function handleSaveAllError(error) {
@@ -2033,8 +2173,9 @@ function handleCellSelectionClick(event) {
     // Safety check: Cannot select cells without ID or if the row is marked for deletion OR LOCKED
     const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
     if (isCellLocked) {
-        const employee = currentContract.employees.find(e => e.id === targetCell.dataset.originalId) || { id: '' };
-        showNotification('Cannot select: Row is marked for deletion or is locked (Ref #'+ lockedIdRefMap[employee.id] +').', false);
+        // UPDATED: Get the original ID from the cell's dataset for the lock lookup
+        const originalId = targetCell.dataset.originalId || '';
+        showNotification('Cannot select: Row is marked for deletion or is locked (Ref #'+ lockedIdRefMap[originalId] +').', false);
         return;
     }
     
