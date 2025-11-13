@@ -420,13 +420,23 @@ function handleUnlockRequest(event) {
                 const month = $("#ui-datepicker-div .ui-datepicker-month :selected").val();
                 const year = $("#ui-datepicker-div .ui-datepicker-year :selected").val();
                 
+                // CRITICAL FIX: Only proceed if a selection was actively made (i.e., 'Select Period' button was clicked)
                 if (month !== undefined && year !== undefined) {
                     const newDate = new Date(year, month, 1);
-                    currentPlanningDate = newDate;
                     
-                    // Set the input field text and trigger reload
-                    $(this).datepicker('setDate', newDate);
-                    reloadPlanAndCheckExistence(); 
+                    // Compare new selection with current state (Year and Month)
+                    const currentYear = currentPlanningDate.getFullYear();
+                    const currentMonth = currentPlanningDate.getMonth();
+
+                    if (newDate.getFullYear() !== currentYear || newDate.getMonth() !== currentMonth) {
+                        // The month/year is different, so update and reload
+                        currentPlanningDate = newDate;
+                        
+                        // Set the input field text and trigger reload
+                        $(this).datepicker('setDate', newDate);
+                        reloadPlanAndCheckExistence(); 
+                    }
+                    // ELSE: If the month/year is the same, do nothing (no reload, no change to currentPlanningDate)
                 }
                 // Ensure the calendar is hidden (fallback safety)
                 inst.dpDiv.removeClass('ui-month-year-only');
