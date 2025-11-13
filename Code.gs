@@ -6,6 +6,9 @@ const CONTRACTS_SHEET_NAME = 'MASTER';
 const MASTER_HEADER_ROW = 5;
 const PLAN_HEADER_ROW = 6;
 
+// NEW: ADMIN USER CONFIGURATION FOR UNLOCK FEATURE (CRITICAL: PALITAN ITO NG TAMANG EMAIL!)
+const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com']; // PALITAN ITO NG TAMANG EMAIL ADDRESS!
+
 // --- UPDATED CONFIGURATION FOR PRINT LOG (10 Columns) ---
 const LOG_SHEET_NAME = 'PrintLog';
 const LOG_HEADERS = [
@@ -22,7 +25,13 @@ const LOG_HEADERS = [
 ];
 // ---------------------------------------
 
-function doGet() {
+function doGet(e) {
+  // Check if the request is for the direct unlock action from the email link
+  if (e.parameter.action) {
+    return processAdminUnlockFromUrl(e.parameter);
+  }
+  
+  // Default action: load the main UI
   return HtmlService.createTemplateFromFile('index')
       .evaluate()
       .setTitle('Attendance Plan Monitor');
@@ -158,7 +167,7 @@ function appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shiftToAppend) {
 
 function createContractSheets(sfcRef, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-// --- EMPLOYEES SHEET ---
+    // --- EMPLOYEES SHEET ---
     const empSheetName = getDynamicSheetName(sfcRef, 'employees');
     let empSheet = ss.getSheetByName(empSheetName);
     if (!empSheet) {
@@ -239,7 +248,7 @@ function getContracts() {
   const allContracts = getSheetData(SPREADSHEET_ID, CONTRACTS_SHEET_NAME);
   const findKey = (c, search) => {
       const keys = Object.keys(c);
-      return keys.find(key => (key || '').trim().toLowerCase() === search.toLowerCase());
+    return keys.find(key => (key || '').trim().toLowerCase() === search.toLowerCase());
   };
     
   const filteredContracts = allContracts.filter((c) => {
@@ -284,7 +293,7 @@ function getContracts() {
       0) || 0, 
    
       sfcRef: sfcRefKey ? (c[sfcRefKey] ||
-      '').toString() : '', 
+    '').toString() : '', 
     };
   });
 }
@@ -309,7 +318,7 @@ function getEmployeeMasterData(sfcRef) {
         position: String(e['Position'] || '').trim(),
         area: String(e['Area Posting'] || '').trim(),
     })).filter(e => e.id);
-// Only return rows with a valid ID
+    // Only return rows with a valid ID
 }
 // --- END NEW FUNCTION ---
 
@@ -354,7 +363,7 @@ function getLockedPersonnelIds(ss, planSheetName) {
                      // We use the first Ref # found for this ID as the source of truth
                      if (!lockedIdRefMap[cleanId]) { 
                         lockedIdRefMap[cleanId] = refNum;
-                     }
+                    }
                 }
             });
         }
@@ -429,20 +438,20 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             
                 const dayKey = `${year}-${month + 1}-${d}`; 
                 const date = new Date(year, month, d);
-                
+              
+              
           
                 let lookupHeader = '';
          
                 if (date.getMonth() === month) {
  
                 
-                    const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
+                    const monthShortRaw = 
+                    date.toLocaleString('en-US', { month: 'short' });
                   
                     const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
                   
                     lookupHeader = `${monthShort}${d}`;
-               
-         
                 } else {
          
                 
@@ -461,7 +470,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             }
         }
     });
-// NEW LOGIC: Only return employee details for those found in the current plan sheet + master data
+    // NEW LOGIC: Only return employee details for those found in the current plan sheet + master data
     let renderedEmployees = Array.from(employeesInPlan).map(id => {
          const emp = empDetailMap[id] || { id: id, name: '', position: '', area: '' };
          // The number (no) is no longer guaranteed to be correct here, but we will recalculate on the client side
@@ -485,10 +494,10 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             e.area,
         }
     }).filter(e => e.id);
-// Filter out any empty IDs resulting from a broken map
+    // Filter out any empty IDs resulting from a broken map
     
     return { employees, planMap, lockedIds: lockedIds, lockedIdRefMap: lockedIdRefMap };
-// The 'employees' list is now filtered to the current plan content
+    // The 'employees' list is now filtered to the current plan content
 }
 
 function updatePlanKeysOnIdChange(sfcRef, employeeChanges) {
@@ -506,7 +515,7 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift);
     const lockedIds = Object.keys(getLockedPersonnelIds(ss, planSheetName));
-// Use keys from the map
+    // Use keys from the map
 
     // Filter out changes for locked IDs
     const finalEmployeeChanges = employeeChanges.filter(change => {
@@ -588,7 +597,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     // CRITICAL FIX: Use getDisplayValues() to get string headers (e.g., 'Nov1')
     if (numRowsToRead >= 0 && numColumns > 0) {
          values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-         headers = values[0]; 
+        headers = values[0]; 
     } else {
         headers = ['Personnel ID', 'Shift'];
         for (let i = 1; i <= 31; i++) {
@@ -702,7 +711,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     const rowsToUpdate = {};
     const rowsToAppend = [];
     const rowsToDelete = [];
-// Bagong array para sa mga row na ide-delete
+    // Bagong array para sa mga row na ide-delete
     
     // UPDATED: I-declare ang mga ito, ngunit lalagyan lang ng laman ang kasalukuyang shift
     const planRowsToAppend1st = [];
@@ -735,9 +744,10 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                     rowNum: personnelIdMap[oldId], 
                     id: oldId,
                     isMasterDelete: true // Flag to delete from master sheet
-  
+ 
                 });
-                delete personnelIdMap[oldId]; // I-alis sa map
+                delete personnelIdMap[oldId];
+                // I-alis sa map
             }
             
             return;
@@ -750,6 +760,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             
             // 1. Employee Master Sheet Logic (Only append if truly new to master, not just new to plan)
             if (!data.isExistingEmployeeAdded) { // If it's a truly new employee (not in master)
+               
                 if (personnelIdMap[newId]) return; // Skip if ID already exists in master list
                 
                 // Prepare row for Employee Master Sheet
@@ -764,8 +775,10 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                     finalRow.push(newRow[i] !== undefined ? newRow[i] : '');
                 }
                 
-                rowsToAppend.push(finalRow); // Add to master sheet append list
-                personnelIdMap[newId] = -1; // Mark as added to master
+                rowsToAppend.push(finalRow);
+                // Add to master sheet append list
+                personnelIdMap[newId] = -1;
+                // Mark as added to master
             }
 
 
@@ -793,17 +806,19 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             if (planSheet) {
                 // Basahin lang ang ID at Shift columns
         
+     
                 const planValues = planSheet.getRange(PLAN_HEADER_ROW + 1, 1, planSheet.getLastRow() - PLAN_HEADER_ROW, 2).getValues();
                 
                 for(let i = planValues.length - 1; i >= 0; i--) {
                     if (String(planValues[i][0] || '').trim() === item.id && 
+          
                     String(planValues[i][1] || '').trim() === targetShift) {
              
                         // Row index sa sheet (1-based)
                         planSheet.deleteRow(PLAN_HEADER_ROW + i + 1);
+               
                         Logger.log(`[saveEmployeeInfoBulk] 
                         Deleted Plan row for ID ${item.id} in ${targetShift} shift.`);
-                       
                         return;
                     // Exit after finding and deleting the specific row
                     }
@@ -820,7 +835,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         // Kung ito ay isang BAGONG ROW na DELETED (isMasterDelete: true), tanggalin din sa Employee Sheet
         if (item.isMasterDelete && item.rowNum > 1) {
              empSheet.deleteRow(item.rowNum);
-             Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row ${item.rowNum} for ID ${item.id} from Master Sheet.`);
+            Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row ${item.rowNum} for ID ${item.id} from Master Sheet.`);
         }
     });
     // 2. Append new rows (Employee Sheet)
@@ -867,17 +882,17 @@ function getOrCreateLogSheet(ss) {
             return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
-        // I-re-throw ang iba pang unexpected errors
+    // I-re-throw ang iba pang unexpected errors
     }
 }
 
 function getNextReferenceNumber(logSheet) {
     const lastRow = logSheet.getLastRow();
-// Start at 1 if only header row exists
+    // Start at 1 if only header row exists
     if (lastRow < 2) return 1;
-// Read the last value in Column A (Reference #)
+    // Read the last value in Column A (Reference #)
     const lastRef = logSheet.getRange(lastRow, 1).getValue();
-// Attempt to parse and increment, defaulting to 1 if it's not a number
+    // Attempt to parse and increment, defaulting to 1 if it's not a number
     return (parseInt(lastRef) || 0) + 1;
 }
 
@@ -959,7 +974,7 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
         const lastLoggedRow = logSheet.getLastRow();
         const newRow = lastLoggedRow + 1;
         const LOCKED_IDS_COL = LOG_HEADERS.length;
-// 10
+        // 10
 
         const logEntryRange = logSheet.getRange(newRow, 1, 1, LOG_HEADERS.length);
         // 2. *** CRITICAL FIX: I-set ang format ng Locked Personnel IDs cell (Col J) sa Plain Text ('@') ***
@@ -974,3 +989,265 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
     }
 }
 
+/**
+ * Sends a notification email to the original requester about the status of their unlock request.
+ * @param {string} status - 'APPROVED' or 'REJECTED'
+ * @param {string} personnelId
+ * @param {string} requesterEmail
+ */
+function sendRequesterNotification(status, personnelId, requesterEmail) {
+  if (requesterEmail === 'UNKNOWN_REQUESTER' || !requesterEmail) return;
+
+  const subject = `Unlock Request Status: ${status} for Personnel ID ${personnelId}`;
+  
+  let body = '';
+  if (status === 'APPROVED') {
+    body = `
+      Good news! Your request to unlock Personnel ID ${personnelId} has been **APPROVED** by the Admin.
+      
+      You may now return to the Attendance Plan Monitor app and refresh your browser to edit the schedule.
+      
+      ---
+      This notification confirms the lock is removed.
+    `;
+  } else if (status === 'REJECTED') {
+    body = `
+      Your request to unlock Personnel ID ${personnelId} has been **REJECTED** by the Admin.
+      
+      The print lock remains active, and the schedule cannot be edited at this time. Please contact your Admin for details.
+      
+      ---
+      This is an automated notification.
+    `;
+  } else {
+      return; // Do nothing for other statuses
+  }
+  
+  try {
+    MailApp.sendEmail({
+      to: requesterEmail,
+      subject: subject,
+      body: body,
+      name: 'Attendance Plan Monitor (Status Update)'
+    });
+    Logger.log(`[sendRequesterNotification] Status ${status} email sent to requester: ${requesterEmail}`);
+  } catch (e) {
+    Logger.log(`[sendRequesterNotification] Failed to send status email to ${requesterEmail}: ${e.message}`);
+  }
+}
+
+
+/**
+ * Admin Unlock for Printed Personnel IDs.
+ * Checks for Admin authority and removes the IDs from the PrintLog entry.
+ * @param {string} sfcRef 
+ * @param {number} year 
+ * @param {number} month 
+ * @param {string} shift 
+ * @param {string[]} personnelIdsToUnlock - Array of clean Personnel IDs to unlock.
+ */
+function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
+    const userEmail = Session.getActiveUser().getEmail();
+    if (!ADMIN_EMAILS.includes(userEmail)) {
+      // Throw error if user is not in the Admin list
+      throw new Error("AUTHORIZATION ERROR: Only admin users can unlock printed schedules. Contact administrator.");
+    }
+
+    if (!personnelIdsToUnlock || personnelIdsToUnlock.length === 0) return;
+
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const logSheet = getOrCreateLogSheet(ss);
+    const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift);
+    
+    const lastRow = logSheet.getLastRow();
+    if (lastRow < 2) return;
+
+    const PLAN_SHEET_NAME_COL_INDEX = 2; // Col C (0-based)
+    const LOCKED_IDS_COL_INDEX = LOG_HEADERS.length - 1; // Col J (0-based)
+    
+    const range = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length);
+    // Use getValues() to get raw array values
+    const values = range.getValues(); 
+    const rangeToUpdate = [];
+
+    values.forEach((row, rowIndex) => {
+      const rowNumInSheet = rowIndex + 2; // 1-based row number in the sheet
+      const planSheetNameInLog = String(row[PLAN_SHEET_NAME_COL_INDEX] || '').trim();
+      const lockedIdsString = String(row[LOCKED_IDS_COL_INDEX] || '').trim();
+      
+      // Only check log entries for the CURRENT plan sheet
+      if (planSheetNameInLog === planSheetName && lockedIdsString) {
+        // Map to clean IDs and filter out empty/invalid ones
+        const currentLockedIds = lockedIdsString.split(',')
+                                                .map(id => cleanPersonnelId(id))
+                                                .filter(id => id.length >= 3);
+        
+        let updatedLockedIds = [...currentLockedIds];
+        let changed = false;
+
+        // Filter out the requested IDs to unlock
+        personnelIdsToUnlock.forEach(unlockId => {
+          const index = updatedLockedIds.indexOf(unlockId);
+          if (index > -1) {
+            updatedLockedIds.splice(index, 1);
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          const newLockedIdsString = updatedLockedIds.join(',');
+          // Mark the cell in column J for update
+          rangeToUpdate.push({
+              row: rowNumInSheet,
+              col: LOCKED_IDS_COL_INDEX + 1, // 1-based
+              value: newLockedIdsString
+          });
+        }
+      }
+    });
+    
+    // Apply bulk updates and delete empty rows
+    const rowsToDelete = [];
+    rangeToUpdate.forEach(update => {
+        const targetRange = logSheet.getRange(update.row, update.col);
+        if (update.value === '') {
+            // If the new string is empty, mark the whole log row for deletion
+            rowsToDelete.push(update.row);
+        } else {
+            // Update the cell value and re-apply text format
+            targetRange.setNumberFormat('@').setValue(update.value);
+        }
+    });
+    
+    // CRITICAL: Delete rows backwards to avoid index shifting
+    rowsToDelete.sort((a, b) => b - a).forEach(rowNum => {
+        logSheet.deleteRow(rowNum);
+    });
+    
+    Logger.log(`[unlockPersonnelIds] Successfully unlocked ${personnelIdsToUnlock.length} IDs for ${planSheetName}.`);
+}
+
+
+/**
+ * UPDATED FUNCTION: Sends an HTML email notification to Admin(s) for an unlock request,
+ * including actionable Approve/Reject buttons via Web App URL.
+ */
+function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId, lockedRefNum) {
+  const requestingUserEmail = Session.getActiveUser().getEmail(); 
+  const adminEmails = ADMIN_EMAILS.join(', ');
+  const date = new Date(year, month, 1);
+  const planPeriod = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const shiftDisplay = (shift === '1stHalf' ? '1st to 15th' : '16th to End');
+
+  // **NEW: Encode Requester Email in the URL**
+  const requesterEmailEncoded = encodeURIComponent(requestingUserEmail); 
+  
+  // Build the Web App URL
+  const webAppUrl = ScriptApp.getService().getUrl(); 
+  
+  // CRITICAL: We include req_email in the URL
+  const unlockUrl = `${webAppUrl}?action=unlock&sfc=${sfcRef}&yr=${year}&mon=${month + 1}&shift=${shift}&id=${personnelId}&ref=${lockedRefNum}&req_email=${requesterEmailEncoded}`;
+  const rejectUrl = `${webAppUrl}?action=reject_info&sfc=${sfcRef}&id=${personnelId}&req_email=${requesterEmailEncoded}`; 
+
+  const htmlBody = `
+    <p style="font-size: 14px;">Mayroong Attendance Plan Unlock Request na isinumite.</p>
+
+    <hr style="margin: 10px 0;">
+    
+    <p style="font-size: 14px;"><b>Requested By:</b> ${requestingUserEmail}</p>
+    <p style="font-size: 14px;"><b>Personnel ID:</b> ${personnelId}</p>
+    <p style="font-size: 14px;"><b>SFC Ref #:</b> ${sfcRef}</p>
+    <p style="font-size: 14px;"><b>Plan Period:</b> ${planPeriod} (${shiftDisplay} Half)</p>
+    <p style="font-size: 14px;"><b>Locked Ref #:</b> ${lockedRefNum}</p>
+    
+    <hr style="margin: 10px 0;">
+
+    <h3 style="color: #1e40af;">Admin Action Required:</h3>
+    
+    <div style="margin-top: 15px;">
+        <a href="${unlockUrl}" target="_blank" 
+           style="background-color: #10b981; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold; margin-right: 10px;">
+           ✅ APPROVE & UNLOCK
+        </a>
+        
+        <a href="${rejectUrl}" target="_blank" 
+           style="background-color: #f59e0b; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold;">
+           ❌ REJECT (Log Only)
+        </a>
+    </div>
+
+    <p style="margin-top: 20px; font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
+  `;
+  
+  try {
+    MailApp.sendEmail({
+      to: adminEmails,
+      subject: `ATTN: Admin Unlock Request - ID ${personnelId} for ${sfcRef}`,
+      htmlBody: htmlBody, // Gamitin ang htmlBody para sa buttons
+      name: 'Attendance Plan Monitor (Automated Request)'
+    });
+    Logger.log(`[requestUnlockEmailNotification] Sent request email for ID ${personnelId} to ${adminEmails}`);
+    return { success: true, message: `Unlock request sent to Admin(s): ${adminEmails}` };
+  } catch (e) {
+    Logger.log(`[requestUnlockEmailNotification] Failed to send email: ${e.message}`);
+    return { success: false, message: `WARNING: Failed to send request email. Error: ${e.message}` };
+  }
+}
+
+/**
+ * Handles the unlock action triggered by the URL/email link.
+ */
+function processAdminUnlockFromUrl(params) {
+  const sfcRef = params.sfc;
+  const personnelId = params.id;
+  const lockedRefNum = params.ref;
+  const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER'; // NEW: Requester Email
+  
+  // 1. Check Admin authorization (Crucial for security)
+  const userEmail = Session.getActiveUser().getEmail();
+  if (!ADMIN_EMAILS.includes(userEmail)) {
+    return HtmlService.createHtmlOutput('<h1 style="color: red;">AUTHORIZATION FAILED</h1><p>You are not authorized to perform this action. Your email: ' + userEmail + '</p>');
+  }
+
+  // Handle Reject (Informational) action
+  if (params.action === 'reject_info') {
+      // 1. Send notification to the original requester (REJECTED)
+      sendRequesterNotification('REJECTED', personnelId, requesterEmail); 
+      
+      const template = HtmlService.createTemplateFromFile('UnlockStatus');
+      template.status = 'INFO';
+      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ID ${personnelId}. Notification sent to ${requesterEmail}. No data was changed. The lock remains active.`;
+      return template.evaluate().setTitle('Reject Status');
+  }
+  
+  // Handle Approve (Unlock) action
+  if (params.action === 'unlock' && params.yr && params.mon && params.shift) {
+      try {
+        const year = parseInt(params.yr, 10);
+        // Month in URL is 1-based, GAS is 0-based.
+        const month = parseInt(params.mon, 10) - 1; 
+        const shift = params.shift;
+
+        // Perform the unlock using the existing logic
+        unlockPersonnelIds(sfcRef, year, month, shift, [personnelId]);
+        
+        // 1. Send notification to the original requester (APPROVED)
+        sendRequesterNotification('APPROVED', personnelId, requesterEmail); 
+        
+        // Return Success HTML
+        const template = HtmlService.createTemplateFromFile('UnlockStatus');
+        template.status = 'SUCCESS';
+        template.message = `Successfully unlocked Personnel ID ${personnelId}. The Print Lock (Ref #${lockedRefNum}) has been removed by Admin (${userEmail}). Notification sent to ${requesterEmail}.`;
+        return template.evaluate().setTitle('Unlock Status');
+
+      } catch (e) {
+        // Return Failure HTML
+        const template = HtmlService.createTemplateFromFile('UnlockStatus');
+        template.status = 'ERROR';
+        template.message = `Failed to unlock ID ${personnelId}. Error: ${e.message}`;
+        return template.evaluate().setTitle('Unlock Status');
+      }
+  }
+  
+  return HtmlService.createHtmlOutput('<h1>Invalid Action</h1><p>The URL provided is incomplete or incorrect.</p>');
+}
