@@ -743,7 +743,7 @@ function handleAttendanceData(data) {
         th.textContent = headerText;
         th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-100 border-r border-gray-300 z-20';
         
-        // EDITED: I-inject ang inline width para masigurado ang column size
+        // EDITED: I-inject ang inline width para sa masigurado ang column size
         th.style.width = fixedWidths[index];
         th.style.minWidth = fixedWidths[index]; 
 
@@ -1325,14 +1325,17 @@ function handleAttendanceData(data) {
       } else {
          // If no master record is found, just continue with normal validation/casing.
          // And set the pending change field to the current value
-         pendingChange[field] = newValue.trim();
+         // *** BUG FIX 1: Huwag i-trim ang newValue dito. Ito ang sanhi kung bakit hindi
+         // pinapayagan ang space habang nagta-type. ***
+         pendingChange[field] = newValue;
       }
       // --- END NEW AUTO-FILL LOGIC ---
 
       // --- NEW VALIDATION AND FORMATTING LOGIC (Duplicate checks use the fixed logic from previous turn) ---
       if (field === 'id') {
           // 1. Validation: Only Numbers (allow empty string for now, validated on save)
-          const cleanId = pendingChange.id; // Use the value from the pending change (already updated by auto-fill)
+          const cleanId = pendingChange.id; // Use the value from the pending change (now NOT trimmed)
+          
           // Check for non-numeric characters only if input is not empty
           if (cleanId && !PERSONNEL_ID_REGEX.test(cleanId)) {
                showNotification('Personnel ID must contain numbers only.', false);
@@ -1379,12 +1382,10 @@ function handleAttendanceData(data) {
               let regexToUse = '';
               
               if (field === 'name') {
-                  // UPDATED FIX: Only remove 0-9 and other extraneous characters.
-                  // We explicitly ALLOW A-Z, spaces, period (.), comma (,), and dash (-).
-                  // This regex removes everything NOT in that allowed set (including 0-9).
+                  // FIX: Allowed: A-Z, spaces, period (.), comma (,), and dash (-).
                   regexToUse = /[^A-Z\s.,-]/g; 
               } else {
-                  // Logic for Position/Area (allow A-Z, 0-9, spaces, period, comma, dash)
+                  // Logic for Position/Area (allowed: A-Z, 0-9, spaces, period, comma, dash)
                   regexToUse = /[^A-Z0-9\s.,-]/g; 
               }
 
@@ -1397,13 +1398,16 @@ function handleAttendanceData(data) {
               
               // I-set ang input value sa cleaned value para makita ng user agad
               input.value = cleanedValue;
-              pendingChange[field] = cleanedValue.trim();
+              
+              // *** BUG FIX 2: Huwag i-trim ang final value na nakasave sa pending change.
+              // Ito ang magre-retain ng trailing space sa memory para hindi mag-flash. ***
+              pendingChange[field] = cleanedValue;
           }
 
           
           // --- NEW: DUPLICATE NAME CHECK (HARD STOP & REVERSION) ---
           if (field === 'name' && pendingChange.name) {
-              // Check for duplicate name using the new value
+              // Check for duplicate name using the new value (which might contain trailing space)
               if (isDuplicateName(pendingChange.name, employee.id, employee.no)) {
                   showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee. Please edit the name to be unique (e.g., add initials/middle name) before saving.`, false);
                   
@@ -1482,11 +1486,12 @@ function handleAttendanceData(data) {
       }
       
       // Tiyakin na ang comparison ay ginagawa sa pagitan ng current pending data at saved data (employee.id/name/etc)
-      const isChanged = (pendingChange.id !== employee.id || 
-                         pendingChange.name !== employee.name || 
-                         pendingChange.position !== employee.position || 
-                         pendingChange.area !== employee.area ||
-                         (pendingChange.originalEmployeeId === '' && pendingChange.id !== '')); // Bagong row na may laman
+      // NOTE: Dito, gagamitin ng comparison ang HINDI-TRIMMED value.
+      const isChanged = (pendingChange.id.trim() !== employee.id || 
+                         pendingChange.name.trim() !== employee.name || 
+                         pendingChange.position.trim() !== employee.position || 
+                         pendingChange.area.trim() !== employee.area ||
+                         (pendingChange.originalEmployeeId === '' && pendingChange.id.trim() !== '')); // Bagong row na may laman
 
       if (isChanged) {
           // I-store gamit ang stableLookupKey
@@ -1817,10 +1822,10 @@ function handleAttendanceData(data) {
             // Ito ang gagamitin ng server para hanapin ang row
             oldPersonnelId: change.originalEmployeeId, // Dapat ito ang original saved ID (o '')
             // Ito ang bagong data
-            id: change.id,
-            name: change.name,
-            position: change.position,
-            area: change.area,
+            id: change.id.trim(), // *** TRIMMED on save ***
+            name: change.name.trim(), // *** TRIMMED on save ***
+            position: change.position.trim(), // *** TRIMMED on save ***
+            area: change.area.trim(), // *** TRIMMED on save ***
             isNew: change.originalEmployeeId === '', // Flag para sa bagong row
             isDeleted: change.isDeleted || false, // UPDATED: I-pass ang deletion flag
             isExistingEmployeeAdded: isExistingAddedToPlan // NEW FLAG for server-side skipping
@@ -1831,19 +1836,20 @@ function handleAttendanceData(data) {
     // Final check bago ipadala
     const finalEmpChanges = [];
     empChanges.forEach(e => {
+        // Use the ALREADY TRIMMED values from the map operation above
         if (e.isDeleted) {
             finalEmpChanges.push(e); // Allow deleted rows to pass regardless of content
         } else if (e.isExistingEmployeeAdded) {
              // CRITICAL FIX 7 REVISION: Allow existing master employees being added to a plan sheet to pass
              // This ensures they are processed by saveEmployeeInfoBulk for the PLAN SHEET append.
              // Only if all info fields are complete
-             if (e.id.trim() !== '' && e.name.trim() !== '' && e.position.trim() !== '' && e.area.trim() !== '') {
+             if (e.id !== '' && e.name !== '' && e.position !== '' && e.area !== '') {
                  finalEmpChanges.push(e);
              }
         }
         else if (e.isNew) {
             // Only allow truly NEW employees (not in master, not flagged as isExistingEmployeeAdded) if ALL four info fields are filled
-            if (e.id.trim() !== '' && e.name.trim() !== '' && e.position.trim() !== '' && e.area.trim() !== '') {
+            if (e.id !== '' && e.name !== '' && e.position !== '' && e.area !== '') {
                  finalEmpChanges.push(e);
             }
         }
@@ -1953,6 +1959,7 @@ function handleAttendanceData(data) {
                 continue; 
             }
 
+            // NOTE: change.name is already trimmed for comparison consistency
             const normalizedNameKey = normalizeNameForComparison(change.name);
             const existingId = namesToCheck[normalizedNameKey];
 
@@ -2086,7 +2093,7 @@ function handleAttendanceData(data) {
     }
     
     // Safety check: Final validation before sending to server (Numeric ID check)
-    if (finalEmpChanges.some(e => !e.isDeleted && !PERSONNEL_ID_REGEX.test(e.id.trim()))) {
+    if (finalEmpChanges.some(e => !e.isDeleted && !PERSONNEL_ID_REGEX.test(e.id))) { // e.id is already trimmed here
         showNotification('Personnel ID error detected (must be numbers only). Please check your inputs.', false);
         return;
     }
@@ -2207,7 +2214,7 @@ function handleAttendanceData(data) {
         }
         
         // B. Check for NA/Blank Exclusion (Row must have at least one valid schedule to be printed)
-        let hasValidSchedule = false;
+        let hasActualSchedule = false;
 
         row.querySelectorAll('.cell-container').forEach(cell => {
             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
@@ -2215,7 +2222,7 @@ function handleAttendanceData(data) {
             // Treat anything other than '', 'NA', 'DELETED' as a valid schedule.
             // Note: LOCKED is already excluded from this check because locked rows are excluded from the `printedPersonnelIds` list (see below)
             if (status !== '' && status !== 'NA' && status !== 'DELETED') { 
-                hasValidSchedule = true;
+                hasActualSchedule = true;
             }
         });
         
@@ -2225,7 +2232,7 @@ function handleAttendanceData(data) {
         
         // If the row has NO actual schedule (only NA/Blank) AND it's NOT locked, we exclude it from the print.
         // Ang rows na may schedule O NAKA-LOCK ay ipi-print.
-        if (!hasValidSchedule && !isLocked) { 
+        if (!hasActualSchedule && !isLocked) { 
             row.classList.add('print-hidden');
             dynamicallyHiddenRows.push(row); // Use the parameter array to track what was hidden
             return;
