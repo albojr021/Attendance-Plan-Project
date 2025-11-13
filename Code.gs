@@ -6,8 +6,8 @@ const CONTRACTS_SHEET_NAME = 'MASTER';
 const MASTER_HEADER_ROW = 5;
 const PLAN_HEADER_ROW = 6;
 
-// NEW: ADMIN USER CONFIGURATION FOR UNLOCK FEATURE (CRITICAL: PALITAN ITO NG TAMANG EMAIL!)
-const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com']; // PALITAN ITO NG TAMANG EMAIL ADDRESS!
+// ADMIN USER CONFIGURATION FOR UNLOCK FEATURE
+const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com']; 
 
 // --- UPDATED CONFIGURATION FOR PRINT LOG (10 Columns) ---
 const LOG_SHEET_NAME = 'PrintLog';
@@ -22,6 +22,20 @@ const LOG_HEADERS = [
     'User Email', 
     'Timestamp',
     'Locked Personnel IDs'  // NEW: Comma-separated list of IDs
+];
+
+// --- NEW CONFIGURATION FOR SCHEDULE AUDIT LOG ---
+const AUDIT_LOG_SHEET_NAME = 'ScheduleAuditLog';
+const AUDIT_LOG_HEADERS = [
+    'Timestamp', 
+    'User Email', 
+    'SFC Ref#', 
+    'Personnel ID', 
+    'Plan Sheet Name', 
+    'Date (YYYY-M-D)', 
+    'Shift', 
+    'Old Status', 
+    'New Status'
 ];
 // ---------------------------------------
 
@@ -580,6 +594,30 @@ function saveContractInfo(sfcRef, info, year, month, shift) {
     Logger.log(`[saveContractInfo] Saved metadata and date range for ${planSheetName}.`);
 }
 
+function getOrCreateAuditLogSheet(ss) {
+    let sheet = ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+    if (sheet) {
+        return sheet;
+    }
+    
+    try {
+        sheet = ss.insertSheet(AUDIT_LOG_SHEET_NAME);
+        // Set Headers at Row 1
+        sheet.getRange(1, 1, 1, AUDIT_LOG_HEADERS.length).setValues([AUDIT_LOG_HEADERS]);
+        sheet.setFrozenRows(1);
+        sheet.setColumnWidths(1, AUDIT_LOG_HEADERS.length, 120); // Set column width for readability
+        Logger.log(`[getOrCreateAuditLogSheet] Created Audit Log sheet: ${AUDIT_LOG_SHEET_NAME}`);
+        return sheet;
+    } catch (e) {
+        if (e.message.includes(`sheet with the name "${AUDIT_LOG_SHEET_NAME}" already exists`)) {
+             Logger.log(`[getOrCreateAuditLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
+            return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+        }
+        throw e;
+    }
+}
+
+
 function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const planSheetName = getDynamicSheetName(sfcRef, 'plan', year, month, shift);
@@ -628,8 +666,11 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     }
     
     const updatesMap = {};
+    const auditLogSheet = getOrCreateAuditLogSheet(ss);
+    const userEmail = Session.getActiveUser().getEmail();
+
     changes.forEach(data => {
-        const { personnelId, dayKey, shift: dataShift, status } = data;
+        const { personnelId, dayKey, shift: dataShift, status: newStatus } = data; // Renamed status to newStatus
         
         if (dataShift !== shift) return; 
         
@@ -653,21 +694,41 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         }
         
         const dayColIndex = sanitizedHeadersMap[sanitizeHeader(targetLookupHeader)];
-        if (dayColIndex === undefined) {
-            Logger.log(`[savePlanBulk] FATAL MISS: Header Lookup '${targetLookupHeader}' failed.
-            Available Sanitized Keys: ${Object.keys(sanitizedHeadersMap).join(' | ')}`);
-            return; 
-        }
-
+        
         const rowIndexInValues = rowLookupMap[rowKey];
-        if (rowIndexInValues !== undefined) {
+        if (rowIndexInValues !== undefined && dayColIndex !== undefined) {
             const sheetRowNumber = rowIndexInValues + HEADER_ROW;
-            if (!updatesMap[sheetRowNumber]) {
-                updatesMap[sheetRowNumber] = {};
-            }
-            updatesMap[sheetRowNumber][dayColIndex + 1] = status;
+            
+            // CRITICAL STEP 1: Get OLD Status from the original 'values' array
+            // NOTE: values[0] is header row, so we use rowIndexInValues (1-based index to data row in 'values' array)
+            const oldStatus = String(values[rowIndexInValues][dayColIndex] || '').trim(); 
+            
+            if (oldStatus !== newStatus) { // Log only if status actually changes
+                
+                // CRITICAL STEP 2: Log the change to the audit sheet
+                const logEntry = [
+                    new Date(), 
+                    userEmail, 
+                    sfcRef, 
+                    personnelId, 
+                    planSheetName, 
+                    dayKey, 
+                    dataShift, 
+                    oldStatus, 
+                    newStatus
+                ];
+                auditLogSheet.appendRow(logEntry);
+                Logger.log(`[AuditLog] Change logged for ID ${personnelId}, Day ${dayKey}: ${oldStatus} -> ${newStatus}`);
+                
+                // CRITICAL STEP 3: Proceed with updating the updatesMap
+                if (!updatesMap[sheetRowNumber]) {
+                    updatesMap[sheetRowNumber] = {};
+                }
+                updatesMap[sheetRowNumber][dayColIndex + 1] = newStatus;
+            } 
+            
         } else {
-            Logger.log(`[savePlanBulk] WARNING: ID/Shift combination not found for row: ${rowKey}. Skipping update for this cell.`);
+            Logger.log(`[savePlanBulk] WARNING: ID/Shift combination not found or column missing for row: ${rowKey}. Skipping update for this cell.`);
         }
     });
 
@@ -876,13 +937,11 @@ function getOrCreateLogSheet(ss) {
         return sheet;
         
     } catch (e) {
-        // Fallback para sa transient error (tulad ng na-experience mo)
         if (e.message.includes(`sheet with the name "${LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
             return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
-    // I-re-throw ang iba pang unexpected errors
     }
 }
 
@@ -988,6 +1047,7 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
         Logger.log(`[recordPrintLogEntry] FATAL ERROR: Failed to log print action #${refNum}. Error: ${e.message}`);
     }
 }
+
 
 /**
  * Sends a notification email to the original requester about the status of their unlock request.
