@@ -4,6 +4,18 @@
   // NEW: Include Select2
   document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"><\/script>');
   
+  // *** NEW: Include jQuery UI (for Datepicker) ***
+  document.write('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css">');
+  document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"><\/script>');
+  // ****************************************
+  
+  // *** NEW: Custom style para itago ang calendar view ***
+  document.write('<style>');
+  // CRITICAL: Itago ang calendar table at tiyakin na centered ang button pane
+  document.write('.ui-month-year-only .ui-datepicker-calendar { display: none !important; }');
+  document.write('.ui-month-year-only .ui-datepicker-buttonpane { text-align: center; }');
+  document.write('</style>');
+  
   // Global state variables
   let contractList = [];
   let currentContract = null;
@@ -392,6 +404,46 @@ function handleUnlockRequest(event) {
           .on('change', handleSelect2Change); // General change listener (fallback)
 
         toggleLoading(false);
+        
+        // *** NEW: Datepicker Initialization ***
+        const picker = $('#month-year-picker');
+        
+        picker.datepicker({
+            // Force Month/Year selection only
+            changeMonth: true,
+            changeYear: true,
+            showButtonPanel: true,
+            dateFormat: 'MM yy', // Display format
+            // CRITICAL FIX: Custom handler to hide calendar and process only Month/Year
+            onClose: function(dateText, inst) {
+                // Get the selected month and year from the dropdowns
+                const month = $("#ui-datepicker-div .ui-datepicker-month :selected").val();
+                const year = $("#ui-datepicker-div .ui-datepicker-year :selected").val();
+                
+                if (month !== undefined && year !== undefined) {
+                    const newDate = new Date(year, month, 1);
+                    currentPlanningDate = newDate;
+                    
+                    // Set the input field text and trigger reload
+                    $(this).datepicker('setDate', newDate);
+                    reloadPlanAndCheckExistence(); 
+                }
+                // Ensure the calendar is hidden (fallback safety)
+                inst.dpDiv.removeClass('ui-month-year-only');
+            },
+            beforeShow: function(input, inst) {
+                 // CRITICAL: Force hide the days/calendar grid immediately
+                inst.dpDiv.addClass('ui-month-year-only');
+                setTimeout(function(){
+                    inst.dpDiv.find('.ui-datepicker-calendar').hide();
+                    // Optionally change button text for clarity (Select Month/Year)
+                    inst.dpDiv.find('.ui-datepicker-close').text('Select Period'); 
+                }, 1);
+            }
+        });
+        // Set the initial value
+        updateDatePickerDisplay(currentPlanningDate.getFullYear(), currentPlanningDate.getMonth());
+        // *** END NEW: Datepicker Initialization ***
     }, 100); 
 
     // Populate Shift Periods
@@ -408,8 +460,7 @@ function handleUnlockRequest(event) {
 
     // CRITICAL FIX: Use reloadPlanAndCheckExistence for all navigation
     document.getElementById('shift-period-select').addEventListener('change', reloadPlanAndCheckExistence);
-    document.getElementById('prev-month').addEventListener('click', () => { navigateMonth(-1); reloadPlanAndCheckExistence(); });
-    document.getElementById('next-month').addEventListener('click', () => { navigateMonth(1); reloadPlanAndCheckExistence(); });
+    // REMOVED: Listeners for prev-month and next-month buttons (now replaced by datepicker)
     
     // *** NEW: Listener for Save All Button ***
     document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
@@ -507,6 +558,19 @@ function checkIfPlanExists(sfcRef) {
     document.getElementById('plan-period-display').textContent = dateRange;
   }
   // --- END NEW FUNCTION ---
+  
+  // *** NEW HELPER: Update the Datepicker Input Field ***
+  function updateDatePickerDisplay(year, month) {
+    const date = new Date(year, month, 1);
+    // Gamitin ang format na Month Year (e.g., November 2025)
+    const monthYearText = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    document.getElementById('month-year-picker').value = monthYearText;
+    
+    // Tiyakin na naka-set din ang datepicker object sa tamang date
+    const picker = $('#month-year-picker');
+    picker.datepicker('setDate', date);
+  }
+  // *** END NEW HELPER ***
 
 // NEW: Handles the response from checkContractSheets
 function handlePlanExistence(exists) {
@@ -521,6 +585,7 @@ function handlePlanExistence(exists) {
     const currentMonth = currentPlanningDate.getMonth();
     const currentShift = document.getElementById('shift-period-select').value;
     updatePlanPeriodDisplay(currentYear, currentMonth, currentShift); // **CALLED HERE**
+    updateDatePickerDisplay(currentYear, currentMonth); // **NEW: Update picker display**
 
     // Laging itago ang load button kapag nag-a-update ng state
     actionArea.classList.add('hidden'); 
@@ -635,7 +700,7 @@ function handleAttendanceData(data) {
     
     const monthName = currentPlanningDate.toLocaleString('en-US', { month: 'short' }); 
 
-    document.getElementById('current-month-year').textContent = `${currentPlanningDate.toLocaleString('en-US', { month: 'long' })} ${year}`;
+    updateDatePickerDisplay(year, month); // NEW: Always update the picker field
 
     const startDay = selectedShift === '1stHalf' ? 1 : 16;
     const endDay = selectedShift === '1stHalf' ? 15 : daysInMonth;
@@ -1330,7 +1395,7 @@ function handleAttendanceData(data) {
           if (field === 'name' && pendingChange.name) {
               // Check for duplicate name using the new value
               if (isDuplicateName(pendingChange.name, employee.id, employee.no)) {
-                  showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee. Please edit the name to be unique (e.g., add initials/middle name).`, false);
+                  showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee. Please edit the name to be unique (e.g., add initials/middle name) before saving.`, false);
                   
                   // Revert all info fields to original state (Hard Stop)
                   const idInput = row.querySelector('[data-field="id"]');
