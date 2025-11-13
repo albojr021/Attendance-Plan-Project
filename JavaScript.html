@@ -37,6 +37,9 @@
   
   // NEW: Global state for locked ID map {ID: Ref#}
   let lockedIdRefMap = {};
+  
+  // --- NEW GLOBAL STATE FOR PRINT LOCKING ---
+  let isPlanSheetFullyLocked = false;
   // ---------------------------------------------
 
   const fixedStatusOptions = [
@@ -438,6 +441,10 @@ function handleUnlockRequest(event) {
           lockedIdRefMap = {}; // Clear locked IDs
           employeeMasterList = []; // NEW: Clear Master List
           sessionStorage.removeItem(CONTRACT_ID_CACHE_KEY); 
+          
+          // NEW: Update Print Button State
+          isPlanSheetFullyLocked = false;
+          updatePrintButtonState();
           return;
       }
       
@@ -553,6 +560,10 @@ function showBlankPlan() {
 
     renderAttendancePlan(); // Render the blank grid
     toggleLoading(false);
+    
+    // NEW: Enable print button (since no schedules are locked in a blank plan)
+    isPlanSheetFullyLocked = false;
+    updatePrintButtonState(); 
 }
 
 
@@ -595,6 +606,9 @@ function handleAttendanceData(data) {
 
     renderAttendancePlan();
     toggleLoading(false);
+    
+    // NEW: Check the print button state after loading the plan/locked IDs
+    checkPlanSheetLockState(); 
 }
 
 // --- DATE NAVIGATION ---
@@ -1131,6 +1145,7 @@ function handleAttendanceData(data) {
                 button.classList.add('bg-red-400');
                 showNotification(`Employee ${employee.id} marked for DELETION. Click Save All Changes to proceed.`, false);
                 renderAttendancePlan(); 
+                checkPlanSheetLockState(); // NEW: Check state after deletion
             }, 
             () => { // On Cancel (do nothing)
               
@@ -1160,6 +1175,7 @@ function handleAttendanceData(data) {
           button.classList.remove('bg-red-400');
           showNotification(`Deletion for Employee ${employee.id} UNDONE.`, true);
           renderAttendancePlan(); 
+          checkPlanSheetLockState(); // NEW: Check state after undoing deletion
       }
       
   }
@@ -1384,6 +1400,8 @@ function handleAttendanceData(data) {
                        updateCellVisuals(cell, '', dayKey); 
                   });
                   showNotification('Personnel info and schedule cleared locally as Personnel ID was made blank.', false);
+                  // NEW: Check lock state
+                  checkPlanSheetLockState(); 
               }
           }
       }
@@ -1693,6 +1711,9 @@ function handleAttendanceData(data) {
     // Walang re-render dito
     
     showNotification('Change saved locally. Click "Save All Changes" to save to Sheets.', true);
+    
+    // NEW: Check Print Lock state after local schedule change
+    checkPlanSheetLockState(); 
   }
   
   function handleSaveAllChanges() {
@@ -2253,6 +2274,12 @@ function handlePrintPlan() {
         return;
     }
     
+    // ** NEW: Final check if the button should be locked **
+    if (isPlanSheetFullyLocked) {
+        showNotification('Cannot print: All employees with a schedule are already locked for this period. Add a new employee with a schedule or request admin unlock.', false);
+        return;
+    }
+    
     // Check 1: Pending Changes
     const empChangesCount = Object.keys(pendingEmployeeInfoChanges).length;
     const attChangesCount = Object.keys(pendingAttendanceChanges).length;
@@ -2275,6 +2302,9 @@ function handlePrintPlan() {
         const id = (idInput?.value || '').trim();
         const stableKey = row.dataset.stableKey;
         
+        // Check if the row is already locked (used for isPlanPrintable flag only)
+        const isLocked = !!lockedIdRefMap[stableKey];
+        
         // NEW CRITICAL LOGIC: I-check kung may AKTUAL na schedule ang row (hindi NA, BLANK, o DELETED)
         let hasActualSchedule = false;
         row.querySelectorAll('.cell-container').forEach(cell => {
@@ -2285,15 +2315,14 @@ function handlePrintPlan() {
         });
 
         // Tanging ang rows na may AKTUAL na schedule lang ang kailangang i-lock/i-log.
-        if (id && PERSONNEL_ID_REGEX.test(id) && hasActualSchedule) {
+        // Dapat din na HINDI pa naka-lock ang row para ma-log
+        if (id && PERSONNEL_ID_REGEX.test(id) && hasActualSchedule && !isLocked) {
             printedPersonnelIds.push(id);
             isPlanPrintable = true;
         }
         
-        // CRITICAL: Kung locked na ang row, hindi na ito kailangang idagdag sa printedPersonnelIds.
-        // Ito ay para lamang sa pag-log ng BAGONG lock.
-        // Ipagpalagay natin na ang LOCKED rows ay may plan na (isPlanPrintable = true)
-        if(!!lockedIdRefMap[stableKey]) {
+        // Kung locked na ang row, ipagpalagay natin na printable ito (dapat kasama sa printout)
+        if(isLocked) {
             isPlanPrintable = true;
         }
     });
@@ -2333,7 +2362,7 @@ function handlePrintPlan() {
     google.script.run
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
-            // Pass the generated refNum, ALL context, and the LIST OF PRINTED IDs to triggerPrint
+            // Pass the generated refNum, ALL context, and the LIST OF PRINTED IDS to triggerPrint
             // Ang listahan na ito ay naglalaman na lamang ng IDs na may AKTUAL na schedule (hindi NA/BLANK)
             triggerPrint(refNum, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
@@ -2601,6 +2630,106 @@ function saveBulkSchedule(event, fixedStatusValue) {
     // Exit bulk mode and show success notification
     exitBulkSelectionMode();
     showNotification(`Bulk schedule applied to ${changesAppliedCount} cells. Click "Save All Changes" to save to Sheets.`, true);
+    
+    // NEW: Check Print Lock state after bulk schedule change
+    checkPlanSheetLockState(); 
+}
+
+// --- NEW HELPER: Get Row Schedule Status ---
+// Gagamitin ito para i-determine kung ang isang row ay may schedule na dapat i-lock/i-print.
+function getRowScheduleStatus(row, currentShift) {
+    let hasActualSchedule = false;
+
+    // CRITICAL FIX: Kunin ang personnelId sa input field (current truth)
+    const idInput = row.querySelector('[data-field="id"]');
+    const personnelId = (idInput?.value || '').trim();
+    const originalId = row.dataset.stableKey.startsWith('TEMP_') ? '' : row.dataset.stableKey;
+
+    if (!personnelId) return { id: null, isPrintable: false };
+
+    // Get all cells for the current shift
+    row.querySelectorAll('.cell-container').forEach(cell => {
+        const dayKey = cell.dataset.dayKey;
+        const key = `${personnelId}_${dayKey}_${currentShift}`;
+        const originalKey = `${originalId}_${dayKey}_${currentShift}`;
+        
+        // 1. Check pending changes first
+        let status = pendingAttendanceChanges[key];
+        
+        // 2. Fallback to saved planMap if no pending change
+        if (status === undefined) {
+             status = currentContract.planMap[originalKey] || '';
+        }
+        
+        status = status.toString().trim();
+
+        // Treat anything other than '', 'NA', 'DELETED' as a valid schedule.
+        if (status && status !== 'NA' && status !== 'DELETED') {
+            hasActualSchedule = true;
+        }
+    });
+
+    return { id: personnelId, isPrintable: hasActualSchedule };
+}
+
+// --- NEW FUNCTION: Check Plan Sheet Global Lock State (Disables Print Button) ---
+function checkPlanSheetLockState() {
+    if (!currentContract) {
+        isPlanSheetFullyLocked = false;
+        updatePrintButtonState();
+        return;
+    }
+    
+    // Check if the plan sheet even has content (employees)
+    if (currentContract.employees.length === 0 && Object.keys(pendingEmployeeInfoChanges).length === 0) {
+        isPlanSheetFullyLocked = false;
+        updatePrintButtonState();
+        return;
+    }
+
+    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    const currentShift = document.getElementById('shift-period-select').value;
+    
+    let totalPrintableAndUnlocked = 0;
+
+    gridRows.forEach(row => {
+        // Skip rows marked for deletion or completely blank placeholders
+        if (row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
+        
+        // Get the row's schedule status
+        const { id: personnelId, isPrintable } = getRowScheduleStatus(row, currentShift);
+        
+        if (isPrintable) {
+            // Check if the printable ID is NOT in the locked map
+            if (!lockedIdRefMap[personnelId]) {
+                totalPrintableAndUnlocked++;
+            }
+        }
+    });
+
+    // If totalPrintableAndUnlocked is 0, the sheet is considered fully locked.
+    isPlanSheetFullyLocked = (totalPrintableAndUnlocked === 0);
+    updatePrintButtonState();
+    
+    if (isPlanSheetFullyLocked) {
+         // showNotification('All employees with a schedule are currently locked from printing in this period.', false); // Temporarily hide due to aggressive notification
+    }
+}
+
+// --- NEW FUNCTION: Update Print Button Visuals ---
+function updatePrintButtonState() {
+    const printBtn = document.getElementById('print-plan-btn');
+
+    // Disable print button if the sheet is fully locked
+    if (isPlanSheetFullyLocked) {
+        printBtn.disabled = true;
+        printBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        printBtn.title = 'Cannot print: All active schedules are already logged and locked for this period.';
+    } else {
+        printBtn.disabled = false;
+        printBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        printBtn.title = 'Print Plan';
+    }
 }
 
 
