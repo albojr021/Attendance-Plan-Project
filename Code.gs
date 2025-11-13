@@ -7,8 +7,7 @@ const MASTER_HEADER_ROW = 5;
 const PLAN_HEADER_ROW = 6;
 
 // ADMIN USER CONFIGURATION FOR UNLOCK FEATURE
-const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com']; 
-
+const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
 // --- UPDATED CONFIGURATION FOR PRINT LOG (10 Columns) ---
 const LOG_SHEET_NAME = 'PrintLog';
 const LOG_HEADERS = [
@@ -23,7 +22,6 @@ const LOG_HEADERS = [
     'Timestamp',
     'Locked Personnel IDs'  // NEW: Comma-separated list of IDs
 ];
-
 // --- NEW CONFIGURATION FOR SCHEDULE AUDIT LOG ---
 const AUDIT_LOG_SHEET_NAME = 'ScheduleAuditLog';
 const AUDIT_LOG_HEADERS = [
@@ -262,7 +260,7 @@ function getContracts() {
   const allContracts = getSheetData(SPREADSHEET_ID, CONTRACTS_SHEET_NAME);
   const findKey = (c, search) => {
       const keys = Object.keys(c);
-    return keys.find(key => (key || '').trim().toLowerCase() === search.toLowerCase());
+      return keys.find(key => (key || '').trim().toLowerCase() === search.toLowerCase());
   };
     
   const filteredContracts = allContracts.filter((c) => {
@@ -307,7 +305,7 @@ function getContracts() {
       0) || 0, 
    
       sfcRef: sfcRefKey ? (c[sfcRefKey] ||
-    '').toString() : '', 
+      '').toString() : '', 
     };
   });
 }
@@ -373,11 +371,10 @@ function getLockedPersonnelIds(ss, planSheetName) {
                 // CRITICAL CHECK: Tiyakin na ang ID ay valid (minimum 3 digits for safety).
                 if (cleanId.length >= 3) { 
                      // Store the ID and its corresponding Reference Number
-    
                      // We use the first Ref # found for this ID as the source of truth
                      if (!lockedIdRefMap[cleanId]) { 
                         lockedIdRefMap[cleanId] = refNum;
-                    }
+                     }
                 }
             });
         }
@@ -454,17 +451,20 @@ function getAttendancePlan(sfcRef, year, month, shift) {
                 const date = new Date(year, month, d);
               
               
+              
           
                 let lookupHeader = '';
          
                 if (date.getMonth() === month) {
  
                 
+           
                     const monthShortRaw = 
                     date.toLocaleString('en-US', { month: 'short' });
                   
                     const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
                   
+ 
                     lookupHeader = `${monthShort}${d}`;
                 } else {
          
@@ -611,7 +611,7 @@ function getOrCreateAuditLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${AUDIT_LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateAuditLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-            return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+             return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -635,7 +635,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     // CRITICAL FIX: Use getDisplayValues() to get string headers (e.g., 'Nov1')
     if (numRowsToRead >= 0 && numColumns > 0) {
          values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-        headers = values[0]; 
+         headers = values[0]; 
     } else {
         headers = ['Personnel ID', 'Shift'];
         for (let i = 1; i <= 31; i++) {
@@ -677,7 +677,8 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         const rowKey = `${personnelId}_${dataShift}`;
         
         const dayNumber = parseInt(dayKey.split('-')[2], 10);
-        const date = new Date(year, month, dayNumber);
+        const date = 
+        new Date(year, month, dayNumber);
        
         
         let targetLookupHeader = '';
@@ -685,6 +686,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
             const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
             const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
             targetLookupHeader = `${monthShort}${dayNumber}`; 
+      
         } else {
       
            
@@ -698,28 +700,27 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         const rowIndexInValues = rowLookupMap[rowKey];
         if (rowIndexInValues !== undefined && dayColIndex !== undefined) {
             const sheetRowNumber = rowIndexInValues + HEADER_ROW;
-            
             // CRITICAL STEP 1: Get OLD Status from the original 'values' array
             // NOTE: values[0] is header row, so we use rowIndexInValues (1-based index to data row in 'values' array)
-            const oldStatus = String(values[rowIndexInValues][dayColIndex] || '').trim(); 
-            
+            const oldStatus = String(values[rowIndexInValues][dayColIndex] || '').trim();
             if (oldStatus !== newStatus) { // Log only if status actually changes
                 
                 // CRITICAL STEP 2: Log the change to the audit sheet
                 const logEntry = [
                     new Date(), 
+      
                     userEmail, 
                     sfcRef, 
                     personnelId, 
                     planSheetName, 
                     dayKey, 
+ 
                     dataShift, 
                     oldStatus, 
                     newStatus
                 ];
                 auditLogSheet.appendRow(logEntry);
                 Logger.log(`[AuditLog] Change logged for ID ${personnelId}, Day ${dayKey}: ${oldStatus} -> ${newStatus}`);
-                
                 // CRITICAL STEP 3: Proceed with updating the updatesMap
                 if (!updatesMap[sheetRowNumber]) {
                     updatesMap[sheetRowNumber] = {};
@@ -800,7 +801,8 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                     isMasterDelete: false // Flag to prevent master sheet deletion
                 });
             } else {
-                // For NEW employees (not yet saved), delete from master sheet (which is just appending logic removal)
+                // For NEW employees (not 
+                // yet saved), delete from master sheet (which is just appending logic removal)
                 rowsToDelete.push({ 
                     rowNum: personnelIdMap[oldId], 
                     id: oldId,
@@ -822,7 +824,8 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             // 1. Employee Master Sheet Logic (Only append if truly new to master, not just new to plan)
             if (!data.isExistingEmployeeAdded) { // If it's a truly new employee (not in master)
                
-                if (personnelIdMap[newId]) return; // Skip if ID already exists in master list
+                if (personnelIdMap[newId]) return;
+                // Skip if ID already exists in master list
                 
                 // Prepare row for Employee Master Sheet
                 const newRow = [];
@@ -872,11 +875,12 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                 
                 for(let i = planValues.length - 1; i >= 0; i--) {
                     if (String(planValues[i][0] || '').trim() === item.id && 
-          
+     
                     String(planValues[i][1] || '').trim() === targetShift) {
              
                         // Row index sa sheet (1-based)
-                        planSheet.deleteRow(PLAN_HEADER_ROW + i + 1);
+                        planSheet.deleteRow(PLAN_HEADER_ROW + i + 
+                        1);
                
                         Logger.log(`[saveEmployeeInfoBulk] 
                         Deleted Plan row for ID ${item.id} in ${targetShift} shift.`);
@@ -896,7 +900,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         // Kung ito ay isang BAGONG ROW na DELETED (isMasterDelete: true), tanggalin din sa Employee Sheet
         if (item.isMasterDelete && item.rowNum > 1) {
              empSheet.deleteRow(item.rowNum);
-            Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row ${item.rowNum} for ID ${item.id} from Master Sheet.`);
+             Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row ${item.rowNum} for ID ${item.id} from Master Sheet.`);
         }
     });
     // 2. Append new rows (Employee Sheet)
@@ -939,20 +943,37 @@ function getOrCreateLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-            return ss.getSheetByName(LOG_SHEET_NAME);
+             return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
     }
 }
 
+/**
+ * Finds the next sequential reference number by scanning all existing entries.
+ * This ensures the number never resets, even if the last row was deleted.
+ */
 function getNextReferenceNumber(logSheet) {
     const lastRow = logSheet.getLastRow();
     // Start at 1 if only header row exists
     if (lastRow < 2) return 1;
-    // Read the last value in Column A (Reference #)
-    const lastRef = logSheet.getRange(lastRow, 1).getValue();
-    // Attempt to parse and increment, defaulting to 1 if it's not a number
-    return (parseInt(lastRef) || 0) + 1;
+    
+    // Read ALL values from Column A (Reference #) starting from Row 2 (skipping header)
+    const range = logSheet.getRange(2, 1, lastRow - 1, 1);
+    const refNumbers = range.getValues();
+    
+    let maxRef = 0;
+    
+    refNumbers.forEach(row => {
+        // Parse the value, defaulting to 0 if invalid
+        const currentRef = parseInt(row[0]) || 0;
+        if (currentRef > maxRef) {
+            maxRef = currentRef;
+        }
+    });
+    
+    // Return the maximum reference number found, incremented by 1
+    return maxRef + 1;
 }
 
 /**
@@ -1057,25 +1078,21 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
  */
 function sendRequesterNotification(status, personnelId, requesterEmail) {
   if (requesterEmail === 'UNKNOWN_REQUESTER' || !requesterEmail) return;
-
   const subject = `Unlock Request Status: ${status} for Personnel ID ${personnelId}`;
   
   let body = '';
   if (status === 'APPROVED') {
     body = `
-      Good news! Your request to unlock Personnel ID ${personnelId} has been **APPROVED** by the Admin.
-      
+      Good news!
+      Your request to unlock Personnel ID ${personnelId} has been **APPROVED** by the Admin.
       You may now return to the Attendance Plan Monitor app and refresh your browser to edit the schedule.
-      
       ---
       This notification confirms the lock is removed.
     `;
   } else if (status === 'REJECTED') {
     body = `
       Your request to unlock Personnel ID ${personnelId} has been **REJECTED** by the Admin.
-      
       The print lock remains active, and the schedule cannot be edited at this time. Please contact your Admin for details.
-      
       ---
       This is an automated notification.
     `;
@@ -1121,15 +1138,14 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
     
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return;
-
     const PLAN_SHEET_NAME_COL_INDEX = 2; // Col C (0-based)
-    const LOCKED_IDS_COL_INDEX = LOG_HEADERS.length - 1; // Col J (0-based)
+    const LOCKED_IDS_COL_INDEX = LOG_HEADERS.length - 1;
+    // Col J (0-based)
     
     const range = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length);
     // Use getValues() to get raw array values
     const values = range.getValues(); 
     const rangeToUpdate = [];
-
     values.forEach((row, rowIndex) => {
       const rowNumInSheet = rowIndex + 2; // 1-based row number in the sheet
       const planSheetNameInLog = String(row[PLAN_SHEET_NAME_COL_INDEX] || '').trim();
@@ -1138,9 +1154,11 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
       // Only check log entries for the CURRENT plan sheet
       if (planSheetNameInLog === planSheetName && lockedIdsString) {
         // Map to clean IDs and filter out empty/invalid ones
+       
         const currentLockedIds = lockedIdsString.split(',')
                                                 .map(id => cleanPersonnelId(id))
-                                                .filter(id => id.length >= 3);
+                                              
+        .filter(id => id.length >= 3);
         
         let updatedLockedIds = [...currentLockedIds];
         let changed = false;
@@ -1149,11 +1167,11 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         personnelIdsToUnlock.forEach(unlockId => {
           const index = updatedLockedIds.indexOf(unlockId);
           if (index > -1) {
+            
             updatedLockedIds.splice(index, 1);
             changed = true;
           }
         });
-
         if (changed) {
           const newLockedIdsString = updatedLockedIds.join(',');
           // Mark the cell in column J for update
@@ -1166,25 +1184,20 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
       }
     });
     
-    // Apply bulk updates and delete empty rows
-    const rowsToDelete = [];
+    // --- AUDIT FIX: Preserve the PrintLog entry for audit. Only update Col J. ---
     rangeToUpdate.forEach(update => {
         const targetRange = logSheet.getRange(update.row, update.col);
-        if (update.value === '') {
-            // If the new string is empty, mark the whole log row for deletion
-            rowsToDelete.push(update.row);
-        } else {
-            // Update the cell value and re-apply text format
-            targetRange.setNumberFormat('@').setValue(update.value);
-        }
+        const newValue = update.value;
+        
+        // CRITICAL: We always write the newValue (a list of remaining IDs or an empty string).
+        // setNumberFormat('@') is crucial to preserve IDs as strings.
+        targetRange.setNumberFormat('@').setValue(newValue);
     });
     
-    // CRITICAL: Delete rows backwards to avoid index shifting
-    rowsToDelete.sort((a, b) => b - a).forEach(rowNum => {
-        logSheet.deleteRow(rowNum);
-    });
+    // NOTE: The previous logic to delete the log row when Col J becomes empty has been
+    // permanently removed to preserve the audit trail (Reference #).
     
-    Logger.log(`[unlockPersonnelIds] Successfully unlocked ${personnelIdsToUnlock.length} IDs for ${planSheetName}.`);
+    Logger.log(`[unlockPersonnelIds] Successfully unlocked ${personnelIdsToUnlock.length} IDs for ${planSheetName}. (Log entry preserved for audit.)`);
 }
 
 
@@ -1198,17 +1211,13 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId,
   const date = new Date(year, month, 1);
   const planPeriod = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
   const shiftDisplay = (shift === '1stHalf' ? '1st to 15th' : '16th to End');
-
   // **NEW: Encode Requester Email in the URL**
-  const requesterEmailEncoded = encodeURIComponent(requestingUserEmail); 
-  
+  const requesterEmailEncoded = encodeURIComponent(requestingUserEmail);
   // Build the Web App URL
-  const webAppUrl = ScriptApp.getService().getUrl(); 
-  
+  const webAppUrl = ScriptApp.getService().getUrl();
   // CRITICAL: We include req_email in the URL
   const unlockUrl = `${webAppUrl}?action=unlock&sfc=${sfcRef}&yr=${year}&mon=${month + 1}&shift=${shift}&id=${personnelId}&ref=${lockedRefNum}&req_email=${requesterEmailEncoded}`;
-  const rejectUrl = `${webAppUrl}?action=reject_info&sfc=${sfcRef}&id=${personnelId}&req_email=${requesterEmailEncoded}`; 
-
+  const rejectUrl = `${webAppUrl}?action=reject_info&sfc=${sfcRef}&id=${personnelId}&req_email=${requesterEmailEncoded}`;
   const htmlBody = `
     <p style="font-size: 14px;">Mayroong Attendance Plan Unlock Request na isinumite.</p>
 
@@ -1225,18 +1234,22 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId,
     <h3 style="color: #1e40af;">Admin Action Required:</h3>
     
     <div style="margin-top: 15px;">
+ 
         <a href="${unlockUrl}" target="_blank" 
            style="background-color: #10b981; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold; margin-right: 10px;">
            ✅ APPROVE & UNLOCK
         </a>
         
         <a href="${rejectUrl}" target="_blank" 
-           style="background-color: #f59e0b; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold;">
+           style="background-color: #f59e0b;
+           color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px;
+           font-weight: bold;">
            ❌ REJECT (Log Only)
         </a>
     </div>
 
-    <p style="margin-top: 20px; font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
+    <p style="margin-top: 20px;
+    font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
   `;
   
   try {
@@ -1247,7 +1260,8 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId,
       name: 'Attendance Plan Monitor (Automated Request)'
     });
     Logger.log(`[requestUnlockEmailNotification] Sent request email for ID ${personnelId} to ${adminEmails}`);
-    return { success: true, message: `Unlock request sent to Admin(s): ${adminEmails}` };
+    return { success: 
+      true, message: `Unlock request sent to Admin(s): ${adminEmails}` };
   } catch (e) {
     Logger.log(`[requestUnlockEmailNotification] Failed to send email: ${e.message}`);
     return { success: false, message: `WARNING: Failed to send request email. Error: ${e.message}` };
@@ -1261,7 +1275,8 @@ function processAdminUnlockFromUrl(params) {
   const sfcRef = params.sfc;
   const personnelId = params.id;
   const lockedRefNum = params.ref;
-  const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER'; // NEW: Requester Email
+  const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER';
+  // NEW: Requester Email
   
   // 1. Check Admin authorization (Crucial for security)
   const userEmail = Session.getActiveUser().getEmail();
@@ -1272,11 +1287,11 @@ function processAdminUnlockFromUrl(params) {
   // Handle Reject (Informational) action
   if (params.action === 'reject_info') {
       // 1. Send notification to the original requester (REJECTED)
-      sendRequesterNotification('REJECTED', personnelId, requesterEmail); 
-      
+      sendRequesterNotification('REJECTED', personnelId, requesterEmail);
       const template = HtmlService.createTemplateFromFile('UnlockStatus');
       template.status = 'INFO';
-      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ID ${personnelId}. Notification sent to ${requesterEmail}. No data was changed. The lock remains active.`;
+      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ID ${personnelId}.
+      Notification sent to ${requesterEmail}. No data was changed. The lock remains active.`;
       return template.evaluate().setTitle('Reject Status');
   }
   
@@ -1287,17 +1302,15 @@ function processAdminUnlockFromUrl(params) {
         // Month in URL is 1-based, GAS is 0-based.
         const month = parseInt(params.mon, 10) - 1; 
         const shift = params.shift;
-
         // Perform the unlock using the existing logic
         unlockPersonnelIds(sfcRef, year, month, shift, [personnelId]);
-        
         // 1. Send notification to the original requester (APPROVED)
-        sendRequesterNotification('APPROVED', personnelId, requesterEmail); 
-        
+        sendRequesterNotification('APPROVED', personnelId, requesterEmail);
         // Return Success HTML
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
         template.status = 'SUCCESS';
-        template.message = `Successfully unlocked Personnel ID ${personnelId}. The Print Lock (Ref #${lockedRefNum}) has been removed by Admin (${userEmail}). Notification sent to ${requesterEmail}.`;
+        template.message = `Successfully unlocked Personnel ID ${personnelId}. The Print Lock (Ref #${lockedRefNum}) has been removed by Admin (${userEmail}).
+        Notification sent to ${requesterEmail}.`;
         return template.evaluate().setTitle('Unlock Status');
 
       } catch (e) {
