@@ -246,6 +246,77 @@ function isDuplicateName(newName, originalSavedId, currentNo) {
   }
   // --- END HELPER FUNCTION ---
 
+// --- NEW FUNCTION: Handle Admin Unlock Request (UPDATED FOR EMAIL NOTIFICATION) ---
+function handleUnlockRequest(event) {
+    const button = event.currentTarget;
+    const stableKey = button.dataset.stableKey; // This is the locked Personnel ID (employee.id)
+    
+    // Get current context
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+    const sfcRef = currentContract?.sfcRef;
+
+    if (!sfcRef || !stableKey) {
+        showNotification('CRITICAL ERROR: Missing contract or employee ID.', false);
+        return;
+    }
+
+    const employeeName = button.closest('tr').querySelector('[data-field="name"]')?.value || stableKey;
+    const lockedRefNum = lockedIdRefMap[stableKey];
+
+    // Use custom confirm modal
+    const customConfirm = (message, onConfirm, onCancel) => {
+        const modalHtml = `
+            <div id="unlock-confirm-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 z-[60] flex justify-center items-center p-4">
+                <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
+                    <h3 class="text-lg font-bold mb-4 text-purple-700">Admin Unlock Request</h3>
+                    <p class="text-gray-700 mb-6">${message}</p>
+                    <div class="flex justify-end space-x-3">
+                        <button id="unlock-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+                        <button id="unlock-confirm-btn" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Send Unlock Request</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        document.getElementById('unlock-confirm-btn').addEventListener('click', () => {
+            document.getElementById('unlock-confirm-modal').remove();
+            onConfirm();
+        });
+        
+        document.getElementById('unlock-cancel-btn').addEventListener('click', () => {
+            document.getElementById('unlock-confirm-modal').remove();
+            onCancel();
+        });
+    };
+
+    customConfirm(`Are you sure you want to send an **Unlock Request Email** for **${employeeName}** (ID: ${stableKey})? This action sends a notification to the Admin for approval.`,
+        () => { // On Confirm (Call Server for Email)
+            toggleLoading(true);
+            showNotification(`Sending Unlock Request Email for ID ${stableKey}...`, true);
+            
+            // TAWAGIN ANG EMAIL NOTIFICATION FUNCTION
+            google.script.run
+                .withSuccessHandler((response) => {
+                    // Ipakita ang success message na galing sa server (kung sent, o kung may warning)
+                    showNotification(response.message, response.success);
+                    toggleLoading(false);
+                    // CRITICAL: Huwag mag-reload, dahil pending pa ang unlock
+                })
+                .withFailureHandler((error) => {
+                    handleError(error); 
+                })
+                // I-pass ang lahat ng context na kailangan para sa email
+                .requestUnlockEmailNotification(sfcRef, currentYear, currentMonth, currentShift, stableKey, lockedRefNum);
+        },
+        () => { // On Cancel
+            showNotification(`Unlock request cancelled for ID ${stableKey}.`, false);
+        }
+    );
+}
+// --- END NEW FUNCTION ---
 
   // --- UI HANDLERS ---
 
@@ -689,7 +760,7 @@ function handleAttendanceData(data) {
         
         // 1. Employee Info Cells (Fixed Columns)
         // No. (Now includes the Edit Button/Icon)
-        td = tr.insertCell();
+        let td = tr.insertCell();
         td.className = 'sticky-col text-center p-0 bg-gray-50 font-bold border-r border-b z-10 freeze-1 relative'; // Added relative for absolute positioning of button
         td.style.width = fixedWidths[0]; // Apply inline width
         td.style.minWidth = fixedWidths[0]; 
@@ -697,17 +768,6 @@ function handleAttendanceData(data) {
         // Content for No. cell: Number and (optionally) Edit Button
         // UPDATED: Gamitin ang CSS class `py-2` para magbigay ng vertical padding
         let innerHTML = `<span class="block py-2">${employee.no}</span>`;
-        
-        if (isPrintLocked) {
-             // NEW BADGE for Reference # (Added to the No. column)
-            innerHTML += `
-                <div class="absolute top-1/2 left-1 transform -translate-y-1/2 print-hidden flex items-center space-x-1">
-                    <span class="text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Locked by Print Ref. #${lockedRefNum}">
-                        🔒 REF ${lockedRefNum}
-                    </span>
-                </div>
-            `;
-        }
         
         td.innerHTML = innerHTML;
         
@@ -771,9 +831,39 @@ function handleAttendanceData(data) {
         // UPDATED: Add read-only class if locked or deleted
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); 
         td.appendChild(input);
-        td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1';
+        td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1 relative'; // ADDED relative for UNLOCK button
         td.style.width = fixedWidths[1]; // Apply inline width
         input.style.minWidth = fixedWidths[1]; // Tiyakin na may min width
+        
+        // --- NEW: UNLOCK BUTTON IN PERSONNEL ID COLUMN (for locked rows) ---
+        if (isPrintLocked) {
+             // Unlock Button
+            const unlockButton = document.createElement('button');
+            unlockButton.type = 'button';
+            unlockButton.title = `Request Admin Unlock for ID ${employee.id} (Ref #${lockedRefNum})`;
+            unlockButton.className = `action-icon p-1 text-purple-600 hover:bg-purple-200 transition duration-150 rounded-full unlock-row-btn print-hidden`;
+            unlockButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                </svg>
+            `;
+            unlockButton.dataset.stableKey = stableLookupKey;
+            unlockButton.addEventListener('click', handleUnlockRequest);
+            
+            // Container to position the button
+            const unlockContainer = document.createElement('div');
+            unlockContainer.className = 'absolute top-1/2 right-1 transform -translate-y-1/2 print-hidden flex space-x-0.5 pr-1 z-30';
+            unlockContainer.appendChild(unlockButton);
+            td.appendChild(unlockContainer);
+            
+            // Print Lock Reference Tag
+            const lockTag = document.createElement('span');
+            lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 left-1 print-hidden';
+            lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
+            lockTag.textContent = `REF ${lockedRefNum}`;
+            td.appendChild(lockTag);
+        }
+        // --- END NEW: UNLOCK BUTTON ---
         
         // Personnel Name (Input)
         td = tr.insertCell();
@@ -2059,6 +2149,7 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
             // This is the easiest way to undo the sequential numbering
             reloadPlanAndCheckExistence(); 
 
+            const inputs = document.querySelectorAll('#attendance-table-container input');
             inputs.forEach(input => {
                 input.classList.remove('print-read-only');
             });
