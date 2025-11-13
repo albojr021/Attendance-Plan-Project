@@ -482,6 +482,25 @@ function checkIfPlanExists(sfcRef) {
         .checkContractSheets(sfcRef, currentYear, currentMonth, currentShift); // Pass all required context
 }
 
+// --- NEW FUNCTION: Update the Plan Period display based on current date/shift ---
+  function updatePlanPeriodDisplay(year, month, shift) {
+    const date = new Date(year, month, 1);
+    const monthName = date.toLocaleString('en-US', { month: 'long' });
+    const yearNum = date.getFullYear();
+    // Re-use existing function getDaysInMonth
+    const daysInMonth = getDaysInMonth(year, month);
+    
+    let dateRange = '';
+    if (shift === '1stHalf') {
+        dateRange = `${monthName} 1-15, ${yearNum} (${shift})`;
+    } else {
+        dateRange = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
+    }
+
+    document.getElementById('plan-period-display').textContent = dateRange;
+  }
+  // --- END NEW FUNCTION ---
+
 // NEW: Handles the response from checkContractSheets
 function handlePlanExistence(exists) {
     toggleLoading(false);
@@ -489,6 +508,12 @@ function handlePlanExistence(exists) {
     const actionArea = document.getElementById('plan-action-area');
     const statusText = document.getElementById('plan-status-text');
     const sfcRef = currentContract ? currentContract.sfcRef : null;
+
+    // Get current context for display update
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+    updatePlanPeriodDisplay(currentYear, currentMonth, currentShift); // **CALLED HERE**
 
     // Laging itago ang load button kapag nag-a-update ng state
     actionArea.classList.add('hidden'); 
@@ -511,6 +536,12 @@ function showBlankPlan() {
         showNotification('Please select a Contract Group ID first.', false);
         return;
     }
+
+    // Get current context for display update
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+    updatePlanPeriodDisplay(currentYear, currentMonth, currentShift); // **CALLED HERE**
     
     currentContract.employees = []; // NEW: Start with NO employees rendered in the grid
     currentContract.planMap = {}; // Start with no plan data
@@ -535,6 +566,7 @@ function fetchAttendanceData(sfcRef) {
     const currentMonth = currentPlanningDate.getMonth(); // 0-based month (0=Jan, 10=Nov)
     const currentShift = document.getElementById('shift-period-select').value;
 
+    updatePlanPeriodDisplay(currentYear, currentMonth, currentShift); // **CALLED HERE**
 
     // Call getAttendancePlan, which now assumes sheets exist
     google.script.run
