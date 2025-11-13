@@ -347,8 +347,8 @@ function getLockedPersonnelIds(ss, planSheetName) {
             cleanIdsString.split(',').forEach(id => {
                 const cleanId 
                 = cleanPersonnelId(id);
-                // CRITICAL CHECK: Tiyakin na ang ID ay valid (minimum 7 digits for safety).
-                if (cleanId.length >= 7) { 
+                // CRITICAL CHECK: Tiyakin na ang ID ay valid (minimum 3 digits for safety).
+                if (cleanId.length >= 3) { 
                      // Store the ID and its corresponding Reference Number
     
                      // We use the first Ref # found for this ID as the source of truth
@@ -973,3 +973,4 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
         Logger.log(`[recordPrintLogEntry] FATAL ERROR: Failed to log print action #${refNum}. Error: ${e.message}`);
     }
 }
+
