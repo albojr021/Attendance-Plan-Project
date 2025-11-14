@@ -750,6 +750,90 @@ function getPlanKeyMap(planSheet) {
 // *******************************************************
 
 
+// ********** NEW HELPER FUNCTION FOR AUDIT LOGGING DELETED ROWS **********
+/**
+ * Logs all existing schedule statuses for a given employee as 'DELETED_ROW' before the row is physically deleted.
+ */
+function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEmail, year, month) {
+    if (!planSheet) return;
+    const planSheetName = planSheet.getName();
+    const HEADER_ROW = PLAN_HEADER_ROW;
+    const lastRow = planSheet.getLastRow();
+    
+    if (lastRow <= HEADER_ROW) return;
+
+    // Read headers and all data rows
+    const numColumns = planSheet.getLastColumn();
+    const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - HEADER_ROW + 1, numColumns).getDisplayValues();
+    const headers = planValues[0];
+    const dataRows = planValues.slice(1);
+
+    const personnelIdIndex = headers.indexOf('Personnel ID');
+    const shiftIndex = headers.indexOf('Shift');
+    
+    const sanitizedHeadersMap = {};
+    headers.forEach((header, index) => {
+        sanitizedHeadersMap[sanitizeHeader(header)] = index;
+    });
+    
+    // Find the row to be deleted
+    const targetRowIndex = dataRows.findIndex(row => 
+        cleanPersonnelId(row[personnelIdIndex]) === personnelId && 
+        String(row[shiftIndex] || '').trim() === targetShift
+    );
+    
+    if (targetRowIndex === -1) return;
+
+    const rowToDelete = dataRows[targetRowIndex];
+    const auditLogSheet = getOrCreateAuditLogSheet(planSheet.getParent());
+    const logEntries = [];
+    
+    // Iterate over days (columns)
+    for (let d = 1; d <= 31; d++) {
+        const dayKey = `${year}-${month + 1}-${d}`; 
+        const date = new Date(year, month, d);
+        let lookupHeader = '';
+        
+        // Determine the column header (e.g., Nov1, Dec31)
+        if (date.getMonth() === month) {
+            const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
+            const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
+            lookupHeader = `${monthShort}${d}`;
+        } else {
+            lookupHeader = `Day${d}`;
+        }
+        
+        const dayColIndex = sanitizedHeadersMap[sanitizeHeader(lookupHeader)];
+        if (dayColIndex !== undefined) {
+            const oldStatus = String(rowToDelete[dayColIndex] || '').trim();
+            
+            // Log only statuses that are NOT blank or NA (to focus on actual schedules being removed)
+            if (oldStatus && oldStatus !== 'NA') {
+                 const logEntry = [
+                    new Date(), 
+                    userEmail, 
+                    sfcRef, 
+                    personnelId, 
+                    planSheetName, 
+                    dayKey, 
+                    targetShift, 
+                    oldStatus, 
+                    'DELETED_ROW' // New status flag for audit trail
+                ];
+                logEntries.push(logEntry);
+            }
+        }
+    }
+    
+    if (logEntries.length > 0) {
+        // Bulk append the new log entries
+        auditLogSheet.getRange(auditLogSheet.getLastRow() + 1, 1, logEntries.length, logEntries[0].length).setValues(logEntries);
+        Logger.log(`[logScheduleDeletion] Logged ${logEntries.length} schedule deletions for ID ${personnelId}.`);
+    }
+}
+// **************************************************************************
+
+
 function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const empSheetName = getDynamicSheetName(sfcRef, 'employees');
@@ -765,6 +849,8 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     const planKeyMap1st = getPlanKeyMap(planSheet1st);
     const planKeyMap2nd = getPlanKeyMap(planSheet2nd);
     // *******************************************************************
+    
+    const userEmail = Session.getActiveUser().getEmail(); // CRITICAL: Kunin ang user email dito
 
     if (!empSheet) throw new Error(`Employee Sheet for SFC Ref# ${sfcRef} not found.`);
     empSheet.setFrozenRows(0);
@@ -892,12 +978,24 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                 }
             }
         };
+        
+        // ********** AUDIT LOG DELETION HERE **********
+        // Tiyakin na mayroon tayong Year at Month para sa log
+        const date = new Date(year, month, 1);
+        const logYear = date.getFullYear();
+        const logMonth = date.getMonth(); 
+        
         // I-delete ang plan row sa kasalukuyang shift
         if (shift === '1stHalf' && planSheet1st) {
+             // CRITICAL: Log deletion before physically deleting the row
+             logScheduleDeletion(sfcRef, planSheet1st, '1stHalf', item.id, userEmail, logYear, logMonth);
              deletePlanRowForCurrentShift(planSheet1st, '1stHalf');
         } else if (shift === '2ndHalf' && planSheet2nd) {
+             // CRITICAL: Log deletion before physically deleting the row
+             logScheduleDeletion(sfcRef, planSheet2nd, '2ndHalf', item.id, userEmail, logYear, logMonth);
              deletePlanRowForCurrentShift(planSheet2nd, '2ndHalf');
         }
+        // ***********************************************
         
         // Kung ito ay isang BAGONG ROW na DELETED (isMasterDelete: true), tanggalin din sa Employee Sheet
         if (item.isMasterDelete && item.rowNum > 1) {
