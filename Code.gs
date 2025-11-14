@@ -164,7 +164,6 @@ function appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shiftToAppend) {
             rowsToAppend.push(planRow1);
         }
         if (shiftToAppend === '2ndHalf') {
-         
             const planRow2 = Array(planHeadersCount).fill('');
             planRow2[0] = id; 
             planRow2[1] = '2ndHalf'; 
@@ -277,7 +276,6 @@ function getContracts() {
 
     return isLive;
   
-  
   });
 
   return filteredContracts.map(c => {
@@ -291,21 +289,13 @@ function getContracts() {
     const sfcRefKey = findKey(c, 'SFC Ref#');
       
     return {
-     
-      id: 
-      contractIdKey ? 
-      (c[contractIdKey] || '').toString() : '',     
+      id: contractIdKey ? (c[contractIdKey] || '').toString() : '',     
       status: statusKey ? (c[statusKey] || '').toString() : '',   
       payorCompany: payorKey ? (c[payorKey] || '').toString() : '', 
       agency: agencyKey ? (c[agencyKey] || '').toString() : '',       
       serviceType: serviceTypeKey ? (c[serviceTypeKey] || '').toString() : '',   
-    
-      headCount: parseInt(headCountKey ? 
-      c[headCountKey] : 
-      0) || 0, 
-   
-      sfcRef: sfcRefKey ? (c[sfcRefKey] ||
-      '').toString() : '', 
+      headCount: parseInt(headCountKey ? c[headCountKey] : 0) || 0, 
+      sfcRef: sfcRefKey ? (c[sfcRefKey] || '').toString() : '', 
     };
   });
 }
@@ -316,8 +306,7 @@ function cleanPersonnelId(rawId) {
     return idString.replace(/\D/g, '');
 }
 
-// --- NEW FUNCTION: Fetches the clean employee master data for auto-filling/datalist.
-// ---
+// --- NEW HELPER: Fetches the clean employee master data for auto-filling/datalist. ---
 function getEmployeeMasterData(sfcRef) {
     if (!sfcRef) throw new Error("SFC Ref# is required.");
     // Use the existing getSheetData to read the employee master sheet
@@ -329,8 +318,7 @@ function getEmployeeMasterData(sfcRef) {
         name: String(e['Personnel Name'] || '').trim(),
         position: String(e['Position'] || '').trim(),
         area: String(e['Area Posting'] || '').trim(),
-    })).filter(e => e.id);
-    // Only return rows with a valid ID
+    })).filter(e => e.id); // Only return rows with a valid ID
 }
 // --- END NEW FUNCTION ---
 
@@ -366,8 +354,7 @@ function getLockedPersonnelIds(ss, planSheetName) {
             
             // Split and check each ID
             cleanIdsString.split(',').forEach(id => {
-                const cleanId 
-                = cleanPersonnelId(id);
+                const cleanId = cleanPersonnelId(id);
                 // CRITICAL CHECK: Tiyakin na ang ID ay valid (minimum 3 digits for safety).
                 if (cleanId.length >= 3) { 
                      // Store the ID and its corresponding Reference Number
@@ -405,7 +392,6 @@ function getAttendancePlan(sfcRef, year, month, shift) {
                  id: id, 
                  name: String(e['Personnel Name'] || '').trim(),
                  position: String(e['Position'] || '').trim(),
-  
                  area: String(e['Area Posting'] || '').trim(),
             };
         }
@@ -451,16 +437,13 @@ function getAttendancePlan(sfcRef, year, month, shift) {
                 const date = new Date(year, month, d);
               
               
-              
           
                 let lookupHeader = '';
          
                 if (date.getMonth() === month) {
  
-                
-           
-                    const monthShortRaw = 
-                    date.toLocaleString('en-US', { month: 'short' });
+             
+                    const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
                   
                     const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
                   
@@ -489,8 +472,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
          const emp = empDetailMap[id] || { id: id, name: '', position: '', area: '' };
          // The number (no) is no longer guaranteed to be correct here, but we will recalculate on the client side
          return {
-            no: 
-            0, // Temporarily set to 0
+            no: 0, // Temporarily set to 0
             id: emp.id, 
             name: emp.name,
             position: emp.position,
@@ -503,9 +485,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             id: e.id, 
             name: e.name,
             position: e.position,
-            area: 
-           
-            e.area,
+            area: e.area,
         }
     }).filter(e => e.id);
     // Filter out any empty IDs resulting from a broken map
@@ -539,7 +519,6 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
             return false;
         }
         return true;
- 
     });
 
     const finalAttendanceChanges = attendanceChanges.filter(change => {
@@ -586,7 +565,6 @@ function saveContractInfo(sfcRef, info, year, month, shift) {
         ['SERVICE TYPE', info.serviceType],     
         ['TOTAL HEAD COUNT', info.headCount],    
         ['PLAN PERIOD', dateRange]    
-    
     ];
     planSheet.getRange('A1:B5').clearContent();
     planSheet.getRange('A1:B5').setValues(data);
@@ -611,7 +589,7 @@ function getOrCreateAuditLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${AUDIT_LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateAuditLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+            return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -635,7 +613,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     // CRITICAL FIX: Use getDisplayValues() to get string headers (e.g., 'Nov1')
     if (numRowsToRead >= 0 && numColumns > 0) {
          values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-         headers = values[0]; 
+        headers = values[0]; 
     } else {
         headers = ['Personnel ID', 'Shift'];
         for (let i = 1; i <= 31; i++) {
@@ -677,8 +655,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         const rowKey = `${personnelId}_${dataShift}`;
         
         const dayNumber = parseInt(dayKey.split('-')[2], 10);
-        const date = 
-        new Date(year, month, dayNumber);
+        const date = new Date(year, month, dayNumber);
        
         
         let targetLookupHeader = '';
@@ -691,12 +668,10 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
       
            
      
-            targetLookupHeader 
-            = `Day${dayNumber}`;
+            targetLookupHeader = `Day${dayNumber}`;
         }
         
         const dayColIndex = sanitizedHeadersMap[sanitizeHeader(targetLookupHeader)];
-        
         const rowIndexInValues = rowLookupMap[rowKey];
         if (rowIndexInValues !== undefined && dayColIndex !== undefined) {
             const sheetRowNumber = rowIndexInValues + HEADER_ROW;
@@ -708,13 +683,11 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
                 // CRITICAL STEP 2: Log the change to the audit sheet
                 const logEntry = [
                     new Date(), 
-      
                     userEmail, 
                     sfcRef, 
                     personnelId, 
                     planSheetName, 
                     dayKey, 
- 
                     dataShift, 
                     oldStatus, 
                     newStatus
@@ -745,6 +718,38 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     Logger.log(`[saveAttendancePlanBulk] Completed Horizontal Plan update for ${planSheetName}.`);
 }
 
+// ********** NEW HELPER FUNCTION FOR BUG FIX **********
+/**
+ * Reads the Attendance Plan Sheet (ID and Shift columns only) and creates a map of existing Personnel ID_Shift keys.
+ * Used to prevent duplicate rows when appending new employees.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} planSheet 
+ * @returns {object} Map where key is 'PersonnelID_Shift' and value is 'true'.
+ */
+function getPlanKeyMap(planSheet) {
+    if (!planSheet) return {};
+    const HEADER_ROW = PLAN_HEADER_ROW;
+    const lastRow = planSheet.getLastRow();
+    // Only read data rows (below the header)
+    if (lastRow <= HEADER_ROW) return {};
+
+    // Read only the first two columns (Personnel ID and Shift)
+    const values = planSheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, 2).getValues();
+    const planKeyMap = {};
+    
+    values.forEach((row) => {
+        const id = String(row[0] || '').trim();
+        const shift = String(row[1] || '').trim();
+        if (id && shift) {
+            // Store the ID_Shift key. The value being 'true' is enough to check existence.
+            planKeyMap[`${id}_${shift}`] = true; 
+        }
+    });
+    Logger.log(`[getPlanKeyMap] Found ${Object.keys(planKeyMap).length} existing ID_Shift entries in sheet: ${planSheet.getName()}`);
+    return planKeyMap;
+}
+// *******************************************************
+
+
 function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const empSheetName = getDynamicSheetName(sfcRef, 'employees');
@@ -755,11 +760,16 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     const planSheet1st = ss.getSheetByName(planSheetName1st);
     const planSheetName2nd = getDynamicSheetName(sfcRef, 'plan', year, month, '2ndHalf'); 
     const planSheet2nd = ss.getSheetByName(planSheetName2nd);
+    
+    // ********** NEW BUG FIX LOGIC (Step 1: Get existing keys) **********
+    const planKeyMap1st = getPlanKeyMap(planSheet1st);
+    const planKeyMap2nd = getPlanKeyMap(planSheet2nd);
+    // *******************************************************************
+
     if (!empSheet) throw new Error(`Employee Sheet for SFC Ref# ${sfcRef} not found.`);
     empSheet.setFrozenRows(0);
     
-    const numRows = empSheet.getLastRow() > 0 ?
-    empSheet.getLastRow() : 1;
+    const numRows = empSheet.getLastRow() > 0 ? empSheet.getLastRow() : 1;
     const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 4;
     const values = empSheet.getRange(1, 1, numRows, numColumns).getValues();
     const headers = values[0]; 
@@ -795,8 +805,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                 // For EXISTING employees, mark for deletion from the PLAN sheet only for the current shift
                 rowsToDelete.push({ 
                     rowNum: -1, // Dummy row num for master sheet
-         
- 
                     id: oldId,
                     isMasterDelete: false // Flag to prevent master sheet deletion
                 });
@@ -807,7 +815,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                     rowNum: personnelIdMap[oldId], 
                     id: oldId,
                     isMasterDelete: true // Flag to delete from master sheet
- 
                 });
                 delete personnelIdMap[oldId];
                 // I-alis sa map
@@ -816,8 +823,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             return;
         }
 
-        // TANGGALIN ang update logic para sa EXISTING rows, dahil permanenteng naka-lock na ito.
-        // Ang update ay mangyayari lang para sa NEW rows na hindi pa na-save.
         // UPDATED LOGIC: Only proceed if it's a new entry (isNew)
         if (data.isNew) {
             
@@ -846,15 +851,16 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             }
 
 
-            // 2. Attendance Plan Sheet Logic (Always append if new to plan, regardless of master status)
-            // --- FIXED LOGIC: Only append to the current shift's plan sheet ---
+            // 2. Attendance Plan Sheet Logic (Always append if new to plan, but check for duplicates)
+            // --- FIXED LOGIC: Only append if the ID_Shift key is NOT already present ---
             const planHeadersCount = 33;
-            if (shift === '1stHalf') {
+            
+            if (shift === '1stHalf' && !planKeyMap1st[`${newId}_1stHalf`]) {
                 const planRow1 = Array(planHeadersCount).fill('');
                 planRow1[0] = newId; 
                 planRow1[1] = '1stHalf';
                 planRowsToAppend1st.push(planRow1);
-            } else if (shift === '2ndHalf') {
+            } else if (shift === '2ndHalf' && !planKeyMap2nd[`${newId}_2ndHalf`]) {
                 const planRow2 = Array(planHeadersCount).fill('');
                 planRow2[0] = newId; 
                 planRow2[1] = '2ndHalf';
@@ -863,27 +869,23 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
             // --- END FIXED LOGIC ---
         }
     });
+
     // 1. I-delete ang mga row sa Plan Sheet para sa kasalukuyang shift (DELETION ACTION)
     rowsToDelete.forEach(item => {
         // Function para i-delete ang row sa Plan Sheet
         const deletePlanRowForCurrentShift = (planSheet, targetShift) => {
             if (planSheet) {
                 // Basahin lang ang ID at Shift columns
-        
-     
                 const planValues = planSheet.getRange(PLAN_HEADER_ROW + 1, 1, planSheet.getLastRow() - PLAN_HEADER_ROW, 2).getValues();
                 
                 for(let i = planValues.length - 1; i >= 0; i--) {
                     if (String(planValues[i][0] || '').trim() === item.id && 
-     
-                    String(planValues[i][1] || '').trim() === targetShift) {
+                        String(planValues[i][1] || '').trim() === targetShift) {
              
                         // Row index sa sheet (1-based)
-                        planSheet.deleteRow(PLAN_HEADER_ROW + i + 
-                        1);
+                        planSheet.deleteRow(PLAN_HEADER_ROW + i + 1);
                
-                        Logger.log(`[saveEmployeeInfoBulk] 
-                        Deleted Plan row for ID ${item.id} in ${targetShift} shift.`);
+                        Logger.log(`[saveEmployeeInfoBulk] Deleted Plan row for ID ${item.id} in ${targetShift} shift.`);
                         return;
                     // Exit after finding and deleting the specific row
                     }
@@ -943,7 +945,7 @@ function getOrCreateLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(LOG_SHEET_NAME);
+            return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -957,7 +959,6 @@ function getNextReferenceNumber(logSheet) {
     const lastRow = logSheet.getLastRow();
     // Start at 1 if only header row exists
     if (lastRow < 2) return 1;
-    
     // Read ALL values from Column A (Reference #) starting from Row 2 (skipping header)
     const range = logSheet.getRange(2, 1, lastRow - 1, 1);
     const refNumbers = range.getValues();
@@ -971,7 +972,6 @@ function getNextReferenceNumber(logSheet) {
             maxRef = currentRef;
         }
     });
-    
     // Return the maximum reference number found, incremented by 1
     return maxRef + 1;
 }
@@ -1043,7 +1043,6 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
             sfcRef,
             planSheetName, 
             dateRange,     
-           
             contractInfo.payor,
             contractInfo.agency,
             contractInfo.serviceType,
@@ -1154,10 +1153,9 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
       // Only check log entries for the CURRENT plan sheet
       if (planSheetNameInLog === planSheetName && lockedIdsString) {
         // Map to clean IDs and filter out empty/invalid ones
-       
         const currentLockedIds = lockedIdsString.split(',')
                                                 .map(id => cleanPersonnelId(id))
-                                              
+                                       
         .filter(id => id.length >= 3);
         
         let updatedLockedIds = [...currentLockedIds];
@@ -1183,8 +1181,8 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         }
       }
     });
-    
-    // --- AUDIT FIX: Preserve the PrintLog entry for audit. Only update Col J. ---
+    // --- AUDIT FIX: Preserve the PrintLog entry for audit.
+    // Only update Col J. ---
     rangeToUpdate.forEach(update => {
         const targetRange = logSheet.getRange(update.row, update.col);
         const newValue = update.value;
@@ -1193,10 +1191,8 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         // setNumberFormat('@') is crucial to preserve IDs as strings.
         targetRange.setNumberFormat('@').setValue(newValue);
     });
-    
     // NOTE: The previous logic to delete the log row when Col J becomes empty has been
     // permanently removed to preserve the audit trail (Reference #).
-    
     Logger.log(`[unlockPersonnelIds] Successfully unlocked ${personnelIdsToUnlock.length} IDs for ${planSheetName}. (Log entry preserved for audit.)`);
 }
 
@@ -1234,22 +1230,18 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId,
     <h3 style="color: #1e40af;">Admin Action Required:</h3>
     
     <div style="margin-top: 15px;">
- 
         <a href="${unlockUrl}" target="_blank" 
            style="background-color: #10b981; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold; margin-right: 10px;">
            ✅ APPROVE & UNLOCK
         </a>
         
         <a href="${rejectUrl}" target="_blank" 
-           style="background-color: #f59e0b;
-           color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px;
-           font-weight: bold;">
+           style="background-color: #f59e0b; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold;">
            ❌ REJECT (Log Only)
         </a>
     </div>
 
-    <p style="margin-top: 20px;
-    font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
+    <p style="margin-top: 20px; font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
   `;
   
   try {
@@ -1260,8 +1252,7 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId,
       name: 'Attendance Plan Monitor (Automated Request)'
     });
     Logger.log(`[requestUnlockEmailNotification] Sent request email for ID ${personnelId} to ${adminEmails}`);
-    return { success: 
-      true, message: `Unlock request sent to Admin(s): ${adminEmails}` };
+    return { success: true, message: `Unlock request sent to Admin(s): ${adminEmails}` };
   } catch (e) {
     Logger.log(`[requestUnlockEmailNotification] Failed to send email: ${e.message}`);
     return { success: false, message: `WARNING: Failed to send request email. Error: ${e.message}` };
