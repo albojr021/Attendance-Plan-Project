@@ -437,7 +437,7 @@
         /* CRITICAL: Gawing mas maliit at i-compact ang label at value */
         #contract-details-grid p,
         #contract-details-grid .text-xl,
-        #contract-details-grid .text-lg {
+        .text-gray-700{ 
             font-size: 0.55rem !important; /* Liitan pa lalo (8.8px) */
             line-height: 1; /* Alisin ang extra line height */
             font-weight: normal !important;
@@ -514,6 +514,8 @@
              width: auto !important; /* Auto size to fill remaining space */
              min-width: 0.5rem !important; /* Allow minimal compression */
              max-width: none !important;
+             /* NEW: Added nowrap for print fix */
+             white-space: nowrap !important; 
         }
 
         /* Cell styling - Ensure visible border for Excel look */
@@ -545,6 +547,9 @@
             line-height: 1;
             min-height: 0;
             height: auto;
+            /* **** FINAL FIX FOR WRAPPING **** */
+            white-space: nowrap !important; /* Force text onto a single line */
+            /* ***************************** */
         }
 
         /* Personnel Info Inputs: Remove borders, padding, and make transparent/text-like */
