@@ -2258,6 +2258,19 @@ function handleAttendanceData(data) {
 function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
 
+    // ********** NEW LOGIC: I-INJECT ANG REFERENCE NUMBER ELEMENT **********
+    let printRefElement = document.getElementById('print-ref-display');
+    if (!printRefElement) {
+        printRefElement = document.createElement('div');
+        printRefElement.id = 'print-ref-display';
+        // I-set ang class para itago ito sa screen at i-apply ang print styles
+        printRefElement.className = 'print-only-container print-hidden'; 
+        document.body.appendChild(printRefElement);
+    }
+    // Ang CSS na ang maglalagay ng label na "Reference #"
+    printRefElement.textContent = refNum; 
+    // ***********************************************************************
+    
     // I-set up ang Modal at Buttons handlers (Ito ay isang self-contained function)
     const setupModalAndPrint = () => {
         const modal = document.getElementById('print-confirm-modal');
@@ -2283,6 +2296,12 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
             // CRITICAL: Restore original row numbers (by forcing a full render)
             // This is the easiest way to undo the sequential numbering
             reloadPlanAndCheckExistence(); 
+            
+            // ********** NEW LOGIC: Remove printRefElement on restore **********
+            if (printRefElement) {
+                 printRefElement.remove();
+            }
+            // *******************************************************************
 
             const inputs = document.querySelectorAll('#attendance-table-container input');
             inputs.forEach(input => {
@@ -2311,7 +2330,8 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
                     // Mag-reload pa rin para ma-check ang estado at restore UI
                     restoreUI();
                 })
-                .recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, printedPersonnelIds); // NEW: Pass printed IDs
+                // I-pass ang generated refNum, ALL context, at ang LIST OF PRINTED IDS
+                .recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
         };
 
         // Cancel Handler (User discarded the log)
