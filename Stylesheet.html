@@ -1,7 +1,11 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
     /* Custom Styles */
-    body { font-family: 'Inter', sans-serif; background-color: #f7f9fc;
+    body { 
+        /* NEW: Explicitly reset the counter here */
+        counter-reset: page 0; 
+        font-family: 'Inter', sans-serif; 
+        background-color: #f7f9fc;
     }
     .card { background-color: white; border-radius: 1rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); padding: 1.5rem;
     margin-bottom: 1.5rem; }
@@ -349,24 +353,41 @@
     .ui-month-year-only .ui-datepicker-calendar { display: none !important; }
     .ui-month-year-only .ui-datepicker-buttonpane { text-align: center; }
     
+    /* NEW: Hide Ref # container by default */
+    .print-only-container {
+        display: none; 
+    }
+
     /* --- PRINT STYLES --- */
 
-    /* CRITICAL FIX: I-set ang orientation sa Landscape */
+    /* CRITICAL FIX 1: Add pagination to @page margin boxes */
     @page {
         size: letter landscape; /* Gawing Landscape ang page orientation */
         margin: 10mm; /* Liitan ang margin para may space */
+        
+        /* NEW: Reliable pagination in the bottom right margin box */
+        @bottom-right {
+             content: "Page " counter(page) " of " counter(pages);
+             font-size: 7pt;
+             color: #444;
+        }
     }
     
     @media print {
         /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
         #legend-area, .action-icon, .new-label-no-col, #floating-bulk-modal,
-        .print-header /* NEW: Hide Contract Details/Attendance Plan titles */
+        .print-header 
         {
             display: none !important;
         }
         
-        /* NEW: Tanggalin ang locked row style sa print, gawing normal */
+        /* NEW: Tiyakin na ipapakita ang container kapag nagpi-print */
+        .print-only-container {
+            display: block !important;
+        }
+        
+        /* NEW: I-overwrite ang locked row style sa print, gawing normal */
         .locked-row {
             background-color: white !important;
             opacity: 1 !important;
@@ -549,6 +570,27 @@
         .attendance-grid td:nth-child(1) {
             text-align: center !important;
             padding: 2px 1px !important;
+        }
+        
+        /* Reference # in Upper Right Corner (Fixed Position) */
+        #print-ref-display {
+            position: fixed !important;
+            top: 5mm !important; /* Margin mula sa taas */
+            right: 10mm !important; /* Margin mula sa kanan */
+            font-size: 8pt !important;
+            font-weight: bold !important;
+            color: black !important;
+            z-index: 1000;
+        }
+
+        /* I-inject ang label sa unahan ng Ref # */
+        #print-ref-display::before {
+            content: "Reference # ";
+        }
+
+        /* NEW: Alisin ang body::after para maiwasan ang conflict sa @page rule */
+        body::after {
+            content: none !important;
         }
     }
 </style>
