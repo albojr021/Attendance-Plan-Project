@@ -145,9 +145,8 @@ function isDuplicateId(newId, originalSavedId, currentNo) {
     const trimmedNewId = newId.trim();
     if (!trimmedNewId) return false;
 
-    let duplicateFound = false;
-
     // Check only against the IDs of other active rows currently visible in the grid (the current plan).
+    let duplicateFound = false;
     document.querySelectorAll('input[data-field="id"]').forEach(input => {
         const row = input.closest('tr');
         const rowKey = row.dataset.stableKey;
@@ -179,9 +178,8 @@ function isDuplicateName(newName, originalSavedId, currentNo) {
     const normalizedNewName = normalizeNameForComparison(newName); 
     if (!normalizedNewName) return false;
     
-    let duplicateFound = false;
-    
     // Check only against the names of other active rows currently visible in the grid (the current plan).
+    let duplicateFound = false;
     document.querySelectorAll('input[data-field="name"]').forEach(input => {
         const row = input.closest('tr');
         const rowKey = row.dataset.stableKey;
@@ -1396,8 +1394,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       } else {
          // If no master record is found, just continue with normal validation/casing.
          // And set the pending change field to the current value
-         // *** BUG FIX 1: Huwag i-trim ang newValue dito. Ito ang sanhi kung bakit hindi
-         // pinapayagan ang space habang nagta-type. ***
+         // *** BUG FIX 1: Huwag i-trim ang final value na nakasave sa pending change.
          pendingChange[field] = newValue;
       }
       // --- END NEW AUTO-FILL LOGIC ---
@@ -1471,7 +1468,6 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
               input.value = cleanedValue;
               
               // *** BUG FIX 2: Huwag i-trim ang final value na nakasave sa pending change.
-              // Ito ang magre-retain ng trailing space sa memory para hindi mag-flash. ***
               pendingChange[field] = cleanedValue;
           }
 
@@ -2251,8 +2247,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
         row.querySelectorAll('.cell-container').forEach(cell => {
             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
             // Check for actual status (time schedule or RD/RH/SH)
-            // CRITICAL: Ang LOCKED ay may planong na-print na, kaya dapat i-print ulit.
-            if (status !== '' && status !== 'NA' && status !== 'DELETED') { // NA is a plan, so not blank
+            if (status !== '' && status !== 'NA' && status !== 'DELETED') { 
                 hasValidSchedule = true;
             }
         });
@@ -2275,11 +2270,10 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
 
   function applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows) {
     let printNumber = 1;
-    const rowsToHide = [];
     const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
 
     gridRows.forEach(row => {
-        // --- 1. Identify rows to exclude (A-Deletion/Placeholder, B-NA/Blank Schedule) ---
+        // --- 1. Identify rows to exclude (A-Deletion/Placeholder, B-LOCKED, C-NA/Blank Schedule) ---
         
         // A. Rows marked for Deletion or already blank placeholders
         if (row.classList.contains('line-through') || row.classList.contains('print-empty-row')) {
@@ -2296,26 +2290,30 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
              return;
         }
         
-        // B. Check for NA/Blank Exclusion (Row must have at least one valid schedule to be printed)
+        // B. NEW: Exclude rows that are already Locked (their schedule is already recorded).
+        const stableKey = row.dataset.stableKey;
+        const isLocked = !!lockedIdRefMap[stableKey];
+        
+        if (isLocked) {
+            row.classList.add('print-hidden');
+            dynamicallyHiddenRows.push(row);
+            return;
+        }
+        
+        // C. Check for NA/Blank Exclusion (Row must have at least one valid schedule to be printed)
         let hasActualSchedule = false;
 
         row.querySelectorAll('.cell-container').forEach(cell => {
             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
             
             // Treat anything other than '', 'NA', 'DELETED' as a valid schedule.
-            // Note: LOCKED is already excluded from this check because locked rows are excluded from the `printedPersonnelIds` list (see below)
             if (status !== '' && status !== 'NA' && status !== 'DELETED') { 
                 hasActualSchedule = true;
             }
         });
-        
-        // CRITICAL FIX: I-check kung locked ang row (na-print na), kung oo, i-print ulit ito.
-        const stableKey = row.dataset.stableKey;
-        const isLocked = !!lockedIdRefMap[stableKey];
-        
-        // If the row has NO actual schedule (only NA/Blank) AND it's NOT locked, we exclude it from the print.
-        // Ang rows na may schedule O NAKA-LOCK ay ipi-print.
-        if (!hasActualSchedule && !isLocked) { 
+
+        // If the row has NO actual schedule (only NA/Blank), we exclude it from the print.
+        if (!hasActualSchedule) { 
             row.classList.add('print-hidden');
             dynamicallyHiddenRows.push(row); // Use the parameter array to track what was hidden
             return;
@@ -2324,7 +2322,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
         // --- 2. Apply sequential numbering to rows NOT excluded ---
         const noCellSpan = row.querySelector('.sticky-col:first-child > span:first-child');
         
-        // We only renumber if the row is NOT hidden and NOT a deleted row.
+        // We only renumber if the row is NOT hidden.
         if (noCellSpan && !row.classList.contains('print-hidden')) {
             // Update the display number, removing any existing number.
             noCellSpan.textContent = printNumber;
@@ -2507,16 +2505,17 @@ function handlePrintPlan() {
         }
         
         // Kung locked na ang row, ipagpalagay natin na printable ito (dapat kasama sa printout)
-        if(isLocked) {
-            isPlanPrintable = true;
-        }
+        // NOTE: Inalis natin ang logic na ito dahil sinabi mo na hindi dapat masama ang locked rows
+        // if(isLocked) {
+        //     isPlanPrintable = true;
+        // }
     });
     
     // NEW LOCK CHECK: If no IDs are printable (all are NA/Blank), prevent print
     // Gumamit ng printedPersonnelIds.length > 0 para sa lockable rows.
-    if (!isPlanPrintable) {
+    if (printedPersonnelIds.length === 0) {
          if (currentContract.employees.length > 0) {
-             showNotification('Cannot print: No employee data with an **actual schedule** found. Please add a plan (Work/RD/RH/SH) before printing.', false);
+             showNotification('Cannot print: No employee data with an **actual schedule** found that is not already locked. Please add a plan (Work/RD/RH/SH) before printing.', false);
              return;
          } else if (currentContract.employees.length === 0) {
              showNotification('Cannot print: No employee data available for printing.', false);
@@ -2548,7 +2547,7 @@ function handlePrintPlan() {
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
             // Pass the generated refNum, ALL context, at ang LIST OF PRINTED IDS to triggerPrint
-            // Ang listahan na ito ay naglalaman na lamang ng IDs na may AKTUAL na schedule (hindi NA/BLANK)
+            // Ang listahan na ito ay naglalaman na lamang ng IDs na may AKTUAL na schedule (hindi NA/BLANK) at HINDI locked
             triggerPrint(refNum, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
         .withFailureHandler((error) => {
