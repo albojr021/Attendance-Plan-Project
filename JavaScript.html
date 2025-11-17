@@ -1127,6 +1127,53 @@ function handleAttendanceData(data) {
     tableContainer.appendChild(table);
   }
 
+  // NEW FUNCTION: Apply Schedule Pattern to a specific grid row
+function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
+    const currentShift = document.getElementById('shift-period-select').value;
+    const year = currentPlanningDate.getFullYear();
+    const month = currentPlanningDate.getMonth();
+    
+    // Get the original saved ID (which is empty/TEMP_N for a new row)
+    const originalId = rowElement.dataset.stableKey.startsWith('TEMP_') ? '' : rowElement.dataset.stableKey;
+
+    // Iterate over all date cells in the row
+    rowElement.querySelectorAll('.cell-container').forEach(cellElement => {
+        const dayKey = cellElement.dataset.dayKey; // YYYY-M-D
+        
+        // 1. Get the Day of the Week (0 = Sun, 1 = Mon, etc.)
+        const [y, m, d] = dayKey.split('-').map(Number);
+        const date = new Date(y, m - 1, d); // Month is 0-based in JS Date
+        const dayOfWeek = date.getDay(); 
+        
+        const newStatus = patternMap[dayOfWeek.toString()] || ''; // Use the pattern status, or blank (Need string key)
+
+        // Only apply if a pattern status was found AND the cell is currently BLANK
+        // CRITICAL FIX: Huwag i-overwrite ang existing schedule kung meron
+        const currentVisualStatus = cellElement.querySelector('.attendance-cell-bg').textContent.trim();
+        if (newStatus && currentVisualStatus === '') { 
+            // 2. Update pendingAttendanceChanges
+            const currentPlanKey = `${personnelId}_${dayKey}_${currentShift}`;
+            const originalPlanKey = `${originalId}_${dayKey}_${currentShift}`;
+
+            const originalStatus = currentContract.planMap[originalPlanKey] || '';
+
+            if (originalStatus !== newStatus) {
+                pendingAttendanceChanges[currentPlanKey] = newStatus; 
+            } else {
+                // If it reverts back to the original saved status, remove the pending change
+                delete pendingAttendanceChanges[currentPlanKey];
+            }
+            
+            // 3. Update visual
+            updateCellVisuals(cellElement, newStatus, dayKey);
+        }
+    });
+
+    // CRITICAL: Check the lock state after changes
+    checkPlanSheetLockState(); 
+}
+// --- END NEW FUNCTION ---
+  
   // NEW FUNCTION: Handle Delete Row Toggle
   function handleDeleteRowToggle(event) {
       const button = event.currentTarget;
@@ -1307,6 +1354,9 @@ function handleAttendanceData(data) {
            masterRecord = employeeMasterList.find(e => e.name === newValue.trim());
       }
       
+      // Check if the row is saved (has a permanent ID)
+      const isSaved = employeeMasterList.some(e => e.id === employee.id);
+
       if (masterRecord) {
           // 2. Auto-fill all four fields from the master record
           row.querySelector('[data-field="id"]').value = masterRecord.id;
@@ -1321,6 +1371,23 @@ function handleAttendanceData(data) {
           pendingChange.area = masterRecord.area;
           
           showNotification(`Employee details auto-filled for ${masterRecord.name}. Click 'Save All Changes' to save this new entry.`, true);
+
+          // *** NEW AUTOFill Schedule Logic ***
+          // Only attempt to auto-fill schedule if it's a NEW row being added to the plan
+          if (!isSaved) { 
+              // Call the new backend function to get the schedule pattern
+              google.script.run
+                  .withSuccessHandler((patternMap) => {
+                      if (Object.keys(patternMap).length > 0) {
+                          // Apply pattern to the current row
+                          applySchedulePatternToRow(row, masterRecord.id, patternMap);
+                          showNotification(`Schedule pattern found and auto-filled for ${masterRecord.name}. Review changes and click 'Save All Changes'.`, true);
+                      }
+                  })
+                  .withFailureHandler(handleError)
+                  .getEmployeeSchedulePattern(currentContract.sfcRef, masterRecord.id);
+          }
+          // *** END NEW AUTOFill Schedule Logic ***
 
       } else {
          // If no master record is found, just continue with normal validation/casing.
