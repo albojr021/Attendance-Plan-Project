@@ -1299,6 +1299,7 @@ function getNextReferenceNumber(logSheet) {
     
     refNumbers.forEach(row => {
         // Parse the value, defaulting to 0 if invalid
+        // NOTE: We rely on parseInt to handle the padded string (e.g., '000001' -> 1)
         const currentRef = parseInt(row[0]) || 0;
         if (currentRef > maxRef) {
             maxRef = currentRef;
@@ -1315,7 +1316,7 @@ function getNextReferenceNumber(logSheet) {
  * @param {number} year 
  * @param {number} month 
  * @param {string} shift 
- * @returns {number} The generated Reference Number.
+ * @returns {string} The generated 6-digit Padded Reference Number.
  */
 function logPrintAction(sfcRef, contractInfo, year, month, shift) {
     try {
@@ -1324,8 +1325,11 @@ function logPrintAction(sfcRef, contractInfo, year, month, shift) {
         
         const nextRefNum = getNextReferenceNumber(logSheet);
         
-        Logger.log(`[logPrintAction] Generated Print Reference Number: ${nextRefNum} for ${sfcRef}.`);
-        return nextRefNum;
+        // --- CRITICAL FIX: Convert integer to 6-digit zero-padded string ---
+        const paddedRefNum = String(nextRefNum).padStart(6, '0');
+
+        Logger.log(`[logPrintAction] Generated Print Reference Number: ${paddedRefNum} for ${sfcRef}.`);
+        return paddedRefNum; // Return the padded string
     } catch (e) {
         Logger.log(`[logPrintAction] FATAL ERROR: ${e.message}`);
         throw new Error(`Failed to generate print reference number. Error: ${e.message}`);
@@ -1336,7 +1340,7 @@ function logPrintAction(sfcRef, contractInfo, year, month, shift) {
 /**
  * UPDATED FUNCTION: Records the actual print log entry using the pre-generated Ref # and locks printed IDs.
  * Ginamitan ng setNumberFormat('@') FIX.
- * * @param {number} refNum 
+ * * @param {string} refNum (Now expected to be the 6-digit padded string)
  * @param {string} sfcRef 
  * @param {object} contractInfo 
  * @param {number} year 
@@ -1371,7 +1375,7 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
         
         // 1. Prepare the Log Entry (10 Columns)
         const logEntry = [
-            refNum, 
+            refNum, // This is the 6-digit padded string
             sfcRef,
             planSheetName, 
             dateRange,     
@@ -1391,6 +1395,11 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
         const logEntryRange = logSheet.getRange(newRow, 1, 1, LOG_HEADERS.length);
         // 2. *** CRITICAL FIX: I-set ang format ng Locked Personnel IDs cell (Col J) sa Plain Text ('@') ***
         logEntryRange.getCell(1, LOCKED_IDS_COL).setNumberFormat('@');
+        
+        // NOTE: setNumberFormat('@') for Col A (Reference #) is not strictly needed 
+        // since we are writing a string value ('000001'), but setting it ensures consistency.
+        logEntryRange.getCell(1, 1).setNumberFormat('@');
+        
         // 3. Write the whole row of data
         logEntryRange.setValues([logEntry]);
         // 4. Final Touches
