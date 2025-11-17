@@ -260,7 +260,7 @@ function getContracts() {
   const allContracts = getSheetData(SPREADSHEET_ID, CONTRACTS_SHEET_NAME);
   const findKey = (c, search) => {
       const keys = Object.keys(c);
-      return keys.find(key => (key || '').trim().toLowerCase() === search.toLowerCase());
+    return keys.find(key => (key || '').trim().toLowerCase() === search.toLowerCase());
   };
     
   const filteredContracts = allContracts.filter((c) => {
@@ -276,6 +276,7 @@ function getContracts() {
     const isLive = status === 'live' || status === 'on process - live';
 
     return isLive;
+  
   
   });
 
@@ -297,6 +298,7 @@ function getContracts() {
       agency: agencyKey ? (c[agencyKey] || '').toString() : '',       
       serviceType: serviceTypeKey ? (c[serviceTypeKey] || '').toString() : '',   
       headCount: parseInt(headCountKey ? c[headCountKey] : 0) || 0, 
+   
       sfcRef: sfcRefKey ? 
       (c[sfcRefKey] || '').toString() : '', 
     };
@@ -339,12 +341,13 @@ function parseSheetDate(sheetName) {
         const parts = sheetName.split(' - ');
         if (parts.length < 3) return null; 
         
-        const datePart = parts[1]; // e.g., "Nov 2025"
-        const shiftPart = parts[2].split(' ')[0]; // e.g., "2ndHalf"
+        const datePart = parts[1];
+        // e.g., "Nov 2025"
+        const shiftPart = parts[2].split(' ')[0];
+        // e.g., "2ndHalf"
         
         const monthYear = new Date(datePart);
-        const day = (shiftPart === '2ndHalf') ? 16 : 1; 
-        
+        const day = (shiftPart === '2ndHalf') ? 16 : 1;
         // Return a date object that correctly represents the start of the shift
         return new Date(monthYear.getFullYear(), monthYear.getMonth(), day);
     } catch (e) {
@@ -355,36 +358,33 @@ function parseSheetDate(sheetName) {
 
 
 /**
- * Finds the single most recent Attendance Plan sheet for a given SFC Ref.
+ * Finds ALL Attendance Plan sheets for a given SFC Ref and sorts them by date (most recent first).
  * @param {string} sfcRef The SFC Ref #.
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss The target spreadsheet.
- * @returns {string|null} The name of the most recent sheet, or null.
+ * @returns {Array<object>} An array of {name: string, date: Date}, sorted descending.
  */
-function getMostRecentPlanSheetName(sfcRef, ss) {
+function getSortedPlanSheets(sfcRef, ss) {
     const sfcPrefix = (sfcRef || '').replace(/[\\/?*[]/g, '_');
     const allSheetNames = ss.getSheets().map(s => s.getName()).filter(name => 
         name.startsWith(sfcPrefix) && name.endsWith('AttendancePlan')
     );
-    
-    if (allSheetNames.length === 0) return null;
+    if (allSheetNames.length === 0) return [];
 
-    let mostRecentSheetName = null;
-    let mostRecentDate = new Date(0); // Epoch start
-
-    allSheetNames.forEach(sheetName => {
+    const sheetInfo = allSheetNames.map(sheetName => {
         const sheetDate = parseSheetDate(sheetName);
-        if (sheetDate && sheetDate.getTime() > mostRecentDate.getTime()) {
-            mostRecentDate = sheetDate;
-            mostRecentSheetName = sheetName;
-        }
-    });
+        return { name: sheetName, date: sheetDate };
+    }).filter(info => info.date); // Filter out sheets that couldn't be parsed
 
-    Logger.log(`[getMostRecentPlanSheetName] Most recent sheet found: ${mostRecentSheetName}`);
-    return mostRecentSheetName;
+    // Sort by date (most recent first)
+    sheetInfo.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    Logger.log(`[getSortedPlanSheets] Found and sorted ${sheetInfo.length} plan sheets.`);
+    return sheetInfo;
 }
 
+
 /**
- * Scans the MOST RECENT Attendance Plan sheet for a given Personnel ID
+ * Scans the MOST RECENT available Attendance Plan sheet for a given Personnel ID
  * to determine the schedule status for each day of the week.
  * @param {string} sfcRef The SFC Ref #.
  * @param {string} personnelId The Personnel ID to look up.
@@ -392,19 +392,61 @@ function getMostRecentPlanSheetName(sfcRef, ss) {
  */
 function getEmployeeSchedulePattern(sfcRef, personnelId) {
     if (!sfcRef || !personnelId) return {};
-
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const cleanId = cleanPersonnelId(personnelId);
     
-    // 1. Find the MOST RECENT plan sheet name
-    const sheetName = getMostRecentPlanSheetName(sfcRef, ss);
-    if (!sheetName) return {};
+    // 1. Find ALL plan sheets, sorted by recency
+    const sortedPlanSheets = getSortedPlanSheets(sfcRef, ss); // CRITICAL FIX
     
-    const sheet = ss.getSheetByName(sheetName);
-    if (!sheet || sheet.getLastRow() < PLAN_HEADER_ROW) return {};
-    
-    // 2. Extract Year and Month from the sheet name
-    const parts = sheetName.split(' - '); 
+    let targetSheetInfo = null;
+    let targetRows = [];
+    let sheetName = null;
+
+    // --- NEW LOGIC: Iterate through sorted sheets until the Personnel ID is found ---
+    for (const sheetInfo of sortedPlanSheets) {
+        const sheet = ss.getSheetByName(sheetInfo.name);
+        if (!sheet || sheet.getLastRow() < PLAN_HEADER_ROW) continue;
+
+        try {
+            // Read data from the plan sheet (using getDisplayValues for consistency)
+            const lastRow = sheet.getLastRow();
+            const numRowsToRead = lastRow - PLAN_HEADER_ROW;
+            const numColumns = sheet.getLastColumn();
+            
+            if (numRowsToRead <= 0 || numColumns < 33) continue;
+            
+            // Read all data including headers
+            const planValues = sheet.getRange(PLAN_HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
+            const headers = planValues[0];
+            const dataRows = planValues.slice(1);
+            const personnelIdIndex = headers.indexOf('Personnel ID');
+            
+            if (personnelIdIndex === -1) continue;
+
+            // Find ALL rows for the target Personnel ID in this sheet
+            const rowsForId = dataRows.filter(row => cleanPersonnelId(row[personnelIdIndex]) === cleanId);
+            
+            if (rowsForId.length > 0) {
+                targetSheetInfo = sheetInfo;
+                targetRows = rowsForId;
+                sheetName = sheetInfo.name;
+                Logger.log(`[getEmployeeSchedulePattern] Found ID ${cleanId} in sheet: ${sheetInfo.name}. Stopping search.`);
+                break; // Found the pattern, stop searching older sheets
+            }
+        } catch (e) {
+            Logger.log(`[getEmployeeSchedulePattern] ERROR reading sheet ${sheetInfo.name}: ${e.message}`);
+            continue;
+        }
+    }
+    // --- END NEW LOGIC ---
+
+    if (!targetSheetInfo || targetRows.length === 0) {
+        Logger.log(`[getEmployeeSchedulePattern] ID ${cleanId} not found in any plan sheet.`);
+        return {};
+    }
+
+    // 2. Extract Year and Month from the found sheet name
+    const parts = sheetName.split(' - ');
     if (parts.length < 3) return {}; 
     const datePart = parts[1]; 
     
@@ -412,60 +454,53 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
     const sheetYear = monthYear.getFullYear();
     const sheetMonth = monthYear.getMonth(); // 0-based
 
-    const dayPatternCounter = {}; // Key: DayOfWeek (0-6), Value: { Status: Count }
-    const dayPatternMap = {};     // Final result: { DayOfWeek: Status }
+    const dayPatternCounter = {};
+    // Key: DayOfWeek (0-6), Value: { Status: Count }
+    const dayPatternMap = {};
+    // Final result: { DayOfWeek: Status }
 
     try {
-        // 3. Read data from the plan sheet
-        const lastRow = sheet.getLastRow();
-        const numRowsToRead = lastRow - PLAN_HEADER_ROW;
-        const numColumns = sheet.getLastColumn();
-        
-        if (numRowsToRead <= 0 || numColumns < 33) return {}; 
-
-        const planValues = sheet.getRange(PLAN_HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
+        // Prepare header map from the selected sheet's headers (re-read or pass the sheet object if possible)
+        const sheet = ss.getSheetByName(sheetName);
+        const planValues = sheet.getRange(PLAN_HEADER_ROW, 1, sheet.getLastRow() - PLAN_HEADER_ROW + 1, sheet.getLastColumn()).getDisplayValues();
         const headers = planValues[0];
-        const dataRows = planValues.slice(1);
-        
-        const personnelIdIndex = headers.indexOf('Personnel ID');
-        
-        // Find ALL rows for the target Personnel ID (since they might have 1st/2nd half entries)
-        const targetRows = dataRows.filter(row => cleanPersonnelId(row[personnelIdIndex]) === cleanId);
-        if (targetRows.length === 0) return {};
 
-        // Prepare header map
         const sanitizedHeadersMap = {};
         headers.forEach((header, index) => {
             sanitizedHeadersMap[sanitizeHeader(header)] = index;
         });
 
-        // 4. Aggregate pattern from ALL relevant rows in the MOST RECENT sheet
+        // 4. Aggregate pattern from ALL relevant rows in the MOST RECENT available sheet
         targetRows.forEach(targetRow => {
              for (let d = 1; d <= 31; d++) {
                 const currentDate = new Date(sheetYear, sheetMonth, d);
+                // Check if the current day actually falls in the sheet's month/year
                 if (currentDate.getMonth() !== sheetMonth) continue; 
-                
+             
                 const dayOfWeek = currentDate.getDay(); 
                 
                 let lookupHeader = '';
                 const monthShortRaw = currentDate.toLocaleString('en-US', { month: 'short' });
-                const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
+                const monthShort = 
+                (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
                 lookupHeader = `${monthShort}${d}`;
                 
                 const dayIndex = sanitizedHeadersMap[sanitizeHeader(lookupHeader)];
                 
                 if (dayIndex !== undefined) {
+       
                     const status = String(targetRow[dayIndex] || '').trim();
                     if (status && status !== 'NA' && status !== 'RD' && status !== 'RH' && status !== 'SH') { 
                         // Only count actual schedules for pattern (time schedules)
-                        const dayKey = dayOfWeek.toString(); 
+           
+                        const dayKey = dayOfWeek.toString();
                         if (!dayPatternCounter[dayKey]) {
                             dayPatternCounter[dayKey] = {};
                         }
                         dayPatternCounter[dayKey][status] = (dayPatternCounter[dayKey][status] || 0) + 1;
                     } else if (status === 'RD' || status === 'RH' || status === 'SH') {
                         // Special treatment for fixed statuses: if found, they are strong patterns
-                        const dayKey = dayOfWeek.toString(); 
+                        const dayKey = dayOfWeek.toString();
                         if (!dayPatternCounter[dayKey]) {
                             dayPatternCounter[dayKey] = {};
                         }
@@ -474,7 +509,7 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
                 }
             }
         });
-
+        
         // 5. Determine the final pattern (Most Frequent)
         Object.keys(dayPatternCounter).forEach(dayOfWeek => {
             const statusCounts = dayPatternCounter[dayOfWeek];
@@ -482,23 +517,24 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
             let mostFrequentStatus = '';
             
             Object.keys(statusCounts).forEach(status => {
+            
                 if (statusCounts[status] > maxCount) {
                     maxCount = statusCounts[status];
                     mostFrequentStatus = status;
                 }
             });
             
+        
             if (mostFrequentStatus) {
                 dayPatternMap[dayOfWeek] = mostFrequentStatus;
             }
         });
-
     } catch (e) {
         Logger.log(`[getEmployeeSchedulePattern] ERROR processing sheet ${sheetName}: ${e.message}`);
     }
 
     Logger.log(`[getEmployeeSchedulePattern] Final Pattern for ID ${cleanId}: ${JSON.stringify(dayPatternMap)}`);
-    return dayPatternMap; 
+    return dayPatternMap;
 }
 // --- END NEW FUNCTION ---
 
@@ -540,9 +576,10 @@ function getLockedPersonnelIds(ss, planSheetName) {
                 // CRITICAL CHECK: Tiyakin na ang ID ay valid (minimum 3 digits for safety).
                 if (cleanId.length >= 3) { 
                      // Store the ID and its corresponding Reference Number
-                    
+    
                      // We use the first Ref # found for this ID as the source of truth
                      if (!lockedIdRefMap[cleanId]) { 
+                        
                         lockedIdRefMap[cleanId] = refNum;
                      }
                 }
@@ -633,6 +670,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
                     const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
                   
  
+         
                     lookupHeader = `${monthShort}${d}`;
                 } else {
          
@@ -778,7 +816,7 @@ function getOrCreateAuditLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${AUDIT_LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateAuditLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-            return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+             return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -802,7 +840,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
     // CRITICAL FIX: Use getDisplayValues() to get string headers (e.g., 'Nov1')
     if (numRowsToRead >= 0 && numColumns > 0) {
          values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-        headers = values[0]; 
+         headers = values[0]; 
     } else {
         headers = ['Personnel ID', 'Shift'];
         for (let i = 1; i <= 31; i++) {
@@ -852,7 +890,8 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         if (date.getMonth() === month) {
             const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
             const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
-            targetLookupHeader = `${monthShort}${dayNumber}`; 
+            targetLookupHeader 
+            = `${monthShort}${dayNumber}`; 
       
         } else {
       
@@ -865,7 +904,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         const rowIndexInValues = rowLookupMap[rowKey];
         if (rowIndexInValues !== undefined && dayColIndex !== undefined) {
             const sheetRowNumber = rowIndexInValues + HEADER_ROW;
-        // CRITICAL STEP 1: Get OLD Status from the original 'values' array
+            // CRITICAL STEP 1: Get OLD Status from the original 'values' array
             // NOTE: values[0] is header row, so we use rowIndexInValues (1-based index to data row in 'values' array)
             const oldStatus = String(values[rowIndexInValues][dayColIndex] || '').trim();
             if (oldStatus !== newStatus) { // Log only if status actually changes
@@ -878,20 +917,22 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
                     sfcRef, 
                     personnelId, 
                     planSheetName, 
+                
                     dayKey, 
                    
                     dataShift, 
                     oldStatus, 
                     newStatus
+              
                 ];
                 auditLogSheet.appendRow(logEntry);
                 Logger.log(`[AuditLog] Change logged for ID ${personnelId}, Day ${dayKey}: ${oldStatus} -> ${newStatus}`);
-        // CRITICAL STEP 3: Proceed with updating the updatesMap
+                // CRITICAL STEP 3: Proceed with updating the updatesMap
                 if (!updatesMap[sheetRowNumber]) {
                     updatesMap[sheetRowNumber] = {};
                 }
                 updatesMap[sheetRowNumber][dayColIndex + 1] = newStatus;
-        } 
+            } 
             
         } else {
             Logger.log(`[savePlanBulk] WARNING: ID/Shift combination not found or column missing for row: ${rowKey}. Skipping update for this cell.`);
@@ -979,7 +1020,7 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
         const dayKey = `${year}-${month + 1}-${d}`;
         const date = new Date(year, month, d);
         let lookupHeader = '';
-    // Determine the column header (e.g., Nov1, Dec31)
+        // Determine the column header (e.g., Nov1, Dec31)
         if (date.getMonth() === month) {
             const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
             const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
@@ -991,7 +1032,7 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
         const dayColIndex = sanitizedHeadersMap[sanitizeHeader(lookupHeader)];
         if (dayColIndex !== undefined) {
             const oldStatus = String(rowToDelete[dayColIndex] || '').trim();
-    // Log only statuses that are NOT blank or NA (to focus on actual schedules being removed)
+            // Log only statuses that are NOT blank or NA (to focus on actual schedules being removed)
             if (oldStatus && oldStatus !== 'NA') {
                  const logEntry = [
                     new Date(), 
@@ -1001,7 +1042,7 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
                     personnelId, 
                     planSheetName, 
                     dayKey, 
-                   
+                
                     targetShift, 
                     oldStatus, 
                     'DELETED_ROW' // New status flag for audit trail
@@ -1079,17 +1120,17 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                 // For EXISTING employees, mark for deletion from the PLAN sheet only for the current shift
                 rowsToDelete.push({ 
                     rowNum: -1, // Dummy row num for master sheet
-          
+         
                     id: oldId,
                     isMasterDelete: false // Flag to prevent master sheet deletion
                 });
             } else {
-                // For NEW employees (not 
-          
+                // For NEW employees 
                 // yet saved), delete from master sheet (which is just appending logic removal)
                 rowsToDelete.push({ 
                     rowNum: personnelIdMap[oldId], 
                     id: oldId,
+ 
                     isMasterDelete: true 
                 // Flag to delete from master sheet
                 });
@@ -1157,10 +1198,11 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
                 
                 for(let i = planValues.length - 1; i >= 0; i--) {
                     if (String(planValues[i][0] || '').trim() === item.id && 
-                  
+     
                         String(planValues[i][1] || '').trim() === targetShift) {
              
                         // Row index sa sheet (1-based)
+                
                         planSheet.deleteRow(PLAN_HEADER_ROW + i + 1);
                
     
@@ -1181,18 +1223,18 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
         if (shift === '1stHalf' && planSheet1st) {
              // CRITICAL: Log deletion before physically deleting the row
              logScheduleDeletion(sfcRef, planSheet1st, '1stHalf', item.id, userEmail, logYear, logMonth);
-            deletePlanRowForCurrentShift(planSheet1st, '1stHalf');
+             deletePlanRowForCurrentShift(planSheet1st, '1stHalf');
         } else if (shift === '2ndHalf' && planSheet2nd) {
              // CRITICAL: Log deletion before physically deleting the row
              logScheduleDeletion(sfcRef, planSheet2nd, '2ndHalf', item.id, userEmail, logYear, logMonth);
-            deletePlanRowForCurrentShift(planSheet2nd, '2ndHalf');
+             deletePlanRowForCurrentShift(planSheet2nd, '2ndHalf');
         }
         // ***********************************************
         
         // Kung ito ay isang BAGONG ROW na DELETED (isMasterDelete: true), tanggalin din sa Employee Sheet
         if (item.isMasterDelete && item.rowNum > 1) {
              empSheet.deleteRow(item.rowNum);
-            Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row ${item.rowNum} for ID ${item.id} from Master Sheet.`);
+             Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row ${item.rowNum} for ID ${item.id} from Master Sheet.`);
         }
     });
     // 2. Append new rows (Employee Sheet)
@@ -1235,7 +1277,7 @@ function getOrCreateLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-            return ss.getSheetByName(LOG_SHEET_NAME);
+             return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -1457,7 +1499,8 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         // Filter out the requested IDs to unlock
         personnelIdsToUnlock.forEach(unlockId => {
           const index = updatedLockedIds.indexOf(unlockId);
-          if (index > -1) {
+          if (index > 
+            -1) {
             
  
             updatedLockedIds.splice(index, 1);
