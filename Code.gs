@@ -327,10 +327,65 @@ function getEmployeeMasterData(sfcRef) {
 }
 // --- END NEW FUNCTION ---
 
-// --- NEW FUNCTION: Schedule Pattern Lookup (AutoFill Schedule) ---
+// --- NEW FUNCTION: Schedule Pattern Lookup (AutoFill Schedule - FIXED FOR RECENCY) ---
+
 /**
- * Scans all Attendance Plan sheets for a given SFC Ref and Personnel ID
- * to determine the most common schedule status for each day of the week.
+ * Parses the sheet name to extract the date value for comparison.
+ * @param {string} sheetName The sheet name (e.g., "SFC - Nov 2025 - 2ndHalf AttendancePlan").
+ * @returns {Date} The starting Date object for the sheet's period.
+ */
+function parseSheetDate(sheetName) {
+    try {
+        const parts = sheetName.split(' - ');
+        if (parts.length < 3) return null; 
+        
+        const datePart = parts[1]; // e.g., "Nov 2025"
+        const shiftPart = parts[2].split(' ')[0]; // e.g., "2ndHalf"
+        
+        const monthYear = new Date(datePart);
+        const day = (shiftPart === '2ndHalf') ? 16 : 1; 
+        
+        // Return a date object that correctly represents the start of the shift
+        return new Date(monthYear.getFullYear(), monthYear.getMonth(), day);
+    } catch (e) {
+        Logger.log(`[parseSheetDate] Error parsing date from sheet name ${sheetName}: ${e.message}`);
+        return null;
+    }
+}
+
+
+/**
+ * Finds the single most recent Attendance Plan sheet for a given SFC Ref.
+ * @param {string} sfcRef The SFC Ref #.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss The target spreadsheet.
+ * @returns {string|null} The name of the most recent sheet, or null.
+ */
+function getMostRecentPlanSheetName(sfcRef, ss) {
+    const sfcPrefix = (sfcRef || '').replace(/[\\/?*[]/g, '_');
+    const allSheetNames = ss.getSheets().map(s => s.getName()).filter(name => 
+        name.startsWith(sfcPrefix) && name.endsWith('AttendancePlan')
+    );
+    
+    if (allSheetNames.length === 0) return null;
+
+    let mostRecentSheetName = null;
+    let mostRecentDate = new Date(0); // Epoch start
+
+    allSheetNames.forEach(sheetName => {
+        const sheetDate = parseSheetDate(sheetName);
+        if (sheetDate && sheetDate.getTime() > mostRecentDate.getTime()) {
+            mostRecentDate = sheetDate;
+            mostRecentSheetName = sheetName;
+        }
+    });
+
+    Logger.log(`[getMostRecentPlanSheetName] Most recent sheet found: ${mostRecentSheetName}`);
+    return mostRecentSheetName;
+}
+
+/**
+ * Scans the MOST RECENT Attendance Plan sheet for a given Personnel ID
+ * to determine the schedule status for each day of the week.
  * @param {string} sfcRef The SFC Ref #.
  * @param {string} personnelId The Personnel ID to look up.
  * @returns {object} A map: { DayOfWeek (0-6): StatusString (e.g., '08:00-17:00' or 'RD') }
@@ -341,86 +396,76 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const cleanId = cleanPersonnelId(personnelId);
     
-    // 1. Get ALL sheet names for the current SFC Ref
-    // The sheet names are formatted as: "SFC_REF - MMM YYYY - Shift AttendancePlan"
-    const sfcPrefix = (sfcRef || '').replace(/[\\/?*[]/g, '_');
-    const allSheetNames = ss.getSheets().map(s => s.getName()).filter(name => 
-        name.startsWith(sfcPrefix) && name.endsWith('AttendancePlan')
-    );
+    // 1. Find the MOST RECENT plan sheet name
+    const sheetName = getMostRecentPlanSheetName(sfcRef, ss);
+    if (!sheetName) return {};
     
-    if (allSheetNames.length === 0) {
-        Logger.log(`[getEmployeeSchedulePattern] No Attendance Plan sheets found for ${sfcRef}.`);
-        return {};
-    }
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() < PLAN_HEADER_ROW) return {};
+    
+    // 2. Extract Year and Month from the sheet name
+    const parts = sheetName.split(' - '); 
+    if (parts.length < 3) return {}; 
+    const datePart = parts[1]; 
+    
+    const monthYear = new Date(datePart);
+    const sheetYear = monthYear.getFullYear();
+    const sheetMonth = monthYear.getMonth(); // 0-based
 
     const dayPatternCounter = {}; // Key: DayOfWeek (0-6), Value: { Status: Count }
     const dayPatternMap = {};     // Final result: { DayOfWeek: Status }
 
-    // Loop through ALL plan sheets found for this SFC
-    allSheetNames.forEach(sheetName => {
-        const sheet = ss.getSheetByName(sheetName);
-        if (!sheet || sheet.getLastRow() < PLAN_HEADER_ROW) return;
+    try {
+        // 3. Read data from the plan sheet
+        const lastRow = sheet.getLastRow();
+        const numRowsToRead = lastRow - PLAN_HEADER_ROW;
+        const numColumns = sheet.getLastColumn();
         
-        try {
-            // Extract Year and Month from the sheet name for date calculation
-            const parts = sheetName.split(' - '); // e.g., ["SFC_REF", "Nov 2025", "2ndHalf AttendancePlan"]
-            if (parts.length < 3) return; 
-            const datePart = parts[1]; // e.g., "Nov 2025"
-            
-            // CRITICAL: Parse month/year. Example: "Nov 2025" -> Date object
-            const monthYear = new Date(datePart);
-            const sheetYear = monthYear.getFullYear();
-            const sheetMonth = monthYear.getMonth(); // 0-based
-            
-            if (isNaN(sheetYear)) return; // Invalid date format
+        if (numRowsToRead <= 0 || numColumns < 33) return {}; 
 
-            // Read data from the plan sheet
-            const lastRow = sheet.getLastRow();
-            const numRowsToRead = lastRow - PLAN_HEADER_ROW;
-            const numColumns = sheet.getLastColumn();
-            
-            if (numRowsToRead <= 0 || numColumns < 33) return; // Need at least 33 columns (ID, Shift, 31 days)
+        const planValues = sheet.getRange(PLAN_HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
+        const headers = planValues[0];
+        const dataRows = planValues.slice(1);
+        
+        const personnelIdIndex = headers.indexOf('Personnel ID');
+        
+        // Find ALL rows for the target Personnel ID (since they might have 1st/2nd half entries)
+        const targetRows = dataRows.filter(row => cleanPersonnelId(row[personnelIdIndex]) === cleanId);
+        if (targetRows.length === 0) return {};
 
-            const planValues = sheet.getRange(PLAN_HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-            const headers = planValues[0];
-            const dataRows = planValues.slice(1);
-            
-            const personnelIdIndex = headers.indexOf('Personnel ID');
-            const shiftIndex = headers.indexOf('Shift');
-            
-            if (personnelIdIndex === -1 || shiftIndex === -1) return;
+        // Prepare header map
+        const sanitizedHeadersMap = {};
+        headers.forEach((header, index) => {
+            sanitizedHeadersMap[sanitizeHeader(header)] = index;
+        });
 
-            // Find the row for the target Personnel ID
-            const targetRow = dataRows.find(row => cleanPersonnelId(row[personnelIdIndex]) === cleanId);
-            if (!targetRow) return;
-
-            // Iterate through the schedule columns (Day 1 to 31)
-            for (let d = 1; d <= 31; d++) {
-                // Determine the correct header key for the day
+        // 4. Aggregate pattern from ALL relevant rows in the MOST RECENT sheet
+        targetRows.forEach(targetRow => {
+             for (let d = 1; d <= 31; d++) {
                 const currentDate = new Date(sheetYear, sheetMonth, d);
-                // Skip if the day is not in the month (e.g., Feb 30/31)
                 if (currentDate.getMonth() !== sheetMonth) continue; 
                 
-                // Get Day of Week (0=Sun, 1=Mon... 6=Sat)
                 const dayOfWeek = currentDate.getDay(); 
                 
-                // Find the column index
                 let lookupHeader = '';
                 const monthShortRaw = currentDate.toLocaleString('en-US', { month: 'short' });
                 const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
                 lookupHeader = `${monthShort}${d}`;
                 
-                const sanitizedHeadersMap = {};
-                headers.forEach((header, index) => {
-                    sanitizedHeadersMap[sanitizeHeader(header)] = index;
-                });
-                
                 const dayIndex = sanitizedHeadersMap[sanitizeHeader(lookupHeader)];
                 
                 if (dayIndex !== undefined) {
                     const status = String(targetRow[dayIndex] || '').trim();
-                    if (status && status !== 'NA') { // Exclude 'NA' from pattern recognition
-                        const dayKey = dayOfWeek.toString(); // Use string key for map
+                    if (status && status !== 'NA' && status !== 'RD' && status !== 'RH' && status !== 'SH') { 
+                        // Only count actual schedules for pattern (time schedules)
+                        const dayKey = dayOfWeek.toString(); 
+                        if (!dayPatternCounter[dayKey]) {
+                            dayPatternCounter[dayKey] = {};
+                        }
+                        dayPatternCounter[dayKey][status] = (dayPatternCounter[dayKey][status] || 0) + 1;
+                    } else if (status === 'RD' || status === 'RH' || status === 'SH') {
+                        // Special treatment for fixed statuses: if found, they are strong patterns
+                        const dayKey = dayOfWeek.toString(); 
                         if (!dayPatternCounter[dayKey]) {
                             dayPatternCounter[dayKey] = {};
                         }
@@ -428,33 +473,32 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
                     }
                 }
             }
+        });
 
-        } catch (e) {
-            Logger.log(`[getEmployeeSchedulePattern] ERROR processing sheet ${sheetName}: ${e.message}`);
-        }
-    });
-
-    // 2. Determine the most frequent status for each day of the week (0-6)
-    Object.keys(dayPatternCounter).forEach(dayOfWeek => {
-        const statusCounts = dayPatternCounter[dayOfWeek];
-        let maxCount = 0;
-        let mostFrequentStatus = '';
-        
-        // Find the status with the highest count
-        Object.keys(statusCounts).forEach(status => {
-            if (statusCounts[status] > maxCount) {
-                maxCount = statusCounts[status];
-                mostFrequentStatus = status;
+        // 5. Determine the final pattern (Most Frequent)
+        Object.keys(dayPatternCounter).forEach(dayOfWeek => {
+            const statusCounts = dayPatternCounter[dayOfWeek];
+            let maxCount = 0;
+            let mostFrequentStatus = '';
+            
+            Object.keys(statusCounts).forEach(status => {
+                if (statusCounts[status] > maxCount) {
+                    maxCount = statusCounts[status];
+                    mostFrequentStatus = status;
+                }
+            });
+            
+            if (mostFrequentStatus) {
+                dayPatternMap[dayOfWeek] = mostFrequentStatus;
             }
         });
-        
-        if (mostFrequentStatus) {
-            dayPatternMap[dayOfWeek] = mostFrequentStatus;
-        }
-    });
 
-    Logger.log(`[getEmployeeSchedulePattern] Found pattern for ID ${cleanId}: ${JSON.stringify(dayPatternMap)}`);
-    return dayPatternMap; // { "1": '08:00-17:00', "0": 'RD' }
+    } catch (e) {
+        Logger.log(`[getEmployeeSchedulePattern] ERROR processing sheet ${sheetName}: ${e.message}`);
+    }
+
+    Logger.log(`[getEmployeeSchedulePattern] Final Pattern for ID ${cleanId}: ${JSON.stringify(dayPatternMap)}`);
+    return dayPatternMap; 
 }
 // --- END NEW FUNCTION ---
 
