@@ -8,19 +8,20 @@ const PLAN_HEADER_ROW = 6;
 
 // ADMIN USER CONFIGURATION FOR UNLOCK FEATURE
 const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
-// --- UPDATED CONFIGURATION FOR PRINT LOG (10 Columns) ---
+// --- UPDATED CONFIGURATION FOR PRINT LOG (11 Columns) ---
 const LOG_SHEET_NAME = 'PrintLog';
 const LOG_HEADERS = [
     'Reference #', 
     'SFC Ref#', 
-    'Plan Sheet Name',      // NEW: For precise locking key
-    'Plan Period Display',  // UPDATED: Original 'Plan Period'
+    'Plan Sheet Name',      
+    'Plan Period Display', 
     'Payor Company', 
-    'Agency', 
-    'Service Type', 
+    'Agency',
+    'Sub Property',         // <--- NEW COLUMN
+    'Service Type',
     'User Email', 
     'Timestamp',
-    'Locked Personnel IDs'  // NEW: Comma-separated list of IDs
+    'Locked Personnel IDs'  
 ];
 // --- NEW CONFIGURATION FOR SCHEDULE AUDIT LOG ---
 const AUDIT_LOG_SHEET_NAME = 'ScheduleAuditLog';
@@ -547,14 +548,14 @@ function getLockedPersonnelIds(ss, planSheetName) {
     const logSheet = getOrCreateLogSheet(ss);
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return {};
-    // Define column indices (based on the 10-column LOG_HEADERS)
+    // Define column indices (based on the 11-column LOG_HEADERS)
     const REF_NUM_COL = 1;
     // Col A
     const PLAN_SHEET_NAME_COL = 3;      // Col C
     const LOCKED_IDS_COL = LOG_HEADERS.length;
-    // Col J (10)
+    // Col K (11)
 
-    // Basahin ang lahat ng data mula Col A (1) hanggang Col J (10)
+    // Basahin ang lahat ng data mula Col A (1) hanggang Col K (11)
     // Gamit ang getDisplayValues() para makuha ang string na value (FIX)
     const values = logSheet.getRange(2, 1, lastRow - 1, LOCKED_IDS_COL).getDisplayValues();
     const lockedIdRefMap = {}; 
@@ -562,7 +563,7 @@ function getLockedPersonnelIds(ss, planSheetName) {
     values.forEach(row => {
         const refNum = String(row[REF_NUM_COL - 1] || '').trim(); // Col A (index 0)
         const planSheetNameInLog = String(row[PLAN_SHEET_NAME_COL - 1] || '').trim(); // Col C (index 2)
-        const lockedIdsString = String(row[LOCKED_IDS_COL - 1] || '').trim(); // Col J (index 9)
+        const lockedIdsString = String(row[LOCKED_IDS_COL - 1] || '').trim(); // Col K (index 10)
         
         if (planSheetNameInLog === planSheetName && lockedIdsString) {
             
@@ -1339,8 +1340,8 @@ function logPrintAction(sfcRef, contractInfo, year, month, shift) {
 
 /**
  * UPDATED FUNCTION: Records the actual print log entry using the pre-generated Ref # and locks printed IDs.
- * Ginamitan ng setNumberFormat('@') FIX.
- * * @param {string} refNum (Now expected to be the 6-digit padded string)
+ * @param {string} refNum (Now expected to be the 6-digit padded string)
+ * @param {string} subProperty The manual Sub Property input from the user. <--- NEW PARAMETER
  * @param {string} sfcRef 
  * @param {object} contractInfo 
  * @param {number} year 
@@ -1348,7 +1349,7 @@ function logPrintAction(sfcRef, contractInfo, year, month, shift) {
  * @param {string} shift 
  * @param {string[]} printedPersonnelIds The list of IDs successfully printed.
  */
-function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
+function recordPrintLogEntry(refNum, subProperty, sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
     if (!refNum) {
         Logger.log(`[recordPrintLogEntry] ERROR: No Reference Number provided.`);
         return;
@@ -1373,31 +1374,30 @@ function recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, p
             dateRange = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
         }
         
-        // 1. Prepare the Log Entry (10 Columns)
+        // 1. Prepare the Log Entry (11 Columns)
         const logEntry = [
-            refNum, // This is the 6-digit padded string
+            refNum, 
             sfcRef,
             planSheetName, 
             dateRange,     
-           
             contractInfo.payor,
             contractInfo.agency,
+            subProperty,         // <--- NEW VALUE
             contractInfo.serviceType,
             Session.getActiveUser().getEmail(), 
             new Date(),
-            printedPersonnelIds.join(',') // Col J: IDs joined by comma
+            printedPersonnelIds.join(',') // Col K: IDs joined by comma
         ];
         const lastLoggedRow = logSheet.getLastRow();
         const newRow = lastLoggedRow + 1;
         const LOCKED_IDS_COL = LOG_HEADERS.length;
-        // 10
+        // 11
 
         const logEntryRange = logSheet.getRange(newRow, 1, 1, LOG_HEADERS.length);
-        // 2. *** CRITICAL FIX: I-set ang format ng Locked Personnel IDs cell (Col J) sa Plain Text ('@') ***
+        // 2. *** CRITICAL FIX: I-set ang format ng Locked Personnel IDs cell (Col K) sa Plain Text ('@') ***
         logEntryRange.getCell(1, LOCKED_IDS_COL).setNumberFormat('@');
         
-        // NOTE: setNumberFormat('@') for Col A (Reference #) is not strictly needed 
-        // since we are writing a string value ('000001'), but setting it ensures consistency.
+        // Tiyakin na ang Ref # column ay naka-set sa Plain Text
         logEntryRange.getCell(1, 1).setNumberFormat('@');
         
         // 3. Write the whole row of data
@@ -1481,7 +1481,7 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
     if (lastRow < 2) return;
     const PLAN_SHEET_NAME_COL_INDEX = 2; // Col C (0-based)
     const LOCKED_IDS_COL_INDEX = LOG_HEADERS.length - 1;
-    // Col J (0-based)
+    // Col K (10, based on original 10-column index)
     
     const range = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length);
     // Use getValues() to get raw array values
@@ -1518,7 +1518,7 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         });
         if (changed) {
           const newLockedIdsString = updatedLockedIds.join(',');
-          // Mark the cell in column J for update
+          // Mark the cell in column K for update
           rangeToUpdate.push({
               row: rowNumInSheet,
               col: LOCKED_IDS_COL_INDEX + 1, // 1-based
