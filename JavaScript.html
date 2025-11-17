@@ -1545,7 +1545,7 @@ function handleAttendanceData(data) {
     const isSelected = bulkSelectedCells.includes(cell);
     const isCellLocked = isLockedRow || isDeletedRow;
     const cursorClass = isCellLocked ? 'cursor-not-allowed' : (isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer');
-
+    
     cell.className = `cell-container text-center border-r border-b transition duration-100 ease-in-out ${cursorClass} ${isSelected ? 'cell-selected' : ''}`;
     
     cell.innerHTML = `<div class="p-2 h-full w-full flex items-center justify-center text-sm font-medium attendance-cell-bg">${status}</div>`;
@@ -1812,11 +1812,23 @@ function handleAttendanceData(data) {
 
 
     // CRITICAL FIX 4: I-convert ang pendingEmployeeInfoChanges bago ipadala sa server.
-    const empChanges = Object.keys(pendingEmployeeInfoChanges).map(stableKey => {
+    const empChanges = Object.keys(pendingEmployeeInfoChanges)
+    .filter(stableKey => { // <--- BUG FIX START (Aggressive filter for empty new rows)
+        const change = pendingEmployeeInfoChanges[stableKey];
+        // CRITICAL FIX: I-filter ang mga placeholder rows (TEMP_) na ngayon ay blangko na.
+        // Ang row na ito ay dapat i-delete kung ang lahat ng fields ay blangko at ito ay new row.
+        const isNewAndEmpty = change.originalEmployeeId === '' && 
+                              !change.isDeleted && 
+                              !change.id.trim() && !change.name.trim() && 
+                              !change.position.trim() && !change.area.trim();
+                              
+        return !isNewAndEmpty;
+    }) // <--- BUG FIX END
+    .map(stableKey => {
         const change = pendingEmployeeInfoChanges[stableKey];
         // NEW: Determine if this is an existing employee being added to a new plan (e.g., Curry)
         const isMasterEmployee = employeeMasterList.some(masterEmp => masterEmp.id === change.id.trim());
-        const isExistingAddedToPlan = change.originalEmployeeId === '' && isMasterEmployee; // Blank original ID + exists in master
+        const isExistingEmployeeAdded = change.originalEmployeeId === '' && isMasterEmployee; // Blank original ID + exists in master
         
         return {
             // Ito ang gagamitin ng server para hanapin ang row
@@ -1828,7 +1840,7 @@ function handleAttendanceData(data) {
             area: change.area.trim(), // *** TRIMMED on save ***
             isNew: change.originalEmployeeId === '', // Flag para sa bagong row
             isDeleted: change.isDeleted || false, // UPDATED: I-pass ang deletion flag
-            isExistingEmployeeAdded: isExistingAddedToPlan // NEW FLAG for server-side skipping
+            isExistingEmployeeAdded: isExistingEmployeeAdded // NEW FLAG for server-side skipping
         };
     })
     
@@ -2464,7 +2476,7 @@ function handlePrintPlan() {
     google.script.run
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
-            // Pass the generated refNum, ALL context, and the LIST OF PRINTED IDS to triggerPrint
+            // Pass the generated refNum, ALL context, at ang LIST OF PRINTED IDS to triggerPrint
             // Ang listahan na ito ay naglalaman na lamang ng IDs na may AKTUAL na schedule (hindi NA/BLANK)
             triggerPrint(refNum, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
