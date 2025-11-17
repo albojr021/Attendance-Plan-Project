@@ -770,7 +770,7 @@ function handleAttendanceData(data) {
     const headerRow1 = thead.insertRow();
     const headerRow2 = thead.insertRow();
     
-    // NEW: Widths para sa inline style
+    // NEW: Widths para sa inline style (Gagamitin lang ito ng CSS para sa screen, aalisin ang INLINE setting)
     const fixedWidths = ['50px', '120px', '200px', '120px', '120px']; 
     const dateColWidth = '70px';
     
@@ -783,9 +783,9 @@ function handleAttendanceData(data) {
         th.textContent = headerText;
         th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-100 border-r border-gray-300 z-20';
         
-        // EDITED: I-inject ang inline width para sa masigurado ang column size
-        th.style.width = fixedWidths[index];
-        th.style.minWidth = fixedWidths[index]; 
+        // REMOVED: I-inject ang inline width para sa masigurado ang column size (Ito ang inalis)
+        // th.style.width = fixedWidths[index]; 
+        // th.style.minWidth = fixedWidths[index]; 
 
         // Freeze first few columns
         if (index <= 1) th.classList.add('freeze-1', 'z-30'); // No. and ID
@@ -923,8 +923,8 @@ function handleAttendanceData(data) {
         // No. (Now includes the Edit Button/Icon)
         let td = tr.insertCell();
         td.className = 'sticky-col text-center p-0 bg-gray-50 font-bold border-r border-b z-10 freeze-1 relative'; // Added relative for absolute positioning of button
-        td.style.width = fixedWidths[0]; // Apply inline width
-        td.style.minWidth = fixedWidths[0]; 
+        // REMOVED: td.style.width = fixedWidths[0]; // Apply inline width (Handled by CSS)
+        // REMOVED: td.style.minWidth = fixedWidths[0]; 
         
         // Content for No. cell: Number and (optionally) Edit Button
         // UPDATED: Gamitin ang CSS class `py-2` para magbigay ng vertical padding
@@ -993,8 +993,8 @@ function handleAttendanceData(data) {
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); 
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1 relative'; // ADDED relative for UNLOCK button
-        td.style.width = fixedWidths[1]; // Apply inline width
-        input.style.minWidth = fixedWidths[1]; // Tiyakin na may min width
+        // REMOVED: td.style.width = fixedWidths[1]; // Apply inline width (Handled by CSS)
+        // REMOVED: input.style.minWidth = fixedWidths[1]; // Tiyakin na may min width
         
         // --- NEW: UNLOCK BUTTON IN PERSONNEL ID COLUMN (for locked rows) ---
         if (isPrintLocked) {
@@ -1041,8 +1041,8 @@ function handleAttendanceData(data) {
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
-        td.style.width = fixedWidths[2]; // Apply inline width
-        input.style.minWidth = fixedWidths[2]; // Tiyakin na may min width
+        // REMOVED: td.style.width = fixedWidths[2]; // Apply inline width (Handled by CSS)
+        // REMOVED: input.style.minWidth = fixedWidths[2]; // Tiyakin na may min width
         
         // Position (Input)
         td = tr.insertCell();
@@ -1059,8 +1059,8 @@ function handleAttendanceData(data) {
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
-        td.style.width = fixedWidths[3]; // Apply inline width
-        input.style.minWidth = fixedWidths[3]; // Tiyakin na may min width
+        // REMOVED: td.style.width = fixedWidths[3]; // Apply inline width (Handled by CSS)
+        // REMOVED: input.style.minWidth = fixedWidths[3]; // Tiyakin na may min width
         
         // Area Posting (Input)
         td = tr.insertCell();
@@ -1077,8 +1077,8 @@ function handleAttendanceData(data) {
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
-        td.style.width = fixedWidths[4]; // Apply inline width
-        input.style.minWidth = fixedWidths[4]; // Tiyakin na may min width
+        // REMOVED: td.style.width = fixedWidths[4]; // Apply inline width (Handled by CSS)
+        // REMOVED: input.style.minWidth = fixedWidths[4]; // Tiyakin na may min width
 
 
         // Add event listeners for Personnel Info updates (No auto-save)
@@ -2551,7 +2551,7 @@ function triggerPrint(refNum, subProperty, dynamicallyHiddenRows = [], sfcRef, c
                     restoreUI();
                 })
                 // I-pass ang generated refNum, ALL context, at ang LIST OF PRINTED IDS
-                .recordPrintLogEntry(refNum, subProperty, sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
+                .recordPrintLogEntry(refNum, subProperty, sfcRef, contractInfo, year, month, shift, printedPersonnelIds);
         };
 
         // Cancel Handler (User discarded the log)
