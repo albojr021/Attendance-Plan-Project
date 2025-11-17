@@ -1349,6 +1349,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       const row = input.closest('tr');
       
       // 1. Find the corresponding master record based on the new value
+      let masterRecordFound = null; // CRITICAL: New variable to store the found record
       let masterRecord = null;
       if (field === 'id') {
            masterRecord = employeeMasterList.find(e => e.id === newValue.trim());
@@ -1360,6 +1361,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       const isSaved = employeeMasterList.some(e => e.id === employee.id);
 
       if (masterRecord) {
+          masterRecordFound = masterRecord; // Store the found record
           // 2. Auto-fill all four fields from the master record
           row.querySelector('[data-field="id"]').value = masterRecord.id;
           row.querySelector('[data-field="name"]').value = masterRecord.name;
@@ -1374,22 +1376,14 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
           
           showNotification(`Employee details auto-filled for ${masterRecord.name}. Click 'Save All Changes' to save this new entry.`, true);
 
-          // *** NEW AUTOFill Schedule Logic ***
-          // Only attempt to auto-fill schedule if it's a NEW row being added to the plan
-          if (!isSaved) { 
-              // Call the new backend function to get the schedule pattern
-              google.script.run
-                  .withSuccessHandler((patternMap) => {
-                      if (Object.keys(patternMap).length > 0) {
-                          // Apply pattern to the current row
-                          applySchedulePatternToRow(row, masterRecord.id, patternMap);
-                          showNotification(`Schedule pattern found and auto-filled for ${masterRecord.name}. Review changes and click 'Save All Changes'.`, true);
-                      }
-                  })
-                  .withFailureHandler(handleError)
-                  .getEmployeeSchedulePattern(currentContract.sfcRef, masterRecord.id);
-          }
-          // *** END NEW AUTOFill Schedule Logic ***
+          // *** OLD: REMOVE ASYNC SCHEDULE AUTOFILL HERE TO PREVENT BUG ***
+          // if (!isSaved) { 
+          //     google.script.run
+          //         .withSuccessHandler(...)
+          //         .withFailureHandler(handleError)
+          //         .getEmployeeSchedulePattern(currentContract.sfcRef, masterRecord.id);
+          // }
+          // *** END OLD: REMOVE ASYNC SCHEDULE AUTOFILL HERE TO PREVENT BUG ***
 
       } else {
          // If no master record is found, just continue with normal validation/casing.
@@ -1439,7 +1433,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
                   if (employee.id === input.value) { 
                       delete pendingEmployeeInfoChanges[oldPersonnelKey];
                   }
-                  return; // HARD STOP
+                  return; // HARD STOP (Prevents Schedule Autofill from running below)
               }
           }
           // --- END DUPLICATE ID CHECK ---
@@ -1499,7 +1493,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
                   if (employee.name === input.value) { 
                       delete pendingEmployeeInfoChanges[oldPersonnelKey];
                   }
-                  return; // HARD STOP
+                  return; // HARD STOP (Prevents Schedule Autofill from running below)
               }
           }
           // --- END DUPLICATE NAME CHECK ---
@@ -1551,6 +1545,29 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
               }
           }
       }
+
+      // --- NEW: ASYNC SCHEDULE AUTO-FILL (CRITICAL FIX LOCATION) ---
+      // FIX: Only run the ASYNC call if a master record was found (masterRecordFound is not null)
+      // AND it is an unsaved row (not saved) AND not deleted/locked.
+      if (masterRecordFound && !isSaved && !pendingChange.isDeleted && !lockedIdRefMap[oldPersonnelKey]) {
+          // Double-check the ID in the input field is still the masterRecord ID 
+          // (i.e., it reached this point because it passed the duplication check and wasn't reverted).
+          const currentIdInInput = row.querySelector('[data-field="id"]').value.trim();
+          if (currentIdInInput === masterRecordFound.id) {
+               // ** THIS IS THE ASYNC CALL THAT WAS MOVED **
+               google.script.run
+                   .withSuccessHandler((patternMap) => {
+                       if (Object.keys(patternMap).length > 0) {
+                           // Apply pattern to the current row
+                           applySchedulePatternToRow(row, masterRecordFound.id, patternMap);
+                           showNotification(`Schedule pattern found and auto-filled for ${masterRecordFound.name}. Review changes and click 'Save All Changes'.`, true);
+                       }
+                   })
+                   .withFailureHandler(handleError)
+                   .getEmployeeSchedulePattern(currentContract.sfcRef, masterRecordFound.id);
+          }
+      }
+      // --- END CRITICAL FIX LOCATION ---
       
       // Tiyakin na ang comparison ay ginagawa sa pagitan ng current pending data at saved data (employee.id/name/etc)
       // NOTE: Dito, gagamitin ng comparison ang HINDI-TRIMMED value.
@@ -2171,8 +2188,26 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
         return;
     }
     
+    // Safety check: Filter out fully empty NEW rows, but allow fully empty DELETED rows to pass
+    // Final check bago ipadala (Re-run for safety)
+    const finalEmpChangesAfterValidation = [];
+    finalEmpChanges.forEach(e => {
+        if (e.isDeleted) {
+            finalEmpChangesAfterValidation.push(e); 
+        } else if (e.isExistingEmployeeAdded) {
+             if (e.id !== '' && e.name !== '' && e.position !== '' && e.area !== '') {
+                 finalEmpChangesAfterValidation.push(e);
+             }
+        }
+        else if (e.isNew) {
+            if (e.id !== '' && e.name !== '' && e.position !== '' && e.area !== '') {
+                 finalEmpChangesAfterValidation.push(e);
+            }
+        }
+    });
+    
     // Safety check: Final validation before sending to server (Numeric ID check)
-    if (finalEmpChanges.some(e => !e.isDeleted && !PERSONNEL_ID_REGEX.test(e.id))) { // e.id is already trimmed here
+    if (finalEmpChangesAfterValidation.some(e => !e.isDeleted && !PERSONNEL_ID_REGEX.test(e.id))) { // e.id is already trimmed here
         showNotification('Personnel ID error detected (must be numbers only). Please check your inputs.', false);
         return;
     }
@@ -2197,7 +2232,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        .saveAllData(sfcRefToSave, contractInfo, finalEmpChanges, attChanges, currentYear, currentMonth, currentShift); // PASS ALL CONTEXT
+        .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, attChanges, currentYear, currentMonth, currentShift); // PASS ALL CONTEXT
   }
 
   function handleSaveAllSuccess(response) {
@@ -2412,7 +2447,7 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
                     restoreUI();
                 })
                 // I-pass ang generated refNum, ALL context, at ang LIST OF PRINTED IDS
-                .recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
+                .recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, printedPersonnelIds);
         };
 
         // Cancel Handler (User discarded the log)
