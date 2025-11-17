@@ -315,6 +315,7 @@
         margin-top: 1rem !important;
     }
 
+    /* Close Button (Select Period) */
     .ui-datepicker-buttonpane button {
         cursor: pointer !important;
         font-weight: 600 !important;
@@ -497,7 +498,7 @@
         .attendance-grid th {
             background-color: #e5e7eb !important; 
             color: #374151 !important;
-            padding: 2px 1px !important; 
+            padding: 1px 1px !important; /* UPADATED: Minimal padding for header */
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
             vertical-align: middle;
@@ -512,13 +513,12 @@
             font-weight: bold;
         }
         
-        /* NEW: Tanggalin ang fixed widths sa Personnel Info Columns (1st to 5th TH/TD) */
+        /* NEW: CRITICAL FIX - REMOVE FIXED WIDTHS from Personnel Info Columns (1st to 5th TH/TD) */
         .attendance-grid th:nth-child(-n+5), 
         .attendance-grid td:nth-child(-n+5) {
-             width: 1% !important; /* Give minimum width priority */
+             width: auto !important; /* Auto size based on content (minimal width) */
              min-width: 0 !important;
              max-width: none !important;
-             /* Use content width */
         }
         
         /* Date/Schedule Columns (6th column onwards) - Let them take up the remaining space */
@@ -587,7 +587,7 @@
         /* Ensure the content of the No. column is centered (just the number) */
         .attendance-grid td:nth-child(1) {
             text-align: center !important;
-            padding: 2px 1px !important;
+            padding: 1px 1px !important; /* UPADATED: Minimal vertical padding */
         }
         
         /* Reference # in Upper Right Corner (Fixed Position) */
