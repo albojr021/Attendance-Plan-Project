@@ -629,6 +629,10 @@ function showBlankPlan() {
     currentContract.planMap = {}; // Start with no plan data
     lockedIdRefMap = {}; // NEW: Walang locked IDs sa blank plan
     
+    // *** CRITICAL BUG FIX: Clear ALL pending local changes for a fresh start ***
+    pendingAttendanceChanges = {}; 
+    pendingEmployeeInfoChanges = {}; 
+    
     // Show planning area and render table
     document.getElementById('planning-area').classList.remove('hidden'); 
     showNotification('Ready to plan. Your plan will be saved as a new sheet on click.', true);
