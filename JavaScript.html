@@ -40,6 +40,11 @@
   // *** NEW: Global state para sa Bulk Selection ***
   let isBulkSelectionMode = false;
   let bulkSelectedCells = []; // Stores the TD elements of selected cells
+  // --- NEW DRAG STATE VARIABLES ---
+  let isDragging = false;
+  let dragStartCell = null;
+  let dragEndCell = null;
+  let cellsFromCurrentDrag = []; // CRITICAL: To track cells only in the current drag box
   // ---------------------------------------------
   
   // *** NEW: Global state para sa tracking ng changes ***
@@ -119,8 +124,19 @@
       const idList = document.getElementById('employee-id-list');
       const nameList = document.getElementById('employee-name-list');
       
+      // --- NEW: Get Position and Area Datalist elements ---
+      const positionList = document.getElementById('employee-position-list');
+      const areaList = document.getElementById('employee-area-list');
+
+      // Clear existing options
       idList.innerHTML = '';
       nameList.innerHTML = '';
+      if (positionList) positionList.innerHTML = '';
+      if (areaList) areaList.innerHTML = '';
+
+      // --- NEW: Collect unique sets for Position and Area ---
+      const uniquePositions = new Set();
+      const uniqueAreas = new Set();
       
       employeeMasterList.forEach(emp => {
           // ID Datalist
@@ -134,9 +150,31 @@
           nameOption.value = emp.name;
           nameOption.textContent = `${emp.id} (${emp.position})`;
           nameList.appendChild(nameOption);
+
+          // Collect unique position/area
+          if (emp.position) uniquePositions.add(emp.position.trim());
+          if (emp.area) uniqueAreas.add(emp.area.trim());
       });
       
-      console.log(`Datalists populated with ${masterList.length} employees.`);
+      // --- NEW: Populate Position Datalist ---
+      if (positionList) {
+          uniquePositions.forEach(pos => {
+              const posOption = document.createElement('option');
+              posOption.value = pos;
+              positionList.appendChild(posOption);
+          });
+      }
+
+      // --- NEW: Populate Area Datalist ---
+      if (areaList) {
+          uniqueAreas.forEach(area => {
+              const areaOption = document.createElement('option');
+              areaOption.value = area;
+              areaList.appendChild(areaOption);
+          });
+      }
+      
+      console.log(`Datalists populated with ${masterList.length} employees. (${uniquePositions.size} positions, ${uniqueAreas.size} areas)`);
   }
   // --- END NEW DATALIST FUNCTIONS ---
 
@@ -384,7 +422,7 @@ function handleUnlockRequest(event) {
     contracts.forEach(contract => {
       const option = document.createElement('option');
       option.value = contract.id;
-      // Gumamit ng Contract ID at SFC Ref# para mas madaling hanapin
+      // Gumamit ng Contract ID at SFC Ref# para sa mas madaling hanapin
       option.textContent = `${contract.id} - ${contract.status} (Ref#: ${contract.sfcRef})`;
       select.appendChild(option);
     });
@@ -526,7 +564,7 @@ function displayContractDetails(contract) {
     document.getElementById('head-count').textContent = contract.headCount;
     
     document.getElementById('contract-details-area').classList.remove('hidden');
-    // document.getElementById('planning-area').classList.remove('hidden'); // HIDE planning-area
+    // document.getElementById('planning-area').classList.add('hidden'); // HIDE planning-area
     document.getElementById('initial-placeholder').classList.add('hidden');
     
     // CRITICAL FIX: Huwag ipakita ang action area by default.
@@ -1010,6 +1048,8 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
+        // --- NEW: Add datalist attribute for Position ---
+        input.setAttribute('list', 'employee-position-list'); 
         input.value = displayPosition; // Gamitin ang display value
         input.placeholder = 'Position';
         // CRITICAL FIX: I-lock ang input kung saved row
@@ -1026,6 +1066,8 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
+        // --- NEW: Add datalist attribute for Area Posting ---
+        input.setAttribute('list', 'employee-area-list'); 
         input.value = displayArea; // Gamitin ang display value
         input.placeholder = 'Area';
         // CRITICAL FIX: I-lock ang input kung saved row
@@ -1120,7 +1162,7 @@ function handleAttendanceData(data) {
                 // NEW: Kung nasa bulk mode, i-override ang listener at visual
                 if (isBulkSelectionMode) {
                     td.removeEventListener('click', handleCellClick);
-                    td.addEventListener('click', handleCellSelectionClick);
+                    // NOTE: Ang listener na ito ay hindi na idadagdag dito dahil ang handleDragEnd na ang bahala.
                 }
             }
         }
@@ -1376,15 +1418,6 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
           
           showNotification(`Employee details auto-filled for ${masterRecord.name}. Click 'Save All Changes' to save this new entry.`, true);
 
-          // *** OLD: REMOVE ASYNC SCHEDULE AUTOFILL HERE TO PREVENT BUG ***
-          // if (!isSaved) { 
-          //     google.script.run
-          //         .withSuccessHandler(...)
-          //         .withFailureHandler(handleError)
-          //         .getEmployeeSchedulePattern(currentContract.sfcRef, masterRecord.id);
-          // }
-          // *** END OLD: REMOVE ASYNC SCHEDULE AUTOFILL HERE TO PREVENT BUG ***
-
       } else {
          // If no master record is found, just continue with normal validation/casing.
          // And set the pending change field to the current value
@@ -1420,7 +1453,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
                   // Revert input visuals to original state
                   input.value = employee.id; 
                   if (nameInput) nameInput.value = employee.name; 
-                  if (positionInput) positionInput.value = employee.position;
+                  if (positionInput) positionInput.value = employee.position; 
                   if (areaInput) areaInput.value = employee.area;
                   
                   // Revert pending change object
@@ -1480,7 +1513,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
                   // Revert input visuals to original state
                   input.value = employee.name; 
                   if (idInput) idInput.value = employee.id; 
-                  if (positionInput) positionInput.value = employee.position;
+                  if (positionInput) positionInput.value = employee.position; 
                   if (areaInput) areaInput.value = employee.area;
                   
                   // Revert pending change object
@@ -1627,6 +1660,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     
     // NEW: I-check kung nasa bulk mode para sa cursor
     const isSelected = bulkSelectedCells.includes(cell);
+    // UPDATED: Lock Check
     const isCellLocked = isLockedRow || isDeletedRow;
     const cursorClass = isCellLocked ? 'cursor-not-allowed' : (isBulkSelectionMode ? 'cursor-crosshair' : 'cursor-pointer');
     
@@ -2370,8 +2404,54 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
   }
   
   // --- NEW PRINT LOGIC (UPDATED: Check for pending changes first & Locking) ---
+  
+function showSubPropertyModal() {
+    const modal = document.getElementById('sub-property-modal');
+    modal.classList.remove('hidden');
+    // Clear previous input (This input might be useful for persisting the last value)
+    // document.getElementById('sub-property-input').value = ''; 
+    document.getElementById('sub-property-input').focus();
+    
+    // Ensure listeners are set up for confirmation
+    const confirmBtn = document.getElementById('sub-property-confirm-btn');
+    const cancelBtn = document.getElementById('sub-property-cancel-btn');
+    
+    // Safety: Remove previous listeners before adding to prevent duplicates
+    confirmBtn.removeEventListener('click', handleSubPropertyConfirm);
+    cancelBtn.removeEventListener('click', hideSubPropertyModal);
+    
+    confirmBtn.addEventListener('click', handleSubPropertyConfirm);
+    cancelBtn.addEventListener('click', hideSubPropertyModal);
+}
 
-function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
+function hideSubPropertyModal() {
+    document.getElementById('sub-property-modal').classList.add('hidden');
+}
+
+
+function handleSubPropertyConfirm(event) {
+    const subProperty = document.getElementById('sub-property-input').value.trim();
+    if (!subProperty) {
+        showNotification('Sub Property is required before printing.', false);
+        return;
+    }
+    
+    hideSubPropertyModal();
+    // Now, run the actual print preparation flow with the new parameter
+    triggerPrintPreparation(subProperty);
+}
+
+function handlePrintPlan() {
+    // Perform initial checks if needed, then show the modal
+    if (!currentContract) {
+        showNotification('Please select a Contract Group ID first.', false);
+        return;
+    }
+    showSubPropertyModal();
+}
+
+
+function triggerPrint(refNum, subProperty, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
 
     // ********** NEW LOGIC: I-INJECT ANG REFERENCE NUMBER ELEMENT **********
@@ -2385,6 +2465,25 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
     }
     // Ang CSS na ang maglalagay ng label na "Reference #"
     printRefElement.textContent = refNum; 
+    
+    // --- CRITICAL FIX: Inject Sub Property Detail before print ---
+    const subPropertyHtml = `
+        <div class="card p-3 print-only-container" id="print-sub-property-container">
+            <p class="text-sm font-medium text-blue-800">Sub Property</p>
+            <p id="sub-property-display" class="text-base font-bold text-blue-900">${subProperty}</p>
+        </div>
+    `;
+    const contractDetailsGrid = document.getElementById('contract-details-grid');
+    // Hanapin ang parent ng Payor Company
+    const payorCompanyContainer = document.getElementById('payor-company').parentNode; 
+
+    // Insert after Payor Company container (to satisfy user request: after Payor Company)
+    if (payorCompanyContainer) {
+        payorCompanyContainer.insertAdjacentHTML('afterend', subPropertyHtml);
+    } else {
+        // Fallback or just append if Payor Company container wasn't found (safety)
+        contractDetailsGrid.insertAdjacentHTML('beforeend', subPropertyHtml);
+    }
     // ***********************************************************************
     
     // I-set up ang Modal at Buttons handlers (Ito ay isang self-contained function)
@@ -2417,6 +2516,11 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
             if (printRefElement) {
                  printRefElement.remove();
             }
+            // CRITICAL: Remove the injected Sub Property element
+            const injectedSubProperty = document.getElementById('print-sub-property-container');
+            if (injectedSubProperty) {
+                 injectedSubProperty.remove();
+            }
             // *******************************************************************
 
             const inputs = document.querySelectorAll('#attendance-table-container input');
@@ -2447,7 +2551,7 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
                     restoreUI();
                 })
                 // I-pass ang generated refNum, ALL context, at ang LIST OF PRINTED IDS
-                .recordPrintLogEntry(refNum, sfcRef, contractInfo, year, month, shift, printedPersonnelIds);
+                .recordPrintLogEntry(refNum, subProperty, sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
         };
 
         // Cancel Handler (User discarded the log)
@@ -2485,8 +2589,7 @@ function triggerPrint(refNum, dynamicallyHiddenRows = [], sfcRef, contractInfo, 
     window.print();
 }
 
-
-function handlePrintPlan() {
+function triggerPrintPreparation(subProperty) {
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
         return;
@@ -2538,16 +2641,9 @@ function handlePrintPlan() {
             printedPersonnelIds.push(id);
             isPlanPrintable = true;
         }
-        
-        // Kung locked na ang row, ipagpalagay natin na printable ito (dapat kasama sa printout)
-        // NOTE: Inalis natin ang logic na ito dahil sinabi mo na hindi dapat masama ang locked rows
-        // if(isLocked) {
-        //     isPlanPrintable = true;
-        // }
     });
     
     // NEW LOCK CHECK: If no IDs are printable (all are NA/Blank), prevent print
-    // Gumamit ng printedPersonnelIds.length > 0 para sa lockable rows.
     if (printedPersonnelIds.length === 0) {
          if (currentContract.employees.length > 0) {
              showNotification('Cannot print: No employee data with an **actual schedule** found that is not already locked. Please add a plan (Work/RD/RH/SH) before printing.', false);
@@ -2560,7 +2656,6 @@ function handlePrintPlan() {
 
 
     // 3. Apply Dynamic Filtering for Clean Print
-    // Ang rows na NA/Blank ay tatanggalin sa print sa loob ng filterEmptyScheduleRows
     const dynamicallyHiddenRows = filterEmptyScheduleRows(); 
 
     // 4. Prepare Context for Logging
@@ -2577,64 +2672,201 @@ function handlePrintPlan() {
 
     toggleLoading(true);
 
-    // 5. Call Server to ONLY GENERATE Print Action and get Ref # (Hindi pa magre-record!)
+    // 5. Call Server to ONLY GENERATE Print Action and get Ref # (PASSING SUB PROPERTY)
     google.script.run
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
             // Pass the generated refNum, ALL context, at ang LIST OF PRINTED IDS to triggerPrint
-            // Ang listahan na ito ay naglalaman na lamang ng IDs na may AKTUAL na schedule (hindi NA/BLANK) at HINDI locked
-            triggerPrint(refNum, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
+            triggerPrint(refNum, subProperty, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
         .withFailureHandler((error) => {
             // Ensure dynamically hidden rows are restored on error
             dynamicallyHiddenRows.forEach(row => row.classList.remove('print-hidden'));
             handleError(error);
         })
-        .logPrintAction(currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift);
+        // NOTE: The logPrintAction signature in Code.gs was updated to accept subProperty
+        .logPrintAction(subProperty, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
 }
 
 
-// --- NEW: BULK SELECTION LOGIC ---
+// --- NEW HELPER: Get Cell Coordinates (Absolute row index, 0-based column index) ---
+function getCellCoordinates(cell) {
+    if (!cell || !cell.classList.contains('cell-container')) return null;
+    
+    const row = cell.parentNode;
+    // R: Absolute row index in the table (Header rows are 0 and 1, data starts at 2)
+    const rowIndex = row.rowIndex; 
+    
+    // C: 0-based cell index (Schedule columns start at 5)
+    const colIndex = cell.cellIndex; 
+    
+    return { R: rowIndex, C: colIndex };
+}
+// --- END NEW HELPER ---
 
-// CRITICAL FIX: Add missing toggleCellSelection function
-function toggleCellSelection(cell) {
-    const index = bulkSelectedCells.indexOf(cell);
-    if (index > -1) {
-        // Deselect
-        bulkSelectedCells.splice(index, 1);
-        cell.classList.remove('cell-selected');
-    } else {
-        // Select
-        bulkSelectedCells.push(cell);
-        cell.classList.add('cell-selected');
-    }
-    document.getElementById('bulk-cell-count').textContent = bulkSelectedCells.length;
+// --- NEW HELPER: Check if a Row is Active (Non-blank) ---
+function isRowActive(rowElement) {
+    const idInput = rowElement.querySelector('[data-field="id"]');
+    const nameInput = rowElement.querySelector('[data-field="name"]');
+    
+    // A row is considered "active" (non-blank) if the ID or Name input has content.
+    return (idInput?.value || '').trim() !== '' || (nameInput?.value || '').trim() !== '';
+}
+// --- END NEW HELPER ---
+
+
+// --- NEW FUNCTION: CRITICAL DRAG LOGIC (Additive) ---
+function visualizeAdditiveRange(startCell, endCell) {
+    const startCoords = getCellCoordinates(startCell);
+    const endCoords = getCellCoordinates(endCell);
+
+    if (!startCoords || !endCoords) return;
+
+    const table = startCell.closest('table');
+    if (!table) return;
+
+    // Determine the selection box boundaries (R_min, R_max, C_min, C_max)
+    const R_min = Math.min(startCoords.R, endCoords.R);
+    const R_max = Math.max(startCoords.R, endCoords.R);
+    const C_min_target = Math.min(startCoords.C, endCoords.C);
+    const C_max_target = Math.max(startCoords.C, endCoords.C);
+    
+    // Ensure we only select from the schedule columns (starting at index 5)
+    const C_min = Math.max(5, C_min_target);
+    const C_max = Math.max(5, C_max_target);
+
+    const allCells = Array.from(table.querySelectorAll('td.cell-container'));
+
+    // 1. Clear visuals from previous TEMPORARY drag selection
+    cellsFromCurrentDrag.forEach(cell => {
+        // Only remove the visual selection if it's NOT in the permanent bulkSelectedCells array
+        // This ensures prior clicks/drags remain highlighted.
+        if (!bulkSelectedCells.includes(cell)) {
+             cell.classList.remove('cell-selected');
+        }
+    });
+    cellsFromCurrentDrag = []; // Reset the list for the current mousemove
+
+    // 2. Compute the range and apply visual (Additive visual)
+    allCells.forEach(cell => {
+        const coords = getCellCoordinates(cell);
+        if (!coords) return; 
+
+        const cellRow = cell.closest('tr');
+        // --- CRITICAL ROW CHECK: Skip selection if the row is NOT active/blank ---
+        if (!isRowActive(cellRow)) {
+            return; 
+        }
+        // --- END CRITICAL ROW CHECK ---
+
+        const isInRange = coords.R >= R_min && coords.R <= R_max && 
+                          coords.C >= C_min && coords.C <= C_max;
+        
+        const isLocked = cellRow.classList.contains('line-through') || cellRow.classList.contains('locked-row');
+
+        if (isInRange && !isLocked) {
+             cell.classList.add('cell-selected'); // Apply visual
+             
+             // Track this cell as part of the current drag box
+             cellsFromCurrentDrag.push(cell);
+        }
+    });
+    
+    // Update count display to show total selected cells (permanent + temporary)
+    const uniqueSelectedCount = new Set([...bulkSelectedCells, ...cellsFromCurrentDrag]).size;
+    document.getElementById('bulk-cell-count').textContent = uniqueSelectedCount;
 }
 
 
-function handleCellSelectionClick(event) {
-    const targetCell = event.currentTarget;
+// --- NEW FUNCTION: Handle Drag Start ---
+function handleDragStart(event) {
+    // Tiyakin na nasa Bulk Selection Mode at ang kaliwang mouse button lang ang ginagamit
+    if (!isBulkSelectionMode || event.button !== 0) return; 
+
+    const targetCell = event.target.closest('.cell-container');
+    if (!targetCell) return;
+    
     const row = targetCell.closest('tr');
     
-    // Safety check: Cannot select cells without ID or if the row is marked for deletion OR LOCKED
+    // --- NEW BLANK ROW CHECK ---
+    if (!isRowActive(row)) {
+        showNotification('Cannot drag: Start row must contain active employee details.', false);
+        return; 
+    }
+    // --- END NEW BLANK ROW CHECK ---
+
+    // Safety Check: Huwag mag-drag kung locked ang cell
     const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
     if (isCellLocked) {
-        // UPDATED: Get the original ID from the cell's dataset for the lock lookup
-        const originalId = targetCell.dataset.originalId || '';
-        showNotification('Cannot select: Row is marked for deletion or is locked (Ref #'+ lockedIdRefMap[originalId] +').', false);
+        return; 
+    }
+    
+    // I-prevent ang default text selection behavior ng browser
+    event.preventDefault(); 
+
+    isDragging = true;
+    dragStartCell = targetCell;
+    dragEndCell = targetCell;
+    
+    // Walang clearing dito. Ang clearing ay nasa visualizeAdditiveRange.
+    
+    // Idagdag ang global listeners para sa mousemove at mouseup
+    document.addEventListener('mousemove', handleDragging);
+    document.addEventListener('mouseup', handleDragEnd); 
+}
+
+// --- NEW FUNCTION: Handle Dragging (Hakbang 2) ---
+function handleDragging(event) {
+    if (!isDragging) return;
+    
+    // Kunin ang cell na nasa ilalim ng cursor
+    const currentCell = event.target.closest('.cell-container');
+    
+    // CRITICAL: Check for locking/non-cell area
+    if (!currentCell || currentCell.closest('tr').classList.contains('line-through') || currentCell.closest('tr').classList.contains('locked-row')) {
         return;
     }
     
-    // CRITICAL FIX for Bulk Select: Kunin ang ID sa input field, hindi sa dataset
-    const idInput = row.querySelector('[data-field="id"]');
-    const personnelId = (idInput?.value || '').trim();
+    // Tiyakin na ang mousemove ay nag-generate ng bagong range bago mag-update
+    if (currentCell !== dragEndCell) {
+        dragEndCell = currentCell;
+        visualizeAdditiveRange(dragStartCell, dragEndCell); // Use additive visualizer
+    }
+}
+
+// --- NEW FUNCTION: Handle Drag End (Hakbang 3) ---
+function handleDragEnd(event) {
+    if (!isDragging) return;
     
-    if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) { 
-        showNotification('Cannot select: Personnel ID is empty or invalid (must be numbers only). Please correct the ID field first.', false);
-        return;
+    // 1. If mousedown and mouseup were on the same cell (single click)
+    if (dragStartCell === dragEndCell) {
+        // Toggles selection (additive/subtractive)
+        toggleCellSelection(dragStartCell); 
+    } 
+    
+    // 2. If it was a drag, permanentize the temporary selection
+    if (dragStartCell !== dragEndCell) {
+        cellsFromCurrentDrag.forEach(cell => {
+             // Merge: add to bulkSelectedCells only if it's a NEW selection
+             if (!bulkSelectedCells.includes(cell)) {
+                 bulkSelectedCells.push(cell);
+             }
+        });
+        // Ngayon, ang bulkSelectedCells ay may permanent selections + ang new drag range.
+        
+        // Remove temporary visual tracking artifacts
+        // Note: The 'cell-selected' class remains for the merged cells.
     }
     
-    toggleCellSelection(targetCell);
+    cellsFromCurrentDrag = []; // Clear temporary tracking list
+    
+    isDragging = false;
+    dragStartCell = null;
+    dragEndCell = null;
+    
+    // I-alis ang global listeners
+    document.removeEventListener('mousemove', handleDragging);
+    document.removeEventListener('mouseup', handleDragEnd);
 }
 
 // Function to start the bulk selection process
@@ -2654,23 +2886,31 @@ function startBulkSelectionMode() {
         const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
         
         if (!isCellLocked) {
-           // I-dagdag ang new handler (handleCellSelectionClick)
-           cell.addEventListener('click', handleCellSelectionClick);
+           // I-alis ang old single-click handler (handleCellSelectionClick) para hindi mag-conflict
+           // DAHIL ang handleDragEnd na ang bahala sa single-click toggle
+           cell.removeEventListener('click', handleCellSelectionClick); 
            cell.classList.add('cursor-crosshair'); // Visual cue for selection mode
         }
         cell.classList.remove('cell-selected'); // Ensure initial state is not selected
     });
+    
+    // --- NEW: Add mousedown listener to the main grid container ---
+    const gridContainer = document.getElementById('attendance-grid');
+    if (gridContainer) {
+        // Ang mousedown ang magti-trigger ng drag OR single click sequence
+        gridContainer.addEventListener('mousedown', handleDragStart, false); 
+    }
+    // -------------------------------------------------------------
     
     // 2. I-update ang UI ng Bulk Button
     const bulkBtn = document.getElementById('start-bulk-select-btn');
     bulkBtn.textContent = 'Apply Selection';
     bulkBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
     bulkBtn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-    // We add the openBulkScheduleModal listener here
-    bulkBtn.removeEventListener('click', startBulkSelectionMode); // Remove old listener
+    bulkBtn.removeEventListener('click', startBulkSelectionMode); 
     bulkBtn.addEventListener('click', openBulkScheduleModal); 
 
-    showNotification('Bulk Selection Mode: Click cells to select them. Click "Apply Selection" when finished.', true);
+    showNotification('Bulk Selection Mode: Click cells to toggle selection, or Drag to select a range.', true);
 }
 
 
@@ -2680,7 +2920,9 @@ function exitBulkSelectionMode() {
     
     // 1. I-restore ang original click handler at i-clear ang selection
     document.querySelectorAll('.cell-container').forEach(cell => {
+        // CRITICAL FIX: I-alis ang drag handlers at i-restore ang original click handler
         cell.removeEventListener('click', handleCellSelectionClick);
+        
         // Only restore old handler if not locked/deleted
         const row = cell.closest('tr');
         const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
@@ -2692,7 +2934,18 @@ function exitBulkSelectionMode() {
     });
     
     bulkSelectedCells = [];
+    cellsFromCurrentDrag = []; // CRITICAL: Clear temporary tracking list
     document.getElementById('bulk-cell-count').textContent = '0';
+    
+    // --- NEW: Remove mousedown listener from the main grid container ---
+    const gridContainer = document.getElementById('attendance-grid');
+    if (gridContainer) {
+        gridContainer.removeEventListener('mousedown', handleDragStart, false); 
+    }
+    // Tiyakin na na-remove din ang global listeners kung sakaling na-trigger
+    document.removeEventListener('mousemove', handleDragging);
+    document.removeEventListener('mouseup', handleDragEnd); 
+    // -------------------------------------------------------------
     
     // 2. I-restore ang UI ng Bulk Button
     const bulkBtn = document.getElementById('start-bulk-select-btn');
@@ -2708,6 +2961,54 @@ function exitBulkSelectionMode() {
     showNotification('Bulk Selection Mode ended.', false);
 }
 
+
+// CRITICAL FIX: Add missing toggleCellSelection function
+function toggleCellSelection(cell) {
+    const index = bulkSelectedCells.indexOf(cell);
+    if (index > -1) {
+        // Deselect
+        bulkSelectedCells.splice(index, 1);
+        cell.classList.remove('cell-selected');
+    } else {
+        // Select
+        bulkSelectedCells.push(cell);
+        cell.classList.add('cell-selected');
+    }
+    document.getElementById('bulk-cell-count').textContent = bulkSelectedCells.length;
+}
+
+
+function handleCellSelectionClick(event) {
+    // NOTE: This function is currently only called by handleDragEnd for single clicks.
+    const targetCell = event.currentTarget || event; // Allows calling with event object or cell element
+    const row = targetCell.closest('tr');
+    
+    // --- NEW BLANK ROW CHECK ---
+    if (!isRowActive(row)) {
+        showNotification('Cannot select: This row does not contain active employee details.', false);
+        return;
+    }
+    // --- END NEW BLANK ROW CHECK ---
+    
+    // Safety check: Cannot select cells without ID or if the row is marked for deletion OR LOCKED
+    const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
+    if (isCellLocked) {
+        const originalId = targetCell.dataset.originalId || '';
+        showNotification('Cannot select: Row is marked for deletion or is locked (Ref #'+ lockedIdRefMap[originalId] +').', false);
+        return;
+    }
+    
+    // CRITICAL FIX for Bulk Select: Kunin ang ID sa input field, hindi sa dataset
+    const idInput = row.querySelector('[data-field="id"]');
+    const personnelId = (idInput?.value || '').trim();
+    
+    if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) { 
+        showNotification('Cannot select: Personnel ID is empty or invalid (must be numbers only). Please correct the ID field first.', false);
+        return;
+    }
+    
+    toggleCellSelection(targetCell);
+}
 
 // Function to open the Bulk Modal
 function openBulkScheduleModal() {
