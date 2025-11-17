@@ -434,8 +434,19 @@
             break-inside: avoid;
         }
         
+        /* NEW FIX: Style for the injected Sub Property container to match the grid's print style */
+        #print-sub-property-container {
+            display: flex !important; /* Mimic #contract-details-grid > div */
+            border: none !important;
+            padding: 0 0 !important;
+            margin-bottom: 0;
+            background-color: transparent !important;
+            break-inside: avoid;
+        }
+        
         /* CRITICAL: Gawing mas maliit at i-compact ang label at value */
         #contract-details-grid p,
+        #print-sub-property-container p, /* ADDED: Include injected container's p tags */
         #contract-details-grid .text-xl,
         .text-gray-700{ 
             font-size: 0.55rem !important; /* Liitan pa lalo (8.8px) */
@@ -446,7 +457,9 @@
         }
         
         /* Apply BOLD to the label (first p tag) and make it occupy fixed space */
-        #contract-details-grid > div p:first-child {
+        #contract-details-grid > div p:first-child,
+        #print-sub-property-container p:first-child /* ADDED: Include injected container's label */
+        {
             font-weight: bold !important; /* Label */
             color: #444 !important;
             min-width: 80px;
@@ -599,4 +612,3 @@
         }
     }
 </style>
-
