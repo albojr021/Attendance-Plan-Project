@@ -451,7 +451,7 @@
         #contract-details-grid .text-xl,
         .text-gray-700{ 
             font-size: 0.55rem !important; /* Liitan pa lalo (8.8px) */
-            line-height: 1; /* Alisin ang extra line height */
+            line-height: 1 !important; /* CRITICAL: Alisin ang extra line height */
             font-weight: normal !important;
             margin: 0;
             padding: 0;
@@ -503,6 +503,7 @@
             print-color-adjust: exact;
             vertical-align: middle;
             text-align: center;
+            line-height: 1 !important; /* CRITICAL: Minimize header line height */
         }
         
         /* CRITICAL: Gawing pare-pareho ang font size sa header elements (0.5rem) */
@@ -536,6 +537,8 @@
             padding: 0 !important;
             border: 1px solid #444 !important; /* Darker border for Excel look */
             vertical-align: middle;
+            height: auto !important; /* CRITICAL: Override any screen height */
+            min-height: 0 !important; /* CRITICAL: Override any screen min-height */
         }
         
         /* --- CRITICAL FIX: I-reset ang lahat ng kulay sa puti at itim --- */
@@ -557,8 +560,8 @@
             padding: 1px 1px !important; 
             font-size: 0.5rem !important; 
             font-weight: bold; /* Keep bold for visibility */
-            line-height: 1;
-            min-height: 0;
+            line-height: 1 !important; /* CRITICAL FIX: Minimal line height */
+            min-height: 0 !important; /* CRITICAL FIX: Override screen min-height */
             height: auto;
             /* **** FINAL FIX FOR WRAPPING **** */
             white-space: nowrap !important; /* Force text onto a single line */
@@ -574,7 +577,8 @@
             font-size: 0.5rem !important; /* Pareho ang size */
             font-weight: normal !important;
             text-align: left !important;
-            line-height: 1;
+            line-height: 1 !important; /* CRITICAL FIX: Minimal line height */
+            min-height: 0 !important; /* CRITICAL FIX: Override screen min-height */
         }
         
         /* Override read-only styling in print */
