@@ -592,7 +592,15 @@
         .attendance-grid td:nth-child(1) {
             text-align: center !important;
             padding: 1px 1px !important; /* UPADATED: Minimal vertical padding */
+            /* --- NEW FIXES FOR COMPACT NO. COLUMN --- */
+            width: 0.5rem !important; /* Force a very small width */
         }
+        
+        /* NEW FIX: Reset padding for the No. column number span to remove screen-only offset */
+        .attendance-grid td:nth-child(1) > span {
+            padding-right: 0 !important; 
+        }
+        /* --- END NEW FIXES --- */
         
         /* Reference # in Upper Right Corner (Fixed Position) */
         #print-ref-display {
