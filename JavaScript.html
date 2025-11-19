@@ -58,6 +58,10 @@
   // --- NEW GLOBAL STATE FOR PRINT LOCKING ---
   let isPlanSheetFullyLocked = false;
   // ---------------------------------------------
+  
+  // *** NEW GLOBAL STATE FOR BULK UNLOCK SELECTION ***
+  // Stores {id: 'ID', ref: 'REF#', name: 'NAME'} pairs
+  let bulkUnlockSelected = []; 
 
   const fixedStatusOptions = [
     { value: 'RD', label: 'Rest Day (RD)', color: 'status-rd text-red-700' },
@@ -264,6 +268,8 @@ function isDuplicateName(newName, originalSavedId, currentNo) {
         const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
         const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         
+        if (!displayId.trim()) return; // Skip if ID is empty
+        
         activeEmployees.push({
             id: displayId.trim(),
             name: displayName.trim(),
@@ -297,77 +303,222 @@ function isDuplicateName(newName, originalSavedId, currentNo) {
   }
   // --- END HELPER FUNCTION ---
 
-// --- NEW FUNCTION: Handle Admin Unlock Request (UPDATED FOR EMAIL NOTIFICATION) ---
-function handleUnlockRequest(event) {
-    const button = event.currentTarget;
-    const stableKey = button.dataset.stableKey; // This is the locked Personnel ID (employee.id)
+// --- NEW FUNCTION: Kumuha ng Listahan ng Locked Employees (FOR MODAL) ---
+function getLockedEmployeesList() {
+    const lockedList = [];
+    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+
+    gridRows.forEach(row => {
+        // Tiyakin na naka-lock ang row, hindi marked for deletion
+        if (row.classList.contains('locked-row') && !row.classList.contains('line-through')) {
+            const stableKey = row.dataset.stableKey;
+            
+            // Kunin ang data direkta sa inputs (Source of Truth)
+            const idInput = row.querySelector('[data-field="id"]');
+            const nameInput = row.querySelector('[data-field="name"]');
+            
+            const personnelId = (idInput?.value || '').trim();
+            const personnelName = (nameInput?.value || '').trim();
+            
+            // Kunin ang Reference # mula sa global map o sa tag sa grid
+            const lockedRefNum = lockedIdRefMap[stableKey]; 
+
+            if (personnelId && lockedRefNum) {
+                // Check if this ID is already in the global selection (if the modal was opened before)
+                const isSelected = bulkUnlockSelected.some(item => item.id === personnelId);
+                
+                lockedList.push({
+                    id: personnelId,
+                    name: personnelName,
+                    ref: lockedRefNum,
+                    stableKey: stableKey, // Original key for reference
+                    isSelected: isSelected
+                });
+            }
+        }
+    });
+
+    return lockedList;
+}
+
+// --- NEW FUNCTION: Open Unlock Selection Modal ---
+function openUnlockSelectionModal() {
+    // 1. Get the list of locked employees
+    const lockedEmployees = getLockedEmployeesList();
+    const listContainer = document.getElementById('locked-employee-list-container');
+    const modal = document.getElementById('unlock-selection-modal');
+    const selectAllCheckbox = document.getElementById('select-all-unlock');
+
+    if (lockedEmployees.length === 0) {
+        showNotification('No schedules are currently locked for this period.', false);
+        return;
+    }
     
-    // Get current context
+    // 2. Clear and populate the modal list
+    listContainer.innerHTML = '';
+    
+    lockedEmployees.forEach(emp => {
+        const listItem = document.createElement('li');
+        // Check if the current list item is selected to set the initial class (visual cue)
+        const itemBgClass = emp.isSelected ? 'bg-yellow-100 border-yellow-400' : 'bg-gray-50 border-gray-200';
+        
+        listItem.className = `flex items-center space-x-3 p-2 rounded-lg border hover:bg-yellow-50 transition duration-150 cursor-pointer ${itemBgClass}`;
+        
+        listItem.innerHTML = `
+            <input type="checkbox" id="unlock-check-${emp.id}" 
+                   data-id="${emp.id}" 
+                   data-ref="${emp.ref}"
+                   data-name="${emp.name}"
+                   class="unlock-checkbox h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500" 
+                   ${emp.isSelected ? 'checked' : ''}>
+            <label for="unlock-check-${emp.id}" class="flex-grow text-sm font-medium text-gray-800">
+                <span class="font-bold">${emp.name || emp.id}</span> 
+                <span class="text-xs text-gray-500">(ID: ${emp.id})</span>
+            </label>
+            <span class="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full whitespace-nowrap">REF #${emp.ref}</span>
+        `;
+        
+        // Event listener for individual checkbox toggle inside the modal
+        const checkbox = listItem.querySelector('.unlock-checkbox');
+        checkbox.addEventListener('change', (e) => {
+            updateBulkUnlockSelection(e);
+            // Toggle row highlight based on checkbox state
+            listItem.classList.toggle('bg-yellow-100', e.target.checked);
+            listItem.classList.toggle('border-yellow-400', e.target.checked);
+            listItem.classList.toggle('bg-gray-50', !e.target.checked);
+            listItem.classList.toggle('border-gray-200', !e.target.checked);
+        });
+        
+        listContainer.appendChild(listItem);
+    });
+    
+    // 3. Update the initial count and button state
+    updateUnlockModalState();
+
+    // 4. Attach listener to the Select All checkbox
+    // CRITICAL: Need to detach any previous listeners first
+    if (selectAllCheckbox) {
+        selectAllCheckbox.removeEventListener('change', toggleSelectAll);
+        selectAllCheckbox.addEventListener('change', toggleSelectAll);
+        // Set initial state of select all checkbox
+        selectAllCheckbox.checked = (lockedEmployees.length > 0 && bulkUnlockSelected.length === lockedEmployees.length);
+    }
+    
+
+    // 5. Set up listeners for the modal actions (once)
+    document.getElementById('unlock-modal-cancel-btn').onclick = () => modal.classList.add('hidden');
+    document.getElementById('unlock-modal-send-btn').onclick = handleBulkUnlockRequest;
+
+    // 6. Show the modal
+    modal.classList.remove('hidden');
+}
+
+// --- NEW FUNCTION: Select All Logic ---
+function toggleSelectAll(event) {
+    const isChecked = event.target.checked;
+    const checkboxes = document.querySelectorAll('#locked-employee-list-container .unlock-checkbox');
+    
+    bulkUnlockSelected = []; // Clear the global list first
+
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = isChecked;
+        
+        const id = checkbox.dataset.id;
+        const ref = checkbox.dataset.ref;
+        const name = checkbox.dataset.name;
+        const listItem = checkbox.closest('li');
+        
+        if (isChecked) {
+            bulkUnlockSelected.push({ id, ref, name });
+            listItem.classList.add('bg-yellow-100', 'border-yellow-400');
+            listItem.classList.remove('bg-gray-50', 'border-gray-200');
+        } else {
+            listItem.classList.remove('bg-yellow-100', 'border-yellow-400');
+            listItem.classList.add('bg-gray-50', 'border-gray-200');
+        }
+    });
+    
+    updateUnlockModalState();
+}
+
+
+// Helper to update global array and modal state on checkbox change
+function updateBulkUnlockSelection(event) {
+    const checkbox = event.target;
+    const id = checkbox.dataset.id;
+    const ref = checkbox.dataset.ref;
+    const name = checkbox.dataset.name;
+    const isChecked = checkbox.checked;
+
+    const existingIndex = bulkUnlockSelected.findIndex(item => item.id === id);
+
+    if (isChecked && existingIndex === -1) {
+        bulkUnlockSelected.push({ id, ref, name });
+    } else if (!isChecked && existingIndex > -1) {
+        bulkUnlockSelected.splice(existingIndex, 1);
+    }
+    
+    // Check if the Select All checkbox needs updating
+    const selectAllCheckbox = document.getElementById('select-all-unlock');
+    const totalLocked = getLockedEmployeesList().length;
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = (bulkUnlockSelected.length === totalLocked);
+    }
+    
+    updateUnlockModalState();
+}
+
+// Helper to update count display and button enablement
+function updateUnlockModalState() {
+    const count = bulkUnlockSelected.length;
+    document.getElementById('unlock-selection-count').textContent = count;
+    document.getElementById('unlock-modal-send-btn').disabled = count === 0;
+    document.getElementById('unlock-modal-send-btn').textContent = `Send Unlock Request (${count})`;
+}
+
+// Function to call server for bulk request (repurposed from previous logic)
+function handleBulkUnlockRequest() {
+    document.getElementById('unlock-selection-modal').classList.add('hidden');
+
+    if (bulkUnlockSelected.length === 0) {
+        showNotification('No schedules were selected for unlock.', false);
+        return;
+    }
+    
     const currentYear = currentPlanningDate.getFullYear();
     const currentMonth = currentPlanningDate.getMonth();
     const currentShift = document.getElementById('shift-period-select').value;
     const sfcRef = currentContract?.sfcRef;
 
-    if (!sfcRef || !stableKey) {
-        showNotification('CRITICAL ERROR: Missing contract or employee ID.', false);
+    const ids = bulkUnlockSelected.map(item => item.id);
+    const refs = bulkUnlockSelected.map(item => item.ref);
+    const names = bulkUnlockSelected.map(item => item.name); // <-- NEW: Map the names here
+
+    if (!sfcRef || ids.length === 0) {
+        showNotification('CRITICAL ERROR: Missing contract or employee IDs.', false);
         return;
     }
 
-    const employeeName = button.closest('tr').querySelector('[data-field="name"]')?.value || stableKey;
-    const lockedRefNum = lockedIdRefMap[stableKey];
+    toggleLoading(true);
+    showNotification(`Sending Unlock Request Email for ${ids.length} schedules...`, true);
+    
+    // Clear selection state after sending
+    bulkUnlockSelected = []; 
 
-    // Use custom confirm modal
-    const customConfirm = (message, onConfirm, onCancel) => {
-        const modalHtml = `
-            <div id="unlock-confirm-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 z-[60] flex justify-center items-center p-4">
-                <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
-                    <h3 class="text-lg font-bold mb-4 text-purple-700">Admin Unlock Request</h3>
-                    <p class="text-gray-700 mb-6">${message}</p>
-                    <div class="flex justify-end space-x-3">
-                        <button id="unlock-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-                        <button id="unlock-confirm-btn" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Send Unlock Request</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        
-        document.getElementById('unlock-confirm-btn').addEventListener('click', () => {
-            document.getElementById('unlock-confirm-modal').remove();
-            onConfirm();
-        });
-        
-        document.getElementById('unlock-cancel-btn').addEventListener('click', () => {
-            document.getElementById('unlock-confirm-modal').remove();
-            onCancel();
-        });
-    };
-
-    customConfirm(`Are you sure you want to send an **Unlock Request Email** for **${employeeName}** (ID: ${stableKey})? This action sends a notification to the Admin for approval.`,
-        () => { // On Confirm (Call Server for Email)
-            toggleLoading(true);
-            showNotification(`Sending Unlock Request Email for ID ${stableKey}...`, true);
-            
-            // TAWAGIN ANG EMAIL NOTIFICATION FUNCTION
-            google.script.run
-                .withSuccessHandler((response) => {
-                    // Ipakita ang success message na galing sa server (kung sent, o kung may warning)
-                    showNotification(response.message, response.success);
-                    toggleLoading(false);
-                    // CRITICAL: Huwag mag-reload, dahil pending pa ang unlock
-                })
-                .withFailureHandler((error) => {
-                    handleError(error); 
-                })
-                // I-pass ang lahat ng context na kailangan para sa email
-                .requestUnlockEmailNotification(sfcRef, currentYear, currentMonth, currentShift, stableKey, lockedRefNum);
-        },
-        () => { // On Cancel
-            showNotification(`Unlock request cancelled for ID ${stableKey}.`, false);
-        }
-    );
+    // TAWAGIN ANG EMAIL NOTIFICATION FUNCTION (Passing Arrays)
+    google.script.run
+        .withSuccessHandler((response) => {
+            showNotification(response.message, response.success);
+            toggleLoading(false);
+        })
+        .withFailureHandler((error) => {
+            handleError(error); 
+        })
+        // I-pass ang arrays: personnelIds at lockedRefNums
+        .requestUnlockEmailNotification(sfcRef, currentYear, currentMonth, currentShift, ids, refs, names);
 }
-// --- END NEW FUNCTION ---
+
 
   // --- UI HANDLERS ---
 
@@ -513,6 +664,10 @@ function handleUnlockRequest(event) {
     
     // *** NEW: Listener for Print Button (Calls server function) ***
     document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
+    
+    // *** NEW: Listener for Request Unlock Button (Modal Opener) ***
+    document.getElementById('request-unlock-modal-btn').addEventListener('click', openUnlockSelectionModal);
+
 
     // *** NEW: Attach Bulk Listeners ***
     document.getElementById('start-bulk-select-btn').addEventListener('click', startBulkSelectionMode);
@@ -713,7 +868,7 @@ function handleAttendanceData(data) {
     
     // UPDATED: Store the map directly
     lockedIdRefMap = data.lockedIdRefMap || {}; 
-    const lockedIds = Object.keys(lockedIdRefMap); // For compatibility check
+    const lockedIds = Object.keys(lockedIdRefMap);
     
     // Show planning area and render table
     document.getElementById('planning-area').classList.remove('hidden'); 
@@ -996,9 +1151,9 @@ function handleAttendanceData(data) {
         // REMOVED: td.style.width = fixedWidths[1]; // Apply inline width (Handled by CSS)
         // REMOVED: input.style.minWidth = fixedWidths[1]; // Tiyakin na may min width
         
-        // --- NEW: UNLOCK BUTTON IN PERSONNEL ID COLUMN (for locked rows) ---
+        // --- UPDATED: UNLOCK BUTTON IN PERSONNEL ID COLUMN (for locked rows) ---
         if (isPrintLocked) {
-             // Unlock Button
+            // Unlock Button
             const unlockButton = document.createElement('button');
             unlockButton.type = 'button';
             unlockButton.title = `Request Admin Unlock for ID ${employee.id} (Ref #${lockedRefNum})`;
@@ -1008,8 +1163,11 @@ function handleAttendanceData(data) {
                     <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
                 </svg>
             `;
-            unlockButton.dataset.stableKey = stableLookupKey;
-            unlockButton.addEventListener('click', handleUnlockRequest);
+            // CRITICAL FIX: Call the handleBulkUnlockRequest logic with a single item array
+            unlockButton.addEventListener('click', () => {
+                bulkUnlockSelected = [{ id: stableLookupKey, ref: lockedRefNum, name: displayName }];
+                handleBulkUnlockRequest(); 
+            });
             
             // Container to position the button
             const unlockContainer = document.createElement('div');
@@ -1024,7 +1182,7 @@ function handleAttendanceData(data) {
             lockTag.textContent = `REF ${lockedRefNum}`;
             td.appendChild(lockTag);
         }
-        // --- END NEW: UNLOCK BUTTON ---
+        // --- END UPDATED: UNLOCK BUTTON ---
         
         // Personnel Name (Input)
         td = tr.insertCell();
@@ -1540,7 +1698,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
           // If the ID is now blank, and the ID *wasn't* blank before, clear all info fields, schedule data and visuals.
           if (pendingChange.id === '' && previousIdValue !== '') {
               const row = input.closest('tr');
-              // Gagamitin ang ID value *bago ito binura* para hanapin ang pending schedules
+              // Gagamitin ang ID value *bago* ito binura para hanapin ang pending schedules
               const idToClear = previousIdValue; 
 
               if (idToClear) {
@@ -1603,7 +1761,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       // --- END CRITICAL FIX LOCATION ---
       
       // Tiyakin na ang comparison ay ginagawa sa pagitan ng current pending data at saved data (employee.id/name/etc)
-      // NOTE: Dito, gagamitin ng comparison ang HINDI-TRIMMED value.
+      // NOTE: Dito, gagamitin ang comparison ang HINDI-TRIMMED value.
       const isChanged = (pendingChange.id.trim() !== employee.id || 
                          pendingChange.name.trim() !== employee.name || 
                          pendingChange.position.trim() !== employee.position || 
