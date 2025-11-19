@@ -2268,90 +2268,46 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     }
     // === END FINAL DUPLICATE NAME CHECK ===
     
-    // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (Missing Schedule/Status) ===
+    // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (STRICT ALL-OR-NOTHING CHECK) ===
     
-    // 1. Check if "Auto-mark NA" is checked
-    const autoNaChecked = document.getElementById('auto-na-check')?.checked || false;
-    
-    // List to store rows that MUST be checked for completeness
     const rowsToValidate = [];
     
+    // CRITICAL FIX: I-validate ang lahat ng Active Rows (may ID sa input) para walang BLANK schedule.
     document.querySelectorAll('#attendance-table-container tbody tr').forEach(row => {
         const stableKey = row.dataset.stableKey;
         
-        // Skip rows marked for deletion, locked, or completely blank placeholders
+        // 1. Skip rows marked for deletion, locked, or completely blank placeholders
         if (lockedIdRefMap[stableKey] || row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
         
-        // UPDATED: Use the inputs for validation since they are the source of truth for unsaved data
         const employeeId = row.querySelector('[data-field="id"]')?.value; 
+        const displayName = row.querySelector('[data-field="name"]')?.value.trim();
         
-        // Determine if this row has ANY pending changes
-        const hasInfoChange = pendingEmployeeInfoChanges.hasOwnProperty(stableKey); 
-        const hasAttendanceChange = Object.keys(pendingAttendanceChanges).some(key => key.startsWith(employeeId + '_'));
-        const isNewRowWithContent = stableKey.startsWith('TEMP_') && employeeId; // New row with ID filled
+        // 2. Only check rows that have a Personnel ID (Active Rows)
+        if (!employeeId) return; 
+
+        let isCurrentPlanIncomplete = false;
+        const planCells = [];
         
-        // Check if the row has a saved ID (meaning it was loaded from the Plan Sheet)
-        const isSavedInPlan = currentContract.employees.some(e => e.id === stableKey);
-        
-        
-        if (isNewRowWithContent || hasInfoChange || hasAttendanceChange) {
-            // RULE A: Rows actively being modified (New or Existing with Pending Changes) MUST be validated for completeness.
-            const displayName = row.querySelector('[data-field="name"]')?.value.trim();
-            const planCells = [];
-            row.querySelectorAll('.cell-container').forEach(cell => {
-                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-                planCells.push({ status });
-            });
-            rowsToValidate.push({ id: employeeId, name: displayName, planCells, stableKey });
-            
-        } else if (isSavedInPlan && autoNaChecked) {
-            // RULE B: Existing, untouched rows get Auto-NA if the checkbox is marked.
-            // Iterate over cells and add NA to pendingAttendanceChanges for any blank saved cell.
-            row.querySelectorAll('.cell-container').forEach(cell => {
-                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-                if (status === '') {
-                    const dayKey = cell.dataset.dayKey;
-                    const shiftKey = cell.dataset.shiftKey;
-                    const autoNaKey = `${employeeId}_${dayKey}_${shiftKey}`;
-                    
-                    // Add to pending changes as NA
-                    pendingAttendanceChanges[autoNaKey] = 'NA';
-                    
-                    // Update visual immediately for this temporary NA application (optional but helpful)
-                    cell.querySelector('.attendance-cell-bg').textContent = 'NA';
-                    cell.querySelector('.attendance-cell-bg').classList.remove('bg-gray-100', 'text-gray-500');
-                    cell.querySelector('.attendance-cell-bg').classList.add('status-na', 'text-gray-500', 'font-bold');
-                }
-            });
-            
-        } else if (isSavedInPlan) {
-            // RULE C: If Auto-NA is NOT checked, we must check existing untouched rows
-            // if their current (saved) plan is incomplete (i.e., has BLANK cells).
-            let isCurrentPlanIncomplete = false;
-            row.querySelectorAll('.cell-container').forEach(cell => {
-                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-                if (status === '') { // If the cell's current display is blank
-                     isCurrentPlanIncomplete = true;
-                }
-            });
-            
-            if (isCurrentPlanIncomplete) {
-                 // Force validation on this untouched, incomplete saved row.
-                 const displayName = row.querySelector('[data-field="name"]')?.value.trim();
-                 const planCells = [];
-                 row.querySelectorAll('.cell-container').forEach(cell => {
-                    const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-                    planCells.push({ status });
-                 });
-                 rowsToValidate.push({ id: employeeId, name: displayName, planCells, stableKey });
+        row.querySelectorAll('.cell-container').forEach(cell => {
+            // Check the current visual status (which reflects saved data OR pending changes)
+            const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+            planCells.push({ status });
+
+            if (status === '') { 
+                 isCurrentPlanIncomplete = true;
             }
+        });
+        
+        // 3. If incomplete, add to validation list (This will now capture Row 1 from your image)
+        if (isCurrentPlanIncomplete) {
+             rowsToValidate.push({ id: employeeId, name: displayName, planCells, stableKey });
         }
     });
 
     let incompleteColumnFound = false;
     let employeeNameIncomplete = '';
 
-    // Check completeness ONLY for the rows flagged for validation (including those auto-populated by NA)
+    // Check completeness ONLY for the rows flagged for validation
     for (const employee of rowsToValidate) {
         for (const cell of employee.planCells) {
             if (cell.status === '') {
@@ -2425,7 +2381,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
         .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, attChanges, currentYear, currentMonth, currentShift); // PASS ALL CONTEXT
-  }
+}
 
   function handleSaveAllSuccess(response) {
       showNotification('All changes saved successfully! Refreshing data...', true);
