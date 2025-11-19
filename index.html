@@ -80,6 +80,14 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
         </select>
     </div>
     <div class="mb-4 flex justify-end space-x-3 print-hidden">
+        
+        <button id="request-unlock-modal-btn" onclick="openUnlockSelectionModal()" class="p-3 rounded-lg bg-purple-600 text-white font-extrabold text-lg hover:bg-purple-700 transition duration-150 shadow-lg flex items-center space-x-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
+            </svg>
+            <span>Request Unlock</span>
+        </button>
+        
         <button id="start-bulk-select-btn" class="p-3 rounded-lg bg-yellow-600 text-white font-extrabold text-lg hover:bg-yellow-700 transition duration-150 shadow-lg flex items-center space-x-2">
              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
@@ -124,8 +132,31 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
   <div id="initial-placeholder" class="card mt-6 print-hidden">
     <p class="text-center text-gray-500 p-8">Select a Contract Group ID to view details and the attendance plan.</p>
   </div>
+  
+  <div id="unlock-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
+        <h3 class="text-xl font-bold mb-4 text-purple-700">Request Bulk Unlock</h3>
+        <p class="text-sm text-gray-600 mb-4">Select the schedules you need to be unlocked by an Admin:</p>
+        
+        <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-gray-200">
+            <input type="checkbox" id="select-all-unlock" class="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
+            <label for="select-all-unlock" class="text-sm font-bold text-gray-700">Select All Locked Schedules</label>
+        </div>
+        <div class="max-h-80 overflow-y-auto border border-gray-300 rounded-lg p-3 mb-4">
+            <ul id="locked-employee-list-container" class="space-y-2">
+                </ul>
+        </div>
+        
+        <p class="text-sm text-gray-700 mb-4 font-semibold">Selected for Unlock: <span id="unlock-selection-count" class="text-red-600">0</span></p>
 
-  <div id="floating-status-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+        <div class="flex justify-end space-x-3">
+            <button id="unlock-modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+            <button id="unlock-modal-send-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50" disabled>Send Unlock Request</button>
+        </div>
+    </div>
+</div>
+</div>
+<div id="floating-status-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
     <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
       <h3 class="text-lg font-bold mb-4">Update Schedule/Status</h3>
       <div id="fixed-status-options-container" class="space-y-2 mb-4">
