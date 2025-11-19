@@ -1,4 +1,3 @@
-// --- CONFIGURATION ---
 const SPREADSHEET_ID = '1rQnJGqcWcEBjoyAccjYYMOQj7EkIu1ykXTMLGFzzn2I';
 const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; 
 const CONTRACTS_SHEET_NAME = 'MASTER';
@@ -167,7 +166,6 @@ function appendExistingEmployeeRowsToPlan(sfcRef, planSheet, shiftToAppend) {
             rowsToAppend.push(planRow1);
         }
         if (shiftToAppend === '2ndHalf') {
-         
             const planRow2 = Array(planHeadersCount).fill('');
             planRow2[0] = id; 
             planRow2[1] = '2ndHalf'; 
@@ -279,7 +277,6 @@ function getContracts() {
     const isLive = status === 'live' || status === 'on process - live';
 
     return isLive;
-  
   });
 
   return filteredContracts.map(c => {
@@ -293,7 +290,6 @@ function getContracts() {
     const sfcRefKey = findKey(c, 'SFC Ref#');
       
     return {
-     
       id: 
       contractIdKey ? (c[contractIdKey] || '').toString() : '',     
       status: statusKey ? (c[statusKey] || '').toString() : '',   
@@ -302,10 +298,9 @@ function getContracts() {
       serviceType: serviceTypeKey ? (c[serviceTypeKey] || '').toString() : '',   
       headCount: parseInt(headCountKey ? c[headCountKey] 
       : 0) || 0, 
- 
-   
       sfcRef: sfcRefKey ? 
-      (c[sfcRefKey] || '').toString() : '', 
+      (c[sfcRefKey] ||
+      '').toString() : '', 
     };
   });
 }
@@ -342,7 +337,8 @@ function getEmployeeMasterData(sfcRef) {
  */
 function getEmployeeNameFromMaster(sfcRef, personnelId) {
     if (!sfcRef || !personnelId) return 'N/A';
-    const masterData = getEmployeeMasterData(sfcRef); // Reuses existing function
+    const masterData = getEmployeeMasterData(sfcRef);
+    // Reuses existing function
     const cleanId = cleanPersonnelId(personnelId);
     const employee = masterData.find(e => e.id === cleanId);
     return employee ? employee.name : 'N/A';
@@ -450,7 +446,7 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
                 sheetName = sheetInfo.name;
                 Logger.log(`[getEmployeeSchedulePattern] Found ID ${cleanId} in sheet: ${sheetInfo.name}. Stopping search.`);
                 break;
-                // Found the pattern, stop searching older sheets
+            // Found the pattern, stop searching older sheets
             }
         } catch (e) {
             Logger.log(`[getEmployeeSchedulePattern] ERROR reading sheet ${sheetInfo.name}: ${e.message}`);
@@ -505,7 +501,7 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
                 const monthShort = 
                 (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
                 lookupHeader = `${monthShort}${d}`;
-               
+    
                 const dayIndex = sanitizedHeadersMap[sanitizeHeader(lookupHeader)];
   
                
@@ -545,7 +541,6 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
                     mostFrequentStatus = status;
                 }
             });
-        
         
             if (mostFrequentStatus) {
                 dayPatternMap[dayOfWeek] = mostFrequentStatus;
@@ -592,7 +587,8 @@ function getLockedPersonnelIds(ss, planSheetName) {
             idsList.forEach(idWithPrefix => {
                 const cleanId = cleanPersonnelId(idWithPrefix);
                  
-                // CRITICAL CHECK: Only include IDs that are NOT prefixed with 'UNLOCKED:'
+                // CRITICAL CHECK: Only include 
+                // IDs that are NOT prefixed with 'UNLOCKED:'
                 if (cleanId.length >= 3 && !idWithPrefix.startsWith('UNLOCKED:')) { 
                      // We use the first Ref # found for this ID as the source of truth
                      if (!lockedIdRefMap[cleanId]) { 
@@ -621,7 +617,7 @@ function getHistoricalReferenceMap(ss, planSheetName) {
     const LOG_HEADERS_COUNT = 11; 
     const REF_NUM_COL = 1;              
     const PLAN_SHEET_NAME_COL = 3;
-    const LOCKED_IDS_COL = LOG_HEADERS_COUNT; 
+    const LOCKED_IDS_COL = LOG_HEADERS.length; 
 
     const allValues = logSheet.getRange(2, 1, logSheet.getLastRow() - 1, LOG_HEADERS_COUNT).getDisplayValues();
     const historicalRefMap = {};
@@ -948,7 +944,6 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         map[emp.id] = emp.name;
         return map;
     }, {});
-    
     // ** NEW: Sort changes by Date (dayKey) before processing/logging **
     changes.sort((a, b) => {
         // dayKey format is YYYY-M-D (e.g., 2025-11-1)
@@ -956,7 +951,8 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         const dateB = new Date(b.dayKey);
         // Secondary sort by Personnel ID for consistent grouping (optional but good practice)
         if (dateA.getTime() !== dateB.getTime()) {
-            return dateA.getTime() - dateB.getTime();
+            return 
+            dateA.getTime() - dateB.getTime();
         }
         return a.personnelId.localeCompare(b.personnelId);
     });
@@ -971,6 +967,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         const rowKey = `${personnelId}_${dataShift}`;
         
         const dayNumber = parseInt(dayKey.split('-')[2], 10);
+      
         const date = 
         new Date(year, month, dayNumber);
        
@@ -979,6 +976,7 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
         if (date.getMonth() === month) {
             const monthShortRaw = date.toLocaleString('en-US', { month: 'short' });
             const monthShort = (monthShortRaw.charAt(0).toUpperCase() + monthShortRaw.slice(1)).replace('.', '').replace(/\s/g, '');
+        
             targetLookupHeader 
             = `${monthShort}${dayNumber}`; 
       
@@ -1000,17 +998,20 @@ function saveAttendancePlanBulk(sfcRef, changes, year, month, shift) {
                 ''; 
                 
                 // ** NEW: Get Personnel Name **
-                const personnelName = masterEmployeeMap[personnelId] || 'N/A';
+                const personnelName = masterEmployeeMap[personnelId] ||
+                'N/A';
 
                 // CRITICAL STEP 3: Log the change to the audit sheet
                 const logEntry = [
                     new Date(), 
                     userEmail, 
                     sfcRef, 
+      
                     personnelId, 
                     personnelName, // <-- ADDED PERSONNEL NAME
                     planSheetName, 
                     dayKey, 
+                  
                     dataShift, 
                     `'${lockedRefNum}`, // <--- FINAL FIX: Prefix with single quote (')
                     oldStatus, 
@@ -1114,7 +1115,6 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
     
     // ** NEW: Get Personnel Name **
     const employeeName = getEmployeeNameFromMaster(sfcRef, personnelId);
-    
     // Iterate over days (columns)
     for (let d = 1; d <= 31; d++) {
         const dayKey = `${year}-${month + 1}-${d}`;
@@ -1142,11 +1142,13 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
                     personnelId, 
                     employeeName, // <-- ADDED PERSONNEL NAME
                     planSheetName, 
+            
                     dayKey, 
                    
                     targetShift, 
                     `'${lockedRefNum}`, // <--- FINAL FIX: Prefix with single quote (')
                     oldStatus, 
+ 
                     'DELETED_ROW' // New status flag for audit trail
                 ];
                 logEntries.push(logEntry);
@@ -1416,6 +1418,7 @@ function getNextReferenceNumber(logSheet) {
 
 /**
  * Logs the print action to the PrintLog sheet and generates an incrementing reference number.
+ * @param {string} subProperty The manual Sub Property input from the user.
  * @param {string} sfcRef 
  * @param {object} contractInfo 
  * @param {number} year 
@@ -1423,7 +1426,7 @@ function getNextReferenceNumber(logSheet) {
  * @param {string} shift 
  * @returns {string} The generated 6-digit Padded Reference Number.
  */
-function logPrintAction(sfcRef, contractInfo, year, month, shift) {
+function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
         const logSheet = getOrCreateLogSheet(ss);
@@ -1491,7 +1494,8 @@ function recordPrintLogEntry(refNum, subProperty, sfcRef, contractInfo, year, mo
             contractInfo.serviceType,
             Session.getActiveUser().getEmail(), 
             new Date(),
-            printedPersonnelIds.join(',') // Col K: IDs joined by comma
+            printedPersonnelIds.join(',') // 
+            // Col K: IDs joined by comma
       
         ];
         const lastLoggedRow = logSheet.getLastRow();
@@ -1518,41 +1522,67 @@ function recordPrintLogEntry(refNum, subProperty, sfcRef, contractInfo, year, mo
 /**
  * Sends a notification email to the original requester about the status of their unlock request.
  * @param {string} status - 'APPROVED' or 'REJECTED'
- * @param {string} personnelId
+ * @param {string[]} personnelIds - Array of Personnel IDs
+ * @param {string[]} lockedRefNums - Array of Reference Numbers
+ * @param {string[]} personnelNames - Array of Personnel Names <--- NEW
  * @param {string} requesterEmail
  */
-function sendRequesterNotification(status, personnelId, requesterEmail) {
+function sendRequesterNotification(status, personnelIds, lockedRefNums, personnelNames, requesterEmail) {
   if (requesterEmail === 'UNKNOWN_REQUESTER' || !requesterEmail) return;
-  const subject = `Unlock Request Status: ${status} for Personnel ID ${personnelId}`;
+
+  const totalCount = personnelIds.length;
   
+  // CRITICAL FIX 1: Get unique reference numbers and SORT them for the subject line
+  const uniqueRefNums = [...new Set(lockedRefNums)].sort();
+  const subject = `Unlock Request Status: ${status} for ${totalCount} Personnel Schedules (Ref# ${uniqueRefNums.join(', ')})`;
+  
+  // CRITICAL FIX 2: Combine and Sort the data for the body list
+  const combinedRequests = personnelIds.map((id, index) => ({
+    id: id,
+    ref: lockedRefNums[index],
+    name: personnelNames[index] // <--- NEW: Include Name
+  }));
+  combinedRequests.sort((a, b) => a.ref.localeCompare(b.ref)); // Sort by Ref#
+
+  // Create the sorted list for email body
+  const idList = combinedRequests.map(item => 
+    `<li><b>${item.name}</b> (ID ${item.id}) (Ref #: ${item.ref})</li>` // <--- NEW: Display Name first
+  ).join('');
+
   let body = '';
   if (status === 'APPROVED') {
     body = `
       Good news!
-      Your request to unlock Personnel ID ${personnelId} has been **APPROVED** by the Admin.
-      You may now return to the Attendance Plan Monitor app and refresh your browser to edit the schedule.
+      Your request to unlock the following ${totalCount} schedules has been **APPROVED** by the Admin.
+      
+      <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
+      
+      You may now return to the Attendance Plan Monitor app and refresh your browser to edit the schedules.
       ---
       This notification confirms the lock is removed.
     `;
   } else if (status === 'REJECTED') {
     body = `
-      Your request to unlock Personnel ID ${personnelId} has been **REJECTED** by the Admin.
-      The print lock remains active, and the schedule cannot be edited at this time. Please contact your Admin for details.
+      Your request to unlock the following ${totalCount} schedules has been **REJECTED** by the Admin.
+      
+      <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
+      
+      The print locks remain active, and the schedules cannot be edited at this time. Please contact your Admin for details.
       ---
       This is an automated notification.
     `;
   } else {
-      return; // Do nothing for other statuses
+      return; 
   }
   
   try {
     MailApp.sendEmail({
       to: requesterEmail,
       subject: subject,
-      body: body,
+      htmlBody: body, // Changed to htmlBody for list formatting
       name: 'Attendance Plan Monitor (Status Update)'
     });
-    Logger.log(`[sendRequesterNotification] Status ${status} email sent to requester: ${requesterEmail}`);
+    Logger.log(`[sendRequesterNotification] Status ${status} email sent to requester: ${requesterEmail} for ${totalCount} IDs.`);
   } catch (e) {
     Logger.log(`[sendRequesterNotification] Failed to send status email to ${requesterEmail}: ${e.message}`);
   }
@@ -1607,13 +1637,12 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
           const lockedIndex = updatedLockedIds.indexOf(unlockId);
           
           if (lockedIndex > -1) {
-    
+ 
             // 2. Remove the locked ID from the list
              updatedLockedIds.splice(lockedIndex, 1); 
              
              // 3. Add the UNLOCKED prefix to the original ID (to preserve history)
-             //    NOTE: We must ensure the prefix is not added multiple times if the 
-             // user clicks the unlock link repeatedly.
+             //    NOTE: We must ensure the prefix is 
              const unlockedPrefixId = `UNLOCKED:${unlockId}`;
              if (!updatedLockedIds.includes(unlockedPrefixId)) {
                 updatedLockedIds.push(unlockedPrefixId);
@@ -1646,40 +1675,72 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
 /**
  * UPDATED FUNCTION: Sends an HTML email notification to Admin(s) for an unlock request,
  * including actionable Approve/Reject buttons via Web App URL.
+ * @param {string} sfcRef 
+ * @param {number} year 
+ * @param {number} month 
+ * @param {string} shift 
+ * @param {string[]} personnelIds - Array of clean Personnel IDs.
+ * @param {string[]} lockedRefNums - Array of Reference Numbers (padded strings).
+ * @param {string[]} personnelNames - Array of Personnel Names <--- NEW
  */
-function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId, lockedRefNum) {
+function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds, lockedRefNums, personnelNames) { // <--- UPDATED SIGNATURE
+  // CRITICAL: personnelIds and lockedRefNums are now arrays
   const requestingUserEmail = Session.getActiveUser().getEmail(); 
   const adminEmails = ADMIN_EMAILS.join(', ');
   const date = new Date(year, month, 1);
   const planPeriod = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
   const shiftDisplay = (shift === '1stHalf' ? '1st to 15th' : '16th to End');
-  // **NEW: Encode Requester Email in the URL**
+
+  // --- NEW: Combine, Sort, and Prepare lists for email content ---
+  const combinedRequests = personnelIds.map((id, index) => ({
+    id: id,
+    ref: lockedRefNums[index],
+    name: personnelNames[index] // <--- NEW: Include Name
+  }));
+  // Sort the requests sequentially by Reference Number (ascending)
+  combinedRequests.sort((a, b) => a.ref.localeCompare(b.ref));
+
+  const requestDetails = combinedRequests.map(item => {
+    return `<li style="font-size: 14px;"><b>${item.name}</b> (ID ${item.id}) (Ref #: ${item.ref})</li>`; // <--- NEW: Display Name first
+  }).join('');
+  
+  // CRITICAL FIX: Get unique reference numbers and SORT them for the subject line
+  const uniqueRefNums = [...new Set(lockedRefNums)].sort();
+  const subjectRefNums = uniqueRefNums.join(', ');
+  const subject = `ATTN: Admin Unlock Request - Ref# ${subjectRefNums} for ${sfcRef}`;
+
+  // **NEW: Encode ALL IDs and Refs in the URL as comma-separated strings**
+  // Note: We encode the UNSORTED original arrays for URL consistency, but the list display is sorted.
+  const idsEncoded = encodeURIComponent(personnelIds.join(','));
+  const refsEncoded = encodeURIComponent(lockedRefNums.join(','));
   const requesterEmailEncoded = encodeURIComponent(requestingUserEmail);
+  
   // Build the Web App URL
   const webAppUrl = ScriptApp.getService().getUrl();
-  // CRITICAL: We include req_email in the URL
-  const unlockUrl = `${webAppUrl}?action=unlock&sfc=${sfcRef}&yr=${year}&mon=${month + 1}&shift=${shift}&id=${personnelId}&ref=${lockedRefNum}&req_email=${requesterEmailEncoded}`;
-  const rejectUrl = `${webAppUrl}?action=reject_info&sfc=${sfcRef}&id=${personnelId}&req_email=${requesterEmailEncoded}`;
+  // CRITICAL: We include ALL IDs/Refs/req_email in the URL
+  const unlockUrl = `${webAppUrl}?action=unlock&sfc=${sfcRef}&yr=${year}&mon=${month + 1}&shift=${shift}&id=${idsEncoded}&ref=${refsEncoded}&req_email=${requesterEmailEncoded}`;
+  const rejectUrl = `${webAppUrl}?action=reject_info&sfc=${sfcRef}&id=${idsEncoded}&ref=${refsEncoded}&req_email=${requesterEmailEncoded}`;
+
   const htmlBody = `
-    <p style="font-size: 14px;">Mayroong Attendance Plan Unlock Request na isinumite.</p>
+    <p style="font-size: 14px;">An Attendance Plan Unlock Request has been submitted.</p> 
 
     <hr style="margin: 10px 0;">
     
     <p style="font-size: 14px;"><b>Requested By:</b> ${requestingUserEmail}</p>
-    <p style="font-size: 14px;"><b>Personnel ID:</b> ${personnelId}</p>
     <p style="font-size: 14px;"><b>SFC Ref #:</b> ${sfcRef}</p>
     <p style="font-size: 14px;"><b>Plan Period:</b> ${planPeriod} (${shiftDisplay} Half)</p>
-    <p style="font-size: 14px;"><b>Locked Ref #:</b> ${lockedRefNum}</p>
+    <h4 style="color: #1e40af; font-size: 16px; margin-top: 15px;">Personnel IDs Requested for Unlock (${personnelIds.length}):</h4>
+    <ul style="list-style-type: none; padding-left: 0;">
+        ${requestDetails} </ul>
     
     <hr style="margin: 10px 0;">
 
     <h3 style="color: #1e40af;">Admin Action Required:</h3>
     
     <div style="margin-top: 15px;">
- 
         <a href="${unlockUrl}" target="_blank" 
            style="background-color: #10b981; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold; margin-right: 10px;">
-           ✅ APPROVE & UNLOCK
+           ✅ APPROVE & UNLOCK ALL (${personnelIds.length})
         </a>
         
         <a href="${rejectUrl}" target="_blank" 
@@ -1697,13 +1758,12 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId,
   try {
     MailApp.sendEmail({
       to: adminEmails,
-      subject: `ATTN: Admin Unlock Request - ID ${personnelId} for ${sfcRef}`,
-      htmlBody: htmlBody, // Gamitin ang htmlBody para sa buttons
+      subject: subject, // Use the updated subject
+      htmlBody: htmlBody, 
       name: 'Attendance Plan Monitor (Automated Request)'
     });
-    Logger.log(`[requestUnlockEmailNotification] Sent request email for ID ${personnelId} to ${adminEmails}`);
-    return { success: 
-    true, message: `Unlock request sent to Admin(s): ${adminEmails}` };
+    Logger.log(`[requestUnlockEmailNotification] Sent request email for ${personnelIds.length} IDs to ${adminEmails}`);
+    return { success: true, message: `Unlock request sent to Admin(s): ${adminEmails} for ${personnelIds.length} IDs.` };
   } catch (e) {
     Logger.log(`[requestUnlockEmailNotification] Failed to send email: ${e.message}`);
     return { success: false, message: `WARNING: Failed to send request email. Error: ${e.message}` };
@@ -1715,26 +1775,40 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelId,
  * Handles the unlock action triggered by the URL/email link.
  */
 function processAdminUnlockFromUrl(params) {
-  const sfcRef = params.sfc;
-  const personnelId = params.id;
-  const lockedRefNum = params.ref;
-  const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER';
-  // NEW: Requester Email
+  // CRITICAL: IDs and Refs are now comma-separated strings
+  const idsString = params.id ? decodeURIComponent(params.id) : '';
+  const refsString = params.ref ? decodeURIComponent(params.ref) : '';
   
+  // Split the strings into arrays
+  const personnelIds = idsString.split(',').map(s => s.trim()).filter(s => s); // Array of IDs
+  const lockedRefNums = refsString.split(',').map(s => s.trim()).filter(s => s); // Array of Ref#s
+  
+  const sfcRef = params.sfc;
+  const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER';
+  
+  // NEW: Fetch names corresponding to the IDs
+  const personnelNames = personnelIds.map(id => getEmployeeNameFromMaster(sfcRef, id));
+  
+  if (personnelIds.length === 0 || lockedRefNums.length === 0 || personnelIds.length !== lockedRefNums.length) {
+     return HtmlService.createHtmlOutput('<h1 style="color: red;">INVALID REQUEST</h1><p>The Unlock URL is incomplete or the number of Personnel IDs does not match the number of Reference Numbers.</p>');
+  }
+
   // 1. Check Admin authorization (Crucial for security)
   const userEmail = Session.getActiveUser().getEmail();
   if (!ADMIN_EMAILS.includes(userEmail)) {
     return HtmlService.createHtmlOutput('<h1 style="color: red;">AUTHORIZATION FAILED</h1><p>You are not authorized to perform this action. Your email: ' + userEmail + '</p>');
   }
+  
+  // Prepare string for status message
+  const summary = `${personnelIds.length} schedules (Ref# ${lockedRefNums.join(', ')})`;
 
   // Handle Reject (Informational) action
   if (params.action === 'reject_info') {
       // 1. Send notification to the original requester (REJECTED)
-      sendRequesterNotification('REJECTED', personnelId, requesterEmail);
+      sendRequesterNotification('REJECTED', personnelIds, lockedRefNums, personnelNames, requesterEmail); // <--- PASSING NAMES
       const template = HtmlService.createTemplateFromFile('UnlockStatus');
       template.status = 'INFO';
-      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ID ${personnelId}.
-      Notification sent to ${requesterEmail}. No data was changed. The lock remains active.`;
+      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}. Notification sent to ${requesterEmail}. No data was changed. The locks remain active.`;
       return template.evaluate().setTitle('Reject Status');
   }
   
@@ -1742,25 +1816,26 @@ function processAdminUnlockFromUrl(params) {
   if (params.action === 'unlock' && params.yr && params.mon && params.shift) {
       try {
         const year = parseInt(params.yr, 10);
-        // Month in URL is 1-based, GAS is 0-based.
         const month = parseInt(params.mon, 10) - 1; 
         const shift = params.shift;
-        // Perform the unlock using the existing logic
-        unlockPersonnelIds(sfcRef, year, month, shift, [personnelId]);
+
+        // Perform the unlock using the existing logic, passing the array of IDs
+        unlockPersonnelIds(sfcRef, year, month, shift, personnelIds); 
+        
         // 1. Send notification to the original requester (APPROVED)
-        sendRequesterNotification('APPROVED', personnelId, requesterEmail);
+        sendRequesterNotification('APPROVED', personnelIds, lockedRefNums, personnelNames, requesterEmail); // <--- PASSING NAMES
+        
         // Return Success HTML
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
         template.status = 'SUCCESS';
-        template.message = `Successfully unlocked Personnel ID ${personnelId}. The Print Lock (Ref #${lockedRefNum}) has been removed by Admin (${userEmail}).
-        Notification sent to ${requesterEmail}.`;
+        template.message = `Successfully unlocked ${summary}. The Print Locks have been removed by Admin (${userEmail}). Notification sent to ${requesterEmail}.`;
         return template.evaluate().setTitle('Unlock Status');
 
       } catch (e) {
         // Return Failure HTML
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
         template.status = 'ERROR';
-        template.message = `Failed to unlock ID ${personnelId}. Error: ${e.message}`;
+        template.message = `Failed to unlock ${summary}. Error: ${e.message}`;
         return template.evaluate().setTitle('Unlock Status');
       }
   }
