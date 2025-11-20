@@ -1725,59 +1725,59 @@ function recordPrintLogEntry(refNum, subProperty, sfcRef, contractInfo, year, mo
  */
 function sendRequesterNotification(status, personnelIds, lockedRefNums, personnelNames, requesterEmail) {
   if (requesterEmail === 'UNKNOWN_REQUESTER' || !requesterEmail) return;
-    const totalCount = personnelIds.length;
+  const totalCount = personnelIds.length;
   
-    // CRITICAL FIX 1: Get unique reference numbers and SORT them for the subject line
-    const uniqueRefNums = [...new Set(lockedRefNums)].sort();
-    const subject = `Unlock Request Status: ${status} for ${totalCount} Personnel Schedules (Ref# ${uniqueRefNums.join(', ')})`;
-    // CRITICAL FIX 2: Combine and Sort the data for the body list
-    const combinedRequests = personnelIds.map((id, index) => ({
-      id: id,
-      ref: lockedRefNums[index],
-      name: personnelNames[index] // <--- NEW: Include Name
-    }));
-    combinedRequests.sort((a, b) => a.ref.localeCompare(b.ref)); // Sort by Ref#
+  // CRITICAL FIX 1: Get unique reference numbers and SORT them for the subject line
+  const uniqueRefNums = [...new Set(lockedRefNums)].sort();
+  const subject = `Unlock Request Status: ${status} for ${totalCount} Personnel Schedules (Ref# ${uniqueRefNums.join(', ')})`;
+  // CRITICAL FIX 2: Combine and Sort the data for the body list
+  const combinedRequests = personnelIds.map((id, index) => ({
+    id: id,
+    ref: lockedRefNums[index],
+    name: personnelNames[index] // <--- NEW: Include Name
+  }));
+  combinedRequests.sort((a, b) => a.ref.localeCompare(b.ref)); // Sort by Ref#
 
-    // Create the sorted list for email body
-    const idList = combinedRequests.map(item => 
-      `<li><b>${item.name}</b> (ID ${item.id}) (Ref #: ${item.ref})</li>` // <--- NEW: Display Name first
-    ).join('');
-    let body = '';
-    if (status === 'APPROVED') {
-      body = `
-        Good news!
-        Your request to unlock the following ${totalCount} schedules has been **APPROVED** by the Admin.
-        <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
-        
-        You may now return to the Attendance Plan Monitor app and refresh your browser to edit the schedules.
-        ---
-        This notification confirms the lock is removed.
-      `;
-    } else if (status === 'REJECTED') {
-      body = `
-        Your request to unlock the following ${totalCount} schedules has been **REJECTED** by the Admin.
-        <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
-        
-        The print locks remain active, and the schedules cannot be edited at this time.
-        Please contact your Admin for details.
-        ---
-        This is an automated notification.
-      `;
-    } else {
-        return; 
-    }
+  // Create the sorted list for email body
+  const idList = combinedRequests.map(item => 
+    `<li><b>${item.name}</b> (ID ${item.id}) (Ref #: ${item.ref})</li>` // <--- NEW: Display Name first
+  ).join('');
+  let body = '';
+  if (status === 'APPROVED') {
+    body = `
+      Good news!
+      Your request to unlock the following ${totalCount} schedules has been **APPROVED** by the Admin.
+      <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
+      
+      You may now return to the Attendance Plan Monitor app and refresh your browser to edit the schedules.
+      ---
+      This notification confirms the lock is removed.
+    `;
+  } else if (status === 'REJECTED') {
+    body = `
+      Your request to unlock the following ${totalCount} schedules has been **REJECTED** by the Admin.
+      <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
+      
+      The print locks remain active, and the schedules cannot be edited at this time.
+      Please contact your Admin for details.
+      ---
+      This is an automated notification.
+    `;
+  } else {
+      return; 
+  }
   
-    try {
-      MailApp.sendEmail({
-        to: requesterEmail,
-        subject: subject,
-        htmlBody: htmlBody, 
-        name: 'Attendance Plan Monitor (Status Update)'
-      });
-      Logger.log(`[sendRequesterNotification] Status ${status} email sent to requester: ${requesterEmail} for ${totalCount} IDs.`);
-    } catch (e) {
-      Logger.log(`[sendRequesterNotification] Failed to send status email to ${requesterEmail}: ${e.message}`);
-    }
+  try {
+    MailApp.sendEmail({
+      to: requesterEmail,
+      subject: subject,
+      htmlBody: body, // Changed to htmlBody for list formatting
+      name: 'Attendance Plan Monitor (Status Update)'
+    });
+    Logger.log(`[sendRequesterNotification] Status ${status} email sent to requester: ${requesterEmail} for ${totalCount} IDs.`);
+  } catch (e) {
+    Logger.log(`[sendRequesterNotification] Failed to send status email to ${requesterEmail}: ${e.message}`);
+  }
 }
 
 
@@ -1835,10 +1835,10 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
              
              // 3. Add the UNLOCKED prefix to the original ID (to preserve history)
              //    NOTE: We must ensure the prefix is 
-            const unlockedPrefixId = `UNLOCKED:${unlockId}`;
-            if (!updatedLockedIds.includes(unlockedPrefixId)) {
+              const unlockedPrefixId = `UNLOCKED:${unlockId}`;
+              if (!updatedLockedIds.includes(unlockedPrefixId)) {
                 updatedLockedIds.push(unlockedPrefixId);
-            }
+              }
              
              changed = true;
           }
@@ -1926,38 +1926,38 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds
     
     <div style="margin-top: 15px;">
         <a href="${unlockUrl}" target="_blank" 
-           style="background-color: #10b981; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold;
-          margin-right: 10px;">
+           style="background-color: #10b981; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold; margin-right: 10px;">
            ✅ APPROVE & UNLOCK ALL (${personnelIds.length})
         </a>
         
         <a href="${rejectUrl}" target="_blank" 
  
           style="background-color: #f59e0b;
-          color: white; padding: 10px 20px; text-align: center;
+           color: white; padding: 10px 20px; text-align: center;
            text-decoration: none; display: inline-block; border-radius: 5px;
-          font-weight: bold;">
+           font-weight: bold;">
            ❌ REJECT (Log Only)
         </a>
     </div>
 
     <p style="margin-top: 20px;
-          font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
+    font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
   `;
   
-    try {
-      MailApp.sendEmail({
-        to: adminEmails,
-        subject: subject, // Use the updated subject
-        htmlBody: htmlBody, 
-        name: 'Attendance Plan Monitor (Automated Request)'
-      });
-      Logger.log(`[requestUnlockEmailNotification] Sent request email for ${personnelIds.length} IDs to ${adminEmails}`);
-      return { success: true, message: `Unlock request sent to Admin(s): ${adminIds.length} IDs.` };
-    } catch (e) {
-      Logger.log(`[requestUnlockEmailNotification] Failed to send email: ${e.message}`);
-      return { success: false, message: `WARNING: Failed to send request email. Error: ${e.message}` };
-    }
+  try {
+    MailApp.sendEmail({
+      to: adminEmails,
+      subject: subject, // Use the updated subject
+      htmlBody: htmlBody, 
+      name: 'Attendance Plan Monitor (Automated Request)'
+    });
+    Logger.log(`[requestUnlockEmailNotification] Sent request email for ${personnelIds.length} IDs to ${adminEmails}`);
+    return { success: true, message: `Unlock request sent to Admin(s): ${adminEmails} for 
+    ${personnelIds.length} IDs.` };
+  } catch (e) {
+    Logger.log(`[requestUnlockEmailNotification] Failed to send email: ${e.message}`);
+    return { success: false, message: `WARNING: Failed to send request email. Error: ${e.message}` };
+  }
 }
 
 
@@ -1967,69 +1967,69 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds
 function processAdminUnlockFromUrl(params) {
   // CRITICAL: IDs and Refs are now comma-separated strings
   const idsString = params.id ?
-    decodeURIComponent(params.id) : '';
+  decodeURIComponent(params.id) : '';
   const refsString = params.ref ? decodeURIComponent(params.ref) : '';
-    // Split the strings into arrays
-    const personnelIds = idsString.split(',').map(s => s.trim()).filter(s => s);
-    // Array of IDs
-    const lockedRefNums = refsString.split(',').map(s => s.trim()).filter(s => s);
-    // Array of Ref#s
+  // Split the strings into arrays
+  const personnelIds = idsString.split(',').map(s => s.trim()).filter(s => s);
+  // Array of IDs
+  const lockedRefNums = refsString.split(',').map(s => s.trim()).filter(s => s);
+  // Array of Ref#s
   
-    const sfcRef = params.sfc;
-    const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER';
-    // NEW: Fetch names corresponding to the IDs
-    const personnelNames = personnelIds.map(id => getEmployeeNameFromMaster(sfcRef, id));
-    if (personnelIds.length === 0 || lockedRefNums.length === 0 || personnelIds.length !== lockedRefNums.length) {
-       return HtmlService.createHtmlOutput('<h1 style="color: red;">INVALID REQUEST</h1><p>The Unlock URL is incomplete or the number of Personnel IDs does not match the number of Reference Numbers.</p>');
-    }
+  const sfcRef = params.sfc;
+  const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER';
+  // NEW: Fetch names corresponding to the IDs
+  const personnelNames = personnelIds.map(id => getEmployeeNameFromMaster(sfcRef, id));
+  if (personnelIds.length === 0 || lockedRefNums.length === 0 || personnelIds.length !== lockedRefNums.length) {
+     return HtmlService.createHtmlOutput('<h1 style="color: red;">INVALID REQUEST</h1><p>The Unlock URL is incomplete or the number of Personnel IDs does not match the number of Reference Numbers.</p>');
+  }
 
-    // 1. Check Admin authorization (Crucial for security)
-    const userEmail = Session.getActiveUser().getEmail();
-    if (!ADMIN_EMAILS.includes(userEmail)) {
-      return HtmlService.createHtmlOutput('<h1 style="color: red;">AUTHORIZATION FAILED</h1><p>You are not authorized to perform this action. Your email: ' + userEmail + '</p>');
-    }
+  // 1. Check Admin authorization (Crucial for security)
+  const userEmail = Session.getActiveUser().getEmail();
+  if (!ADMIN_EMAILS.includes(userEmail)) {
+    return HtmlService.createHtmlOutput('<h1 style="color: red;">AUTHORIZATION FAILED</h1><p>You are not authorized to perform this action. Your email: ' + userEmail + '</p>');
+  }
   
-    // Prepare string for status message
-    const summary = `${personnelIds.length} schedules (Ref# ${lockedRefNums.join(', ')}`;
-    // Handle Reject (Informational) action
-    if (params.action === 'reject_info') {
-        // 1. Send notification to the original requester (REJECTED)
-        sendRequesterNotification('REJECTED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
+  // Prepare string for status message
+  const summary = `${personnelIds.length} schedules (Ref# ${lockedRefNums.join(', ')})`;
+  // Handle Reject (Informational) action
+  if (params.action === 'reject_info') {
+      // 1. Send notification to the original requester (REJECTED)
+      sendRequesterNotification('REJECTED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
+      // <--- PASSING NAMES
+      const template = HtmlService.createTemplateFromFile('UnlockStatus');
+      template.status = 'INFO';
+      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}. Notification sent to ${requesterEmail}. No data was changed.
+      The locks remain active.`;
+      return template.evaluate().setTitle('Reject Status');
+  }
+  
+  // Handle Approve (Unlock) action
+  if (params.action === 'unlock' && params.yr && params.mon && params.shift) {
+      try {
+        const year = parseInt(params.yr, 10);
+        const month = parseInt(params.mon, 10) - 1; 
+        const shift = params.shift;
+        // Perform the unlock using the existing logic, passing the array of IDs
+        unlockPersonnelIds(sfcRef, year, month, shift, personnelIds);
+        // 1. Send notification to the original requester (APPROVED)
+        sendRequesterNotification('APPROVED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
         // <--- PASSING NAMES
+        
+        // Return Success HTML
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
-        template.status = 'INFO';
-        template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}. Notification sent to ${requesterEmail}. No data was changed.
-        The locks remain active.`;
-        return template.evaluate().setTitle('Reject Status');
-    }
-  
-    // Handle Approve (Unlock) action
-    if (params.action === 'unlock' && params.yr && params.mon && params.shift) {
-        try {
-          const year = parseInt(params.yr, 10);
-          const month = parseInt(params.mon, 10) - 1; 
-          const shift = params.shift;
-          // Perform the unlock using the existing logic, passing the array of IDs
-          unlockPersonnelIds(sfcRef, year, month, shift, personnelIds);
-          // 1. Send notification to the original requester (APPROVED)
-          sendRequesterNotification('APPROVED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
-          // <--- PASSING NAMES
-          
-          // Return Success HTML
-          const template = HtmlService.createTemplateFromFile('UnlockStatus');
-          template.status = 'SUCCESS';
-          template.message = `Successfully unlocked ${summary}. The Print Locks have been removed by Admin (${userEmail}).
-          Notification sent to ${requesterEmail}.`;
-          return template.evaluate().setTitle('Unlock Status');
+        template.status = 'SUCCESS';
+        template.message = `Successfully unlocked ${summary}. The Print Locks have been removed by Admin (${userEmail}).
+        Notification sent to ${requesterEmail}.`;
+        return template.evaluate().setTitle('Unlock Status');
 
-        } catch (e) {
-          // Return Failure HTML
-          const template = HtmlService.createTemplateFromFile('UnlockStatus');
-          template.status = 'ERROR';
-          template.message = `Failed to unlock ${summary}. Error: ${e.message}`;
-          return template.evaluate().setTitle('Unlock Status');
-        }
-    }
+      } catch (e) {
+        // Return Failure HTML
+        const template = HtmlService.createTemplateFromFile('UnlockStatus');
+        template.status = 'ERROR';
+        template.message = `Failed to unlock ${summary}. Error: ${e.message}`;
+        return template.evaluate().setTitle('Unlock Status');
+      }
+  }
   
-    return HtmlService.createHtmlOutput('<h1>Invalid Action</h1><p>The URL provided is incomplete or incorrect.</p>');
+  return HtmlService.createHtmlOutput('<h1>Invalid Action</h1><p>The URL provided is incomplete or incorrect.</p>');
 }
