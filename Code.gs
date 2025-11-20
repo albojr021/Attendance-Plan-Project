@@ -4,6 +4,10 @@ const CONTRACTS_SHEET_NAME = 'MASTER';
 
 const MASTER_HEADER_ROW = 5;
 const PLAN_HEADER_ROW = 6;
+
+// NEW: Signatory Master Sheet for Checked/Approved By repository
+const SIGNATORY_MASTER_SHEET = 'SignatoryMaster';
+
 // ADMIN USER CONFIGURATION FOR UNLOCK FEATURE
 const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
 // --- UPDATED CONFIGURATION FOR PRINT LOG (11 Columns) ---
@@ -310,6 +314,30 @@ function cleanPersonnelId(rawId) {
     let idString = String(rawId || '').trim();
     // Tiyakin na numbers lang at tanggalin ang space/comma
     return idString.replace(/\D/g, '');
+}
+
+/**
+ * Fetches the Signatory Master Data (list of names for Checked By/Approved By options).
+ * @returns {string[]} An array of Signatory Names.
+ */
+function getSignatoryMasterData() {
+    try {
+        const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+        const sheet = getOrCreateSignatoryMasterSheet(ss);
+
+        if (sheet.getLastRow() < 2) return [];
+
+        // Basahin ang lahat ng pangalan mula sa Row 2, Column 1
+        const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1);
+        const values = range.getDisplayValues();
+
+        // Flatten the 2D array and filter out empty strings
+        return values.map(row => String(row[0] || '').trim()).filter(name => name);
+
+    } catch (e) {
+        Logger.log(`[getSignatoryMasterData] ERROR: ${e.message}`);
+        return [];
+    }
 }
 
 // --- NEW HELPER: Fetches the clean employee master data for auto-filling/datalist.
@@ -1366,6 +1394,31 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift) {
     }
 }
 
+/**
+ * Ensures the Signatory Master Sheet exists and returns it.
+ */
+function getOrCreateSignatoryMasterSheet(ss) {
+    let sheet = ss.getSheetByName(SIGNATORY_MASTER_SHEET);
+    if (sheet) {
+        return sheet;
+    }
+
+    try {
+        sheet = ss.insertSheet(SIGNATORY_MASTER_SHEET);
+        const headers = ['Signatory Name'];
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+        sheet.setFrozenRows(1);
+        sheet.setColumnWidth(1, 200);
+        Logger.log(`[getOrCreateSignatoryMasterSheet] Created Signatory Master sheet: ${SIGNATORY_MASTER_SHEET}`);
+        return sheet;
+    } catch (e) {
+        if (e.message.includes(`sheet with the name "${SIGNATORY_MASTER_SHEET}" already exists`)) {
+             Logger.log(`[getOrCreateSignatoryMasterSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
+             return ss.getSheetByName(SIGNATORY_MASTER_SHEET);
+        }
+        throw e;
+    }
+}
 
 // --- NEW FUNCTION: LOGGING & LOCKING ACTION ---
 
