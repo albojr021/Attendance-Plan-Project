@@ -23,6 +23,8 @@
   
   // *** NEW: Global state for Employee Master Data ***
   let employeeMasterList = []; // Array of all employees from the master sheet (for datalist/auto-fill)
+  // NEW: Global state for Signatory Master Data (Checked By / Approved By repository)
+  let signatoryMasterList = [];
   
   // *** DATE NAVIGATION VARIABLE ***
   let currentPlanningDate = new Date(); 
@@ -37,7 +39,7 @@
   // *** FIXED STATUS OPTIONS PARA SA FLOATING DROPDOWN ***
   let selectedCellData = {}; 
 
-  // *** NEW: Global state para sa Bulk Selection ***
+  // *** NEW: Global state for Bulk Selection ***
   let isBulkSelectionMode = false;
   let bulkSelectedCells = []; // Stores the TD elements of selected cells
   // --- NEW DRAG STATE VARIABLES ---
@@ -47,7 +49,7 @@
   let cellsFromCurrentDrag = []; // CRITICAL: To track cells only in the current drag box
   // ---------------------------------------------
   
-  // *** NEW: Global state para sa tracking ng changes ***
+  // *** NEW: Global state for tracking ng changes ***
   let pendingAttendanceChanges = {}; // Key: personnelId_DayKey_ShiftKey, Value: Status
   // UPDATED: Ngayon may `isDeleted` property na
   let pendingEmployeeInfoChanges = {}; // Key: original/oldPersonnelId, Value: {id, name, position, area, isNew, isDeleted}
@@ -62,6 +64,13 @@
   // *** NEW GLOBAL STATE FOR BULK UNLOCK SELECTION ***
   // Stores {id: 'ID', ref: 'REF#', name: 'NAME'} pairs
   let bulkUnlockSelected = []; 
+
+  // *** NEW GLOBAL STATE FOR SIGNATORIES ***
+  let selectedSignatories = {
+      preparedBy: '',
+      checkedBy: ['', '', '', '', ''], // Up to 5 checkedBy
+      approvedBy: ''
+  };
 
   const fixedStatusOptions = [
     { value: 'RD', label: 'Rest Day (RD)', color: 'status-rd text-red-700' },
@@ -78,6 +87,10 @@
   const PERSONNEL_ID_REGEX = /^[0-9]+$/; // Only numbers
   // FIX: Nagdagdag ng DASH (-) sa allowed characters
   const SAFE_TEXT_REGEX = /^[A-Z0-9\s.,-]+$/; // Letters, Numbers, Space, Period, Comma, and DASH (-)
+  
+  // *** NEW REGEX FOR SIGNATORY NAMES (Letters, Space, Dash, Comma, Period only) ***
+  const SIGNATORY_REGEX = /^[A-Z\s.,-]+$/; 
+  const SAFE_NAME_REGEX = /[^A-Z\s.,-]/g; 
   // ---------------------------------------------
 
   // --- NEW: Time Option Generator for Dropdowns ---
@@ -181,6 +194,32 @@
       console.log(`Datalists populated with ${masterList.length} employees. (${uniquePositions.size} positions, ${uniqueAreas.size} areas)`);
   }
   // --- END NEW DATALIST FUNCTIONS ---
+  
+  // *** NEW FUNCTIONS: Fetch and Populate Signatory Master Data ***
+  function fetchSignatoryMasterData() {
+       google.script.run
+            .withSuccessHandler(populateSignatoryDataLists)
+            .withFailureHandler(handleError)
+            .getSignatoryMasterData(); // Call new server function
+  }
+
+  function populateSignatoryDataLists(masterList) {
+      signatoryMasterList = masterList;
+      const signatoryList = document.getElementById('signatory-master-list');
+
+      // Clear existing options
+      signatoryList.innerHTML = '';
+      
+      signatoryMasterList.forEach(name => {
+          const option = document.createElement('option');
+          option.value = name;
+          signatoryList.appendChild(option);
+      });
+
+      console.log(`Signatory datalist populated with ${masterList.length} names for Checked/Approved By.`);
+  }
+  // *** END NEW SIGNATORY FETCH FUNCTIONS ***
+
 
   // --- NEW FUNCTION: KUNIN ANG ACTIVE IDS SA GRID PARA SA VALIDATION (FIXED LOGIC) ---
 function isDuplicateId(newId, originalSavedId, currentNo) {
@@ -706,6 +745,7 @@ function handleBulkUnlockRequest() {
       if (currentContract) {
           displayContractDetails(currentContract);
           fetchEmployeeMasterData(currentContract.sfcRef); // NEW: Fetch master list for auto-fill
+          fetchSignatoryMasterData(); // *** NEW: Fetch signatory list ***
           checkIfPlanExists(currentContract.sfcRef); 
       }
   }
@@ -2196,7 +2236,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
         
         let missingField = '';
         if (displayId === '') missingField = 'Personnel ID';
-        else if (displayName === '') missingField = 'Personnel Name';
+        else if (displayName === '') missingField = missingField = 'Personnel Name';
         else if (displayPosition === '') missingField = 'Position';
         else if (displayArea === '') missingField = 'Area Posting';
         
@@ -2400,7 +2440,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
 
   function handleSaveAllError(error) {
        console.error("SAVE ALL ERROR:", error);
-       showNotification(`FATAL SAVE ERROR: ${error.message || 'An unknown error occurred during saving.'}`, false);
+       showNotification(`FATAL SAVE ERROR: ${error.message || 'An unknown error occurred in the script.'}`, false);
        toggleLoading(false); 
   }
   
@@ -2517,58 +2557,137 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     return dynamicallyHiddenRows; 
   }
   
-  // --- NEW PRINT LOGIC (UPDATED: Check for pending changes first & Locking) ---
+  // --- NEW FUNCTION: Signatory Input Handler (Validation/CAPS) ---
+  function handleSignatoryInputChange(event, fieldType, index = null) {
+      const input = event.target;
+      let newValue = input.value.toUpperCase(); // Force CAPS
+
+      // 1. Clean the value (remove special chars)
+      let cleanedValue = newValue.replace(SAFE_NAME_REGEX, '');
+      input.value = cleanedValue; // Update input visual
+
+      // 2. Update the global state
+      if (fieldType === 'checkedBy' && index !== null) {
+          selectedSignatories.checkedBy[index] = cleanedValue;
+      } else {
+          selectedSignatories[fieldType] = cleanedValue;
+      }
+
+      // 3. Simple error notification if invalid characters were removed
+      if (newValue !== cleanedValue) {
+          showNotification(`Only letters, spaces, commas, periods, and dashes are allowed in names. Invalid characters removed.`, false);
+      }
+      
+      // CRITICAL: Re-check validation on next step.
+  }
+  // --- END NEW FUNCTION ---
   
-function showSubPropertyModal() {
-    const modal = document.getElementById('sub-property-modal');
-    modal.classList.remove('hidden');
-    // Clear previous input (This input might be useful for persisting the last value)
-    // document.getElementById('sub-property-input').value = ''; 
+  // --- NEW FUNCTION: Validation check for all signatories ---
+  function validateAllSignatories() {
+      // 1. Prepared By
+      const preparedBy = selectedSignatories.preparedBy.trim();
+      if (!preparedBy || !preparedBy.match(SIGNATORY_REGEX)) {
+           return "Prepared By name is required and must contain only letters, spaces, commas, periods, or dashes.";
+      }
+      
+      // 2. Approved By
+      const approvedBy = selectedSignatories.approvedBy.trim();
+      if (!approvedBy || !approvedBy.match(SIGNATORY_REGEX)) {
+          return "Approved By name is required and must contain only letters, spaces, commas, periods, or dashes.";
+      }
+      
+      // 3. Checked By (Requires at least one)
+      const checkedByList = selectedSignatories.checkedBy.filter(name => name.trim() !== '');
+      if (checkedByList.length === 0) {
+          return "At least one name for 'Checked By' is required.";
+      }
+      
+      // 4. Check valid characters for non-empty Checked By fields
+      for (const name of checkedByList) {
+          if (!name.match(SIGNATORY_REGEX)) {
+              return `Checked By name "${name}" has invalid characters. Only letters, spaces, commas, periods, or dashes are allowed.`;
+          }
+      }
+
+      return null; // All good
+  }
+
+
+  // --- NEW PRINT LOGIC (UPDATED FLOW) ---
+  
+function openPrintSetupModal() {
+    // 1. Check for pending changes before opening any modal
+    const empChangesCount = Object.keys(pendingEmployeeInfoChanges).length;
+    const attChangesCount = Object.keys(pendingAttendanceChanges).length;
+    
+    if (empChangesCount > 0 || attChangesCount > 0) {
+        showNotification(`Saving required: ${empChangesCount} employee changes and ${attChangesCount} schedule changes are pending. Click "Save All Changes to Sheets" first.`, false);
+        return;
+    }
+    
+    // 2. Populate Prepared By Datalist (from Employee Name list)
+    // The datalist 'employee-name-list' is already populated by fetchEmployeeMasterData.
+
+    // 3. Re-set inputs based on selectedSignatories state (for persistence)
+    document.getElementById('signatory-prepared-by').value = selectedSignatories.preparedBy;
+    document.getElementById('signatory-approved-by').value = selectedSignatories.approvedBy;
+    
+    for(let i = 0; i < 5; i++) {
+        const input = document.getElementById(`signatory-checked-by-${i}`);
+        if(input) input.value = selectedSignatories.checkedBy[i];
+    }
+    
+    // 4. Show the combined modal
+    document.getElementById('print-setup-modal').classList.remove('hidden'); 
     document.getElementById('sub-property-input').focus();
-    
-    // Ensure listeners are set up for confirmation
-    const confirmBtn = document.getElementById('sub-property-confirm-btn');
-    const cancelBtn = document.getElementById('sub-property-cancel-btn');
-    
-    // Safety: Remove previous listeners before adding to prevent duplicates
-    confirmBtn.removeEventListener('click', handleSubPropertyConfirm);
-    cancelBtn.removeEventListener('click', hideSubPropertyModal);
-    
-    confirmBtn.addEventListener('click', handleSubPropertyConfirm);
-    cancelBtn.addEventListener('click', hideSubPropertyModal);
 }
 
-function hideSubPropertyModal() {
-    document.getElementById('sub-property-modal').classList.add('hidden');
+function hidePrintSetupModal() {
+    document.getElementById('print-setup-modal').classList.add('hidden');
 }
 
 
-function handleSubPropertyConfirm(event) {
+function handlePrintSetupConfirm(event) {
+    // 1. Validate Sub Property
     const subProperty = document.getElementById('sub-property-input').value.trim();
     if (!subProperty) {
         showNotification('Sub Property is required before printing.', false);
         return;
     }
     
-    hideSubPropertyModal();
-    // Now, run the actual print preparation flow with the new parameter
+    // 2. Validate Signatories
+    const signatoryError = validateAllSignatories();
+    if (signatoryError) {
+        showNotification(`Signatory Error: ${signatoryError}`, false);
+        return;
+    }
+    
+    hidePrintSetupModal();
+    // 3. Now, run the actual print preparation flow with the new parameters
     triggerPrintPreparation(subProperty);
 }
 
+// *** UPDATED: handlePrintPlan now calls the new modal opener ***
 function handlePrintPlan() {
     // Perform initial checks if needed, then show the modal
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
         return;
     }
-    showSubPropertyModal();
+    // Check if the button is disabled by the lock state
+    if (isPlanSheetFullyLocked) {
+        showNotification('Cannot print: All employees with a schedule are already locked for this period. Add a new employee with a schedule or request admin unlock.', false);
+        return;
+    }
+    
+    openPrintSetupModal();
 }
 
-
-function triggerPrint(refNum, subProperty, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
+// *** UPDATED: triggerPrint now accepts and uses the Signatories object ***
+function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
 
-    // ********** NEW LOGIC: I-INJECT ANG REFERENCE NUMBER ELEMENT **********
+    // ********** 1. INJECT REFERENCE NUMBER ELEMENT **********
     let printRefElement = document.getElementById('print-ref-display');
     if (!printRefElement) {
         printRefElement = document.createElement('div');
@@ -2580,27 +2699,47 @@ function triggerPrint(refNum, subProperty, dynamicallyHiddenRows = [], sfcRef, c
     // Ang CSS na ang maglalagay ng label na "Reference #"
     printRefElement.textContent = refNum; 
     
-    // --- CRITICAL FIX: Inject Sub Property Detail before print ---
-    const subPropertyHtml = `
-        <div class="card p-3 print-only-container" id="print-sub-property-container">
-            <p class="text-sm font-medium text-blue-800">Sub Property</p>
-            <p id="sub-property-display" class="text-base font-bold text-blue-900">${subProperty}</p>
+    // ********** 2. INJECT SUB PROPERTY AND SIGNATORIES DETAIL **********
+    
+    const checkedByHtml = signatories.checkedBy.map((name, index) => {
+        // Tanging ang may laman lang ang ipapakita
+        return name.trim() ? `<p class="text-base font-bold text-blue-900 line-break">${name.trim()}</p>` : '';
+    }).filter(html => html).join('');
+
+    const signatoriesHtml = `
+        <div class="card p-3 print-only-container" id="print-formality-container">
+            <div id="print-sub-property-container" class="mb-4">
+                <p class="text-sm font-medium text-blue-800">Sub Property</p>
+                <p id="sub-property-display" class="text-base font-bold text-blue-900">${subProperty}</p>
+            </div>
+
+            <div class="grid grid-cols-3 gap-x-4 gap-y-2 text-center print-signatories">
+                <div class="prepared-by">
+                    <p class="text-sm font-medium text-gray-800 mb-1">${signatories.preparedBy.trim()}</p>
+                    <p class="text-xs font-semibold text-gray-500 border-t border-gray-500 pt-1">Prepared By</p>
+                </div>
+
+                <div class="checked-by col-span-1">
+                    ${checkedByHtml}
+                    <p class="text-xs font-semibold text-gray-500 border-t border-gray-500 pt-1">Checked By</p>
+                </div>
+
+                <div class="approved-by">
+                    <p class="text-sm font-medium text-gray-800 mb-1">${signatories.approvedBy.trim()}</p>
+                    <p class="text-xs font-semibold text-gray-500 border-t border-gray-500 pt-1">Approved By</p>
+                </div>
+            </div>
         </div>
     `;
-    const contractDetailsGrid = document.getElementById('contract-details-grid');
-    // Hanapin ang parent ng Payor Company
-    const payorCompanyContainer = document.getElementById('payor-company').parentNode; 
-
-    // Insert after Payor Company container (to satisfy user request: after Payor Company)
-    if (payorCompanyContainer) {
-        payorCompanyContainer.insertAdjacentHTML('afterend', subPropertyHtml);
-    } else {
-        // Fallback or just append if Payor Company container wasn't found (safety)
-        contractDetailsGrid.insertAdjacentHTML('beforeend', subPropertyHtml);
-    }
-    // ***********************************************************************
     
-    // I-set up ang Modal at Buttons handlers (Ito ay isang self-contained function)
+    // Hanapin ang Contract Details Grid
+    const contractDetailsGrid = document.getElementById('contract-details-grid');
+    // I-insert ang signatories at sub-property pagkatapos ng Contract Details Grid
+    if (contractDetailsGrid) {
+        contractDetailsGrid.insertAdjacentHTML('afterend', signatoriesHtml);
+    } 
+
+    // ********** 3. SETUP PRINT CONFIRMATION MODAL **********
     const setupModalAndPrint = () => {
         const modal = document.getElementById('print-confirm-modal');
         const message = document.getElementById('print-confirm-message');
@@ -2626,12 +2765,11 @@ function triggerPrint(refNum, subProperty, dynamicallyHiddenRows = [], sfcRef, c
             // This is the easiest way to undo the sequential numbering
             reloadPlanAndCheckExistence(); 
             
-            // ********** NEW LOGIC: Remove printRefElement on restore **********
+            // ********** Remove injected elements on restore **********
             if (printRefElement) {
                  printRefElement.remove();
             }
-            // CRITICAL: Remove the injected Sub Property element
-            const injectedSubProperty = document.getElementById('print-sub-property-container');
+            const injectedSubProperty = document.getElementById('print-formality-container');
             if (injectedSubProperty) {
                  injectedSubProperty.remove();
             }
@@ -2685,46 +2823,34 @@ function triggerPrint(refNum, subProperty, dynamicallyHiddenRows = [], sfcRef, c
         };
     };
     
-    // --- STEP 1: Execute Sequential Numbering and Final Exclusion ---
+    // --- STEP 4: Execute Sequential Numbering and Final Exclusion ---
     const rowsToRestore = applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows); 
 
-    // 2. Tanggalin ang mga blangkong row at i-apply ang print-hidden
+    // 5. Tanggalin ang mga blangkong row at i-apply ang print-hidden
     document.querySelectorAll('.print-empty-row').forEach(row => row.classList.add('print-hidden'));
     
-    // 3. I-convert ang input fields sa read-only text
+    // 6. I-convert ang input fields sa read-only text
     const inputs = document.querySelectorAll('#attendance-table-container input');
     inputs.forEach(input => {
         input.classList.add('print-read-only');
     });
 
-    // 4. I-setup ang modal handlers at i-trigger ang print
+    // 7. I-setup ang modal handlers at i-trigger ang print
     setupModalAndPrint();
 
     window.print();
 }
 
+// *** UPDATED: triggerPrintPreparation now includes signatory validation and logic ***
 function triggerPrintPreparation(subProperty) {
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
         return;
     }
     
-    // ** NEW: Final check if the button should be locked **
-    if (isPlanSheetFullyLocked) {
-        showNotification('Cannot print: All employees with a schedule are already locked for this period. Add a new employee with a schedule or request admin unlock.', false);
-        return;
-    }
+    // 1. Check if the button should be locked (handled in openPrintSetupModal for efficiency)
     
-    // Check 1: Pending Changes
-    const empChangesCount = Object.keys(pendingEmployeeInfoChanges).length;
-    const attChangesCount = Object.keys(pendingAttendanceChanges).length;
-    
-    if (empChangesCount > 0 || attChangesCount > 0) {
-        showNotification(`Saving required: ${empChangesCount} employee changes and ${attChangesCount} schedule changes are pending. Click "Save All Changes to Sheets" first.`, false);
-        return;
-    }
-    
-    // Check 2: Collect list of IDs to be printed (Active rows that are NOT locked)
+    // 2. Collect list of IDs to be printed (Active rows that are NOT locked)
     const activeRows = document.querySelectorAll('#attendance-table-container tbody tr');
     const printedPersonnelIds = [];
     let isPlanPrintable = false;
@@ -2758,14 +2884,12 @@ function triggerPrintPreparation(subProperty) {
     });
     
     // NEW LOCK CHECK: If no IDs are printable (all are NA/Blank), prevent print
-    if (printedPersonnelIds.length === 0) {
-         if (currentContract.employees.length > 0) {
-             showNotification('Cannot print: No employee data with an **actual schedule** found that is not already locked. Please add a plan (Work/RD/RH/SH) before printing.', false);
-             return;
-         } else if (currentContract.employees.length === 0) {
-             showNotification('Cannot print: No employee data available for printing.', false);
-             return;
-         }
+    if (printedPersonnelIds.length === 0 && currentContract.employees.length > 0) {
+         showNotification('Cannot print: No employee data with an **actual schedule** found that is not already locked. Please add a plan (Work/RD/RH/SH) before printing.', false);
+         return;
+    } else if (printedPersonnelIds.length === 0 && currentContract.employees.length === 0) {
+        showNotification('Cannot print: No employee data available for printing.', false);
+        return;
     }
 
 
@@ -2791,14 +2915,15 @@ function triggerPrintPreparation(subProperty) {
         .withSuccessHandler((refNum) => {
             toggleLoading(false);
             // Pass the generated refNum, ALL context, at ang LIST OF PRINTED IDS to triggerPrint
-            triggerPrint(refNum, subProperty, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
+            // CRITICAL: We pass the global selectedSignatories object here.
+            triggerPrint(refNum, subProperty, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
         .withFailureHandler((error) => {
             // Ensure dynamically hidden rows are restored on error
             dynamicallyHiddenRows.forEach(row => row.classList.remove('print-hidden'));
             handleError(error);
         })
-        // NOTE: The logPrintAction signature in Code.gs was updated to accept subProperty
+        // NOTE: logPrintAction signature was updated in Code.gs
         .logPrintAction(subProperty, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
 }
 
@@ -3375,5 +3500,26 @@ function updatePrintButtonState() {
       .withSuccessHandler(handleContractList)
       .withFailureHandler(handleError)
       .getContracts();
+      
+    // Attach listener for the Signatory Modal (must be done once globally)
+    document.getElementById('print-setup-confirm-btn').addEventListener('click', handlePrintSetupConfirm);
+    document.getElementById('print-setup-cancel-btn').addEventListener('click', hidePrintSetupModal);
+
+    // Attach listeners for signatory inputs (Prepared By)
+    document.getElementById('signatory-prepared-by').addEventListener('input', (e) => handleSignatoryInputChange(e, 'preparedBy'));
+    document.getElementById('signatory-prepared-by').addEventListener('change', (e) => handleSignatoryInputChange(e, 'preparedBy')); // For datalist selection
+
+    // Attach listeners for signatory inputs (Approved By)
+    document.getElementById('signatory-approved-by').addEventListener('input', (e) => handleSignatoryInputChange(e, 'approvedBy'));
+    document.getElementById('signatory-approved-by').addEventListener('change', (e) => handleSignatoryInputChange(e, 'approvedBy')); // For datalist selection
+
+    // Attach listeners for signatory inputs (Checked By 1-5)
+    for(let i = 0; i < 5; i++) {
+        const input = document.getElementById(`signatory-checked-by-${i}`);
+        if(input) {
+            input.addEventListener('input', (e) => handleSignatoryInputChange(e, 'checkedBy', i));
+            input.addEventListener('change', (e) => handleSignatoryInputChange(e, 'checkedBy', i)); // For datalist selection
+        }
+    }
   }
 </script>
