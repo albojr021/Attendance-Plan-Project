@@ -384,7 +384,8 @@
         }
         
         /* NEW: Tiyakin na ipapakita ang container kapag nagpi-print */
-        .print-only-container {
+        #print-sub-property-container, 
+        #print-signatories-container {
             display: block !important;
         }
         
@@ -435,20 +436,35 @@
             break-inside: avoid;
         }
         
-        /* ********** NEW SIGNATORIES AND SUB PROPERTY PRINT STYLES ********** */
+        /* ********** NEW SIGNATORIES AND SUB PROPERTY PRINT STYLES (UPDATED) ********** */
         
-        /* NEW: Style for the combined formality container */
-        #print-formality-container {
-             display: block !important;
-             margin-top: 5px !important;
+        /* NEW: Sub Property Container - Mag-appear pagkatapos ng contract grid */
+        #print-sub-property-container {
+            display: flex !important; 
+            border: none !important;
+            padding: 0 0 !important;
+            margin-bottom: 5px !important;
+            background-color: transparent !important;
+            break-inside: avoid;
+        }
+
+        /* NEW: Signatories Container - FIXED POSITION SA BOTTOM */
+        #print-signatories-container {
+             /* CRITICAL: Fixed position para sa pinaka-ibaba ng page */
+             position: fixed !important;
+             bottom: 10mm !important; /* Dito ilagay ang margin */
+             left: 10mm !important;
+             right: 10mm !important;
+             width: auto !important;
              padding: 0 !important;
-             break-after: avoid; 
+             break-before: always;
+             z-index: 10000;
         }
 
         /* NEW: Signatories Grid Layout */
         .print-signatories {
             display: grid !important;
-            grid-template-columns: 1fr 1.5fr 1fr !important; /* Adjusted columns (Prepared | Checked(wider) | Approved) */
+            grid-template-columns: 1fr 1.5fr 1fr !important; /* Prepared | Checked(wider) | Approved */
             gap: 10px; /* Space between columns */
             margin-top: 10px;
         }
@@ -459,67 +475,63 @@
             text-align: center;
         }
         
-        /* Font size for names and titles */
+        /* Font size for names and titles, BOLD, BLACK */
         .print-signatories p {
-            font-size: 7pt !important;
-            line-height: 1 !important;
+            font-size: 8pt !important; /* Slightly larger for clarity */
+            line-height: 1.1 !important;
             margin: 0 !important;
             padding: 0 !important;
-            font-weight: normal !important;
+            font-weight: bold !important; /* Force bold */
+            color: black !important; /* Force black */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
         
-        /* Style for the name line (top signature line) */
+        /* Style for the name line (top signature line) - REMOVE THE LINE */
         .print-signatories .border-t {
-             border-top: 1px solid black !important;
+             border-top: none !important; /* REMOVE LINE */
              margin-top: 5px !important;
              padding-top: 2px !important;
         }
 
+        /* The title (Prepared By, etc.) should be slightly smaller and not bold */
+        .print-signatories .prepared-by p:last-child,
+        .print-signatories .checked-by p:last-child,
+        .print-signatories .approved-by p:last-child {
+             font-size: 7pt !important;
+             font-weight: normal !important;
+             color: black !important;
+        }
+
         /* Style for the multi-line Checked By names */
         .print-signatories .checked-by p:not(.border-t) {
-             /* Ensures names stack vertically and are compact */
              margin-bottom: 2px !important;
              font-weight: bold !important;
         }
         
-        /* Reuse the compact style for the injected Sub Property container */
-        #print-formality-container #print-sub-property-container {
-            display: flex !important; 
-            border: none !important;
-            padding: 0 0 !important;
-            margin-bottom: 0;
-            background-color: transparent !important;
-            break-inside: avoid;
-            margin-bottom: 5px !important; /* Separate from signatories */
-        }
-        /* ********** END NEW STYLES ********** */
-        
         /* CRITICAL: Gawing mas maliit at i-compact ang label at value */
         #contract-details-grid p,
-        #print-formality-container #print-sub-property-container p, /* ADDED: Include injected container's p tags */
+        #print-sub-property-container p, /* ADDED: Include injected container's p tags */
         #contract-details-grid .text-xl,
         .text-gray-700{ 
-            font-size: 0.55rem !important; /* Liitan pa lalo (8.8px) */
-            line-height: 1 !important; /* CRITICAL: Alisin ang extra line height */
+            font-size: 0.55rem !important; 
+            line-height: 1.1 !important; 
             font-weight: normal !important;
             margin: 0;
             padding: 0;
+            color: black !important; /* Force black */
         }
         
         /* Apply BOLD to the label (first p tag) and make it occupy fixed space */
         #contract-details-grid > div p:first-child,
-        #print-formality-container #print-sub-property-container p:first-child /* ADDED: Include injected container's label */
+        #print-sub-property-container p:first-child /* ADDED: Include injected container's label */
         {
             font-weight: bold !important; /* Label */
-            color: #444 !important;
+            color: black !important; /* Force black */
             min-width: 80px;
             margin-right: 5px; 
         }
-
-        /* Itago ang mga blangkong row (logic galing sa JS) */
-        .print-empty-row {
-            display: none;
-        }
+        /* ********** END NEW STYLES ********** */
         
         /* 4. I-ayos ang Table (Print Grid) - Excel-like appearance */
         
