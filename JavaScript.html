@@ -975,12 +975,17 @@ function handleAttendanceData(data) {
     // Employee Info Header (2 rows tall)
     // UPDATED: Added 'Version' to the headers
     const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'Version', 'Position', 'Area Posting']; 
+    
+    // CRITICAL FIX: Removed rowSpan=2 from fixed headers to prevent misalignment between the two header rows.
+    // Instead, we manually add fixed header cells to BOTH headerRow1 and headerRow2 for alignment.
+    
+    // --- 1. Header Row 1 (Main Fixed Labels & Date/Month) ---
     empInfoHeader.forEach((headerText, index) => {
         const th = document.createElement('th');
-        th.rowSpan = 2;
         th.scope = 'col';
         th.textContent = headerText;
-        th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-100 border-r border-gray-300 z-20';
+        // NOTE: Added border-b to Row 1 fixed headers for separation
+        th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-100 border-r border-b border-gray-300 z-20'; 
         
         // NEW: Hide the Version column
         const isVersionCol = headerText === 'Version';
@@ -989,13 +994,34 @@ function handleAttendanceData(data) {
         }
 
         // Freeze first few columns
-        // NOTE: Freezing indices remain the same for the visible columns (0, 1, 2)
         if (index <= 1) th.classList.add('freeze-1', 'z-30'); // No. and ID
         if (index === 2) th.classList.add('freeze-2', 'z-30'); // Name
         headerRow1.appendChild(th);
     });
+    
+    // --- 2. Header Row 2 (Empty Fixed Cells & Day Name) ---
+    // We add empty cells to Row 2 to align with the fixed columns in Row 1.
+    empInfoHeader.forEach((headerText, index) => {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = ''; // Empty content for alignment
+        // Use bg-gray-50 for row 2 contrast
+        th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-50 border-r border-gray-300 z-20'; 
+        
+        // NEW: Hide the Version column
+        const isVersionCol = headerText === 'Version';
+        if (isVersionCol) {
+            th.classList.add('hidden-col', 'print-hidden'); 
+        }
 
-    // Date/Day Headers (First row)
+        // Freeze first few columns
+        if (index <= 1) th.classList.add('freeze-1', 'z-30'); // No. and ID
+        if (index === 2) th.classList.add('freeze-2', 'z-30'); // Name
+        headerRow2.appendChild(th);
+    });
+
+
+    // Date/Day Headers (Now starts at column 7/index 6)
     for (let d = startDay; d <= endDay; d++) {
         const dayOfMonth = new Date(year, month, d);
         const dayName = dayNames[dayOfMonth.getDay()];
@@ -1006,7 +1032,7 @@ function handleAttendanceData(data) {
         // EDITED: I-set ang width dito
         th.style.width = dateColWidth;
         th.style.minWidth = dateColWidth;
-        th.className = 'text-xs font-semibold uppercase tracking-wider p-1 text-center border-r border-b bg-gray-100';
+        th.className = 'text-xs font-semibold uppercase tracking-wider p-1 text-center border-r border-b bg-gray-100'; 
         th.innerHTML = `<span>${d}</span><span class="block font-medium text-[10px] uppercase text-gray-500">${monthName}</span>`; 
         headerRow1.appendChild(th);
         
