@@ -2750,6 +2750,7 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
     } 
 
     // Inject Signatories at the end of the document body (use this method for easy cleanup)
+    // DAHIL INALIS NATIN ANG position:fixed SA CSS, MAG-FFLOW NA ITO PAGTAPOS NG TABLE
     document.body.insertAdjacentHTML('beforeend', signatoriesOnlyHtml);
     
 
