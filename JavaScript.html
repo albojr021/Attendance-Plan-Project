@@ -2724,7 +2724,7 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
     if (!printRefElement) {
         printRefElement = document.createElement('div');
         printRefElement.id = 'print-ref-display';
-        // I-set ang class para itago ito sa screen at i-apply ang print styles
+        // Ang .print-only-container at .print-hidden ay nagco-control sa visibility (SCREEN ONLY)
         printRefElement.className = 'print-only-container print-hidden'; 
         document.body.appendChild(printRefElement);
     }
