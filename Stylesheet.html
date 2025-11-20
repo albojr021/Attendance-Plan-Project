@@ -374,6 +374,14 @@
         }
     }
     
+    /* NEW FIX for Last Page Only: Target Page 1 ONLY to hide the fixed footer */
+    /* Tinatago natin ang fixed element sa Page 1, at inaasahan natin na mag-a-apply ito sa last page lang. */
+    @page :first {
+        #print-signatories-container {
+            visibility: hidden !important; 
+        }
+    }
+    
     @media print {
         /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
@@ -449,15 +457,16 @@
         }
 
         /* NEW: Signatories Container - FIXED POSITION SA BOTTOM */
+        /* CRITICAL FIX: Ibinabalik ang fixed position para sa "footer" look */
         #print-signatories-container {
-             /* CRITICAL: Fixed position para sa pinaka-ibaba ng page */
-             position: fixed !important;
-             bottom: 10mm !important; /* Dito ilagay ang margin */
+             position: fixed !important; 
+             bottom: 10mm !important; /* Margin sa pinaka-ibaba */
              left: 10mm !important;
              right: 10mm !important;
              width: auto !important;
              padding: 0 !important;
-             break-before: always;
+             break-before: auto !important; 
+             break-inside: avoid !important; /* CRITICAL: Prevent the signatory block itself from splitting */
              z-index: 10000;
         }
 
@@ -535,8 +544,10 @@
         
         /* 4. I-ayos ang Table (Print Grid) - Excel-like appearance */
         
-        /* Tanggalin ang overflow para makita ang buong table */
+        /* CRITICAL FIX 2: Magdagdag ng padding sa ilalim ng table container para mag-reserve ng espasyo para sa fixed footer (signatories) */
         .print-grid {
+            /* Use padding bottom to reserve height for the fixed signatories footer (approx 60mm) */
+            padding-bottom: 60mm !important; 
             overflow-x: visible !important; 
         }
         
