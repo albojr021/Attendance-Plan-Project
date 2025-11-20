@@ -435,19 +435,68 @@
             break-inside: avoid;
         }
         
-        /* NEW FIX: Style for the injected Sub Property container to match the grid's print style */
-        #print-sub-property-container {
-            display: flex !important; /* Mimic #contract-details-grid > div */
+        /* ********** NEW SIGNATORIES AND SUB PROPERTY PRINT STYLES ********** */
+        
+        /* NEW: Style for the combined formality container */
+        #print-formality-container {
+             display: block !important;
+             margin-top: 5px !important;
+             padding: 0 !important;
+             break-after: avoid; 
+        }
+
+        /* NEW: Signatories Grid Layout */
+        .print-signatories {
+            display: grid !important;
+            grid-template-columns: 1fr 1.5fr 1fr !important; /* Adjusted columns (Prepared | Checked(wider) | Approved) */
+            gap: 10px; /* Space between columns */
+            margin-top: 10px;
+        }
+
+        /* Styling for each signatory column */
+        .print-signatories > div {
+            padding: 0 5px;
+            text-align: center;
+        }
+        
+        /* Font size for names and titles */
+        .print-signatories p {
+            font-size: 7pt !important;
+            line-height: 1 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-weight: normal !important;
+        }
+        
+        /* Style for the name line (top signature line) */
+        .print-signatories .border-t {
+             border-top: 1px solid black !important;
+             margin-top: 5px !important;
+             padding-top: 2px !important;
+        }
+
+        /* Style for the multi-line Checked By names */
+        .print-signatories .checked-by p:not(.border-t) {
+             /* Ensures names stack vertically and are compact */
+             margin-bottom: 2px !important;
+             font-weight: bold !important;
+        }
+        
+        /* Reuse the compact style for the injected Sub Property container */
+        #print-formality-container #print-sub-property-container {
+            display: flex !important; 
             border: none !important;
             padding: 0 0 !important;
             margin-bottom: 0;
             background-color: transparent !important;
             break-inside: avoid;
+            margin-bottom: 5px !important; /* Separate from signatories */
         }
+        /* ********** END NEW STYLES ********** */
         
         /* CRITICAL: Gawing mas maliit at i-compact ang label at value */
         #contract-details-grid p,
-        #print-sub-property-container p, /* ADDED: Include injected container's p tags */
+        #print-formality-container #print-sub-property-container p, /* ADDED: Include injected container's p tags */
         #contract-details-grid .text-xl,
         .text-gray-700{ 
             font-size: 0.55rem !important; /* Liitan pa lalo (8.8px) */
@@ -459,7 +508,7 @@
         
         /* Apply BOLD to the label (first p tag) and make it occupy fixed space */
         #contract-details-grid > div p:first-child,
-        #print-sub-property-container p:first-child /* ADDED: Include injected container's label */
+        #print-formality-container #print-sub-property-container p:first-child /* ADDED: Include injected container's label */
         {
             font-weight: bold !important; /* Label */
             color: #444 !important;
