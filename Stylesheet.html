@@ -75,11 +75,12 @@
 
     /* Column Widths for Fixed Employee Info Columns (SCREEN ONLY) */
     /* NOTE: These fixed widths are ONLY for the screen view */
-    .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; }
-    .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; }
-    .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; }
-    .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 120px; }
-    .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; }
+    .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; } /* No. */
+    .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; } /* Personnel ID */
+    .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; } /* Personnel Name */
+    .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 50px; display: none; } /* NEW: Version (Hidden) */
+    .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; } /* UPDATED: Position */
+    .attendance-grid th:nth-child(6), .attendance-grid td:nth-child(6) { width: 120px; } /* UPDATED: Area Posting */
     
     /* Dynamic Date Cells - EDITED FOR STRICT FIX (SCREEN ONLY) */
     .date-col-fix {
@@ -89,9 +90,9 @@
         box-sizing: border-box; 
     }
 
-    /* Applying the fix to all headers and data cells starting from the 6th column (Dynamic Dates) */
-    .attendance-grid th:nth-child(n+6), 
-    .attendance-grid td:nth-child(n+6) { 
+    /* Applying the fix to all headers and data cells starting from the 7th column (Dynamic Dates) */
+    .attendance-grid th:nth-child(n+7), 
+    .attendance-grid td:nth-child(n+7) { 
         width: 70px; 
         min-width: 70px;
         max-width: 70px;
@@ -128,7 +129,8 @@
     }
     
     /* Reset z-index for standard sticky cells (SCREEN ONLY) */
-    .attendance-grid td:nth-child(n+6) {
+    /* UPDATED: Reset starts at the 7th column (Dates) */
+    .attendance-grid td:nth-child(n+7) {
         z-index: 5; 
     }
     
@@ -386,7 +388,8 @@
         /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
         #legend-area, .action-icon, .new-label-no-col, #floating-bulk-modal,
-        .print-header 
+        .print-header,
+        .hidden-col /* <--- NEW: Hide Version Column on print */
         {
             display: none !important;
         }
@@ -586,17 +589,18 @@
             font-weight: bold;
         }
         
-        /* NEW: CRITICAL FIX - REMOVE FIXED WIDTHS from Personnel Info Columns (1st to 5th TH/TD) */
-        .attendance-grid th:nth-child(-n+5), 
-        .attendance-grid td:nth-child(-n+5) {
+        /* NEW: CRITICAL FIX - REMOVE FIXED WIDTHS from Personnel Info Columns (1st to 6th TH/TD) */
+        /* UPDATED: Target 1st to 6th columns (No., ID, Name, Version(Hidden), Position, Area) */
+        .attendance-grid th:nth-child(-n+6), 
+        .attendance-grid td:nth-child(-n+6) {
              width: auto !important; /* Auto size based on content (minimal width) */
              min-width: 0 !important;
              max-width: none !important;
         }
         
-        /* Date/Schedule Columns (6th column onwards) - Let them take up the remaining space */
-        .attendance-grid th:nth-child(n+6), 
-        .attendance-grid td:nth-child(n+6) { 
+        /* Date/Schedule Columns (7th column onwards) - Let them take up the remaining space */
+        .attendance-grid th:nth-child(n+7), 
+        .attendance-grid td:nth-child(n+7) { 
              width: auto !important; /* Auto size to fill remaining space */
              min-width: 0.5rem !important; /* Allow minimal compression */
              max-width: none !important;
