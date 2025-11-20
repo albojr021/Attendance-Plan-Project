@@ -14,6 +14,8 @@
   // CRITICAL: Itago ang calendar table at tiyakin na centered ang button pane
   document.write('.ui-month-year-only .ui-datepicker-calendar { display: none !important; }');
   document.write('.ui-month-year-only .ui-datepicker-buttonpane { text-align: center; }');
+  // NEW: Custom style para itago ang Version column (Index 4)
+  document.write('.hidden-col { display: none !important; }'); 
   document.write('</style>');
   
   // Global state variables
@@ -900,7 +902,7 @@ function fetchAttendanceData(sfcRef) {
 
 
 function handleAttendanceData(data) {
-    // data.employees: [{no, id, name, position, area}, ...] (NOW: This list is filtered to only employees with a plan entry for the current shift)
+    // data.employees: [{no, id, name, position, area}, ...] (NOW: This list is filtered to only employees with a plan entry for the current shift - LATEST VERSION)
     // data.planMap: {personnelId_DayKey_ShiftKey: Status, ...}
     // data.lockedIdRefMap: {ID: Ref#}
     currentContract.employees = data.employees;
@@ -966,11 +968,13 @@ function handleAttendanceData(data) {
     const headerRow2 = thead.insertRow();
     
     // NEW: Widths para sa inline style (Gagamitin lang ito ng CSS para sa screen, aalisin ang INLINE setting)
-    const fixedWidths = ['50px', '120px', '200px', '120px', '120px']; 
+    // ADDED Version column (hidden)
+    const fixedWidths = ['50px', '120px', '200px', '50px', '120px', '120px']; 
     const dateColWidth = '70px';
     
     // Employee Info Header (2 rows tall)
-    const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'Position', 'Area Posting']; 
+    // UPDATED: Added 'Version' to the headers
+    const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'Version', 'Position', 'Area Posting']; 
     empInfoHeader.forEach((headerText, index) => {
         const th = document.createElement('th');
         th.rowSpan = 2;
@@ -978,11 +982,14 @@ function handleAttendanceData(data) {
         th.textContent = headerText;
         th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-100 border-r border-gray-300 z-20';
         
-        // REMOVED: I-inject ang inline width para sa masigurado ang column size (Ito ang inalis)
-        // th.style.width = fixedWidths[index]; 
-        // th.style.minWidth = fixedWidths[index]; 
+        // NEW: Hide the Version column
+        const isVersionCol = headerText === 'Version';
+        if (isVersionCol) {
+            th.classList.add('hidden-col', 'print-hidden'); 
+        }
 
         // Freeze first few columns
+        // NOTE: Freezing indices remain the same for the visible columns (0, 1, 2)
         if (index <= 1) th.classList.add('freeze-1', 'z-30'); // No. and ID
         if (index === 2) th.classList.add('freeze-2', 'z-30'); // Name
         headerRow1.appendChild(th);
@@ -1118,8 +1125,6 @@ function handleAttendanceData(data) {
         // No. (Now includes the Edit Button/Icon)
         let td = tr.insertCell();
         td.className = 'sticky-col text-center p-0 bg-gray-50 font-bold border-r border-b z-10 freeze-1 relative'; // Added relative for absolute positioning of button
-        // REMOVED: td.style.width = fixedWidths[0]; // Apply inline width (Handled by CSS)
-        // REMOVED: td.style.minWidth = fixedWidths[0]; 
         
         // Content for No. cell: Number and (optionally) Edit Button
         // UPDATED: Gamitin ang CSS class `py-2` para magbigay ng vertical padding
@@ -1188,8 +1193,6 @@ function handleAttendanceData(data) {
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); 
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1 relative'; // ADDED relative for UNLOCK button
-        // REMOVED: td.style.width = fixedWidths[1]; // Apply inline width (Handled by CSS)
-        // REMOVED: input.style.minWidth = fixedWidths[1]; // Tiyakin na may min width
         
         // --- UPDATED: UNLOCK BUTTON IN PERSONNEL ID COLUMN (for locked rows) ---
         if (isPrintLocked) {
@@ -1224,7 +1227,7 @@ function handleAttendanceData(data) {
         }
         // --- END UPDATED: UNLOCK BUTTON ---
         
-        // Personnel Name (Input)
+        // Personnel Name (Input) - Index 2
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
@@ -1239,10 +1242,17 @@ function handleAttendanceData(data) {
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
-        // REMOVED: td.style.width = fixedWidths[2]; // Apply inline width (Handled by CSS)
-        // REMOVED: input.style.minWidth = fixedWidths[2]; // Tiyakin na may min width
         
-        // Position (Input)
+        // Version (Hidden Cell/Column) - Index 3
+        td = tr.insertCell();
+        // Since the version is controlled by the backend (Code.gs), we don't need an input, just a placeholder cell.
+        // NOTE: employee.version is not available here, but we pass the ID to the server which fetches the latest version.
+        // We will just hide this cell entirely.
+        td.textContent = ''; // Blank content
+        td.className = 'p-0 bg-white border-r border-b hidden-col print-hidden'; 
+        td.dataset.field = 'version'; 
+        
+        // Position (Input) - Index 4
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
@@ -1257,10 +1267,8 @@ function handleAttendanceData(data) {
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
-        // REMOVED: td.style.width = fixedWidths[3]; // Apply inline width (Handled by CSS)
-        // REMOVED: input.style.minWidth = fixedWidths[3]; // Tiyakin na may min width
         
-        // Area Posting (Input)
+        // Area Posting (Input) - Index 5
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
@@ -1275,8 +1283,6 @@ function handleAttendanceData(data) {
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); // UPDATED
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
-        // REMOVED: td.style.width = fixedWidths[4]; // Apply inline width (Handled by CSS)
-        // REMOVED: input.style.minWidth = fixedWidths[4]; // Tiyakin na may min width
 
 
         // Add event listeners for Personnel Info updates (No auto-save)
@@ -2956,7 +2962,7 @@ function getCellCoordinates(cell) {
     // R: Absolute row index in the table (Header rows are 0 and 1, data starts at 2)
     const rowIndex = row.rowIndex; 
     
-    // C: 0-based cell index (Schedule columns start at 5)
+    // C: 0-based cell index (Schedule columns start at 6, since Version is added/hidden)
     const colIndex = cell.cellIndex; 
     
     return { R: rowIndex, C: colIndex };
@@ -2990,9 +2996,12 @@ function visualizeAdditiveRange(startCell, endCell) {
     const C_min_target = Math.min(startCoords.C, endCoords.C);
     const C_max_target = Math.max(startCoords.C, endCoords.C);
     
-    // Ensure we only select from the schedule columns (starting at index 5)
-    const C_min = Math.max(5, C_min_target);
-    const C_max = Math.max(5, C_max_target);
+    // UPDATED: Schedule columns start at index 6 (Personnel ID, Name, Version, Shift, Position, Area Posting -> 6th column is the 7th element, which is the first date cell)
+    const DATE_COL_START_INDEX = 6; 
+    
+    // Ensure we only select from the schedule columns (starting at index 6)
+    const C_min = Math.max(DATE_COL_START_INDEX, C_min_target);
+    const C_max = Math.max(DATE_COL_START_INDEX, C_max_target);
 
     const allCells = Array.from(table.querySelectorAll('td.cell-container'));
 
