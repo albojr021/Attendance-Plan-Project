@@ -2616,25 +2616,20 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
   
   // --- NEW FUNCTION: Validation check for all signatories ---
   function validateAllSignatories() {
-      // 1. Prepared By
-      const preparedBy = selectedSignatories.preparedBy.trim();
-      if (!preparedBy || !preparedBy.match(SIGNATORY_REGEX)) {
-           return "Prepared By name is required and must contain only letters, spaces, commas, periods, or dashes.";
-      }
       
-      // 2. Approved By
+      // 1. Approved By
       const approvedBy = selectedSignatories.approvedBy.trim();
       if (!approvedBy || !approvedBy.match(SIGNATORY_REGEX)) {
           return "Approved By name is required and must contain only letters, spaces, commas, periods, or dashes.";
       }
       
-      // 3. Checked By (Requires at least one)
+      // 2. Checked By (Requires at least one)
       const checkedByList = selectedSignatories.checkedBy.filter(name => name.trim() !== '');
       if (checkedByList.length === 0) {
           return "At least one name for 'Checked By' is required.";
       }
       
-      // 4. Check valid characters for non-empty Checked By fields
+      // 3. Check valid characters for non-empty Checked By fields
       for (const name of checkedByList) {
           if (!name.match(SIGNATORY_REGEX)) {
               return `Checked By name "${name}" has invalid characters. Only letters, spaces, commas, periods, or dashes are allowed.`;
@@ -2855,7 +2850,7 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
                     restoreUI();
                 })
                 // I-pass ang generated refNum, ALL context, at ang LIST OF PRINTED IDS
-                .recordPrintLogEntry(refNum, subProperty, sfcRef, contractInfo, year, month, shift, printedPersonnelIds);
+                .recordPrintLogEntry(refNum, subProperty, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds);
         };
 
         // Cancel Handler (User discarded the log)
