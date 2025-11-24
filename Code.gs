@@ -872,7 +872,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         
         // 5. If any change was detected, append the new row with incremented version
         if (isRowChanged) {
-            const nextVersion = (currentVersion + 0.1).toFixed(1); // Keep minor increment for save tracking
+            const nextVersion = (currentVersion + 1).toFixed(1); // Keep minor increment for save tracking
             // Format: SFC Ref#-PlanPeriod-shift-group-version
             // IMPORTANT: Use the determined nextGroupToUse here 
             const printVersionString = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${nextGroupToUse}-${nextVersion}`; 
