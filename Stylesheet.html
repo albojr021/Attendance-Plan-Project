@@ -78,11 +78,12 @@
     .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; } /* No. */
     .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; } /* Personnel ID */
     .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; } /* Personnel Name */
-    .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 50px; display: none; } /* NEW: Version (Hidden) */
-    .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; } /* UPDATED: Position */
-    .attendance-grid th:nth-child(6), .attendance-grid td:nth-child(6) { width: 120px; } /* UPDATED: Area Posting */
+    /* UPDATED INDEX: Position is now the 4th column */
+    .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 120px; } /* Position */
+    /* UPDATED INDEX: Area Posting is now the 5th column */
+    .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; } /* Area Posting */
     
-    /* Dynamic Date Cells - EDITED FOR STRICT FIX (SCREEN ONLY) */
+    /* Dynamic Date Cells (Schedule) - STARTS AT N+6 (6TH COLUMN) */
     .date-col-fix {
         width: 70px;
         min-width: 70px; 
@@ -90,9 +91,9 @@
         box-sizing: border-box; 
     }
 
-    /* Applying the fix to all headers and data cells starting from the 7th column (Dynamic Dates) */
-    .attendance-grid th:nth-child(n+7), 
-    .attendance-grid td:nth-child(n+7) { 
+    /* Applying the fix to all headers and data cells starting from the 6th column (Dynamic Dates) */
+    .attendance-grid th:nth-child(n+6), 
+    .attendance-grid td:nth-child(n+6) { 
         width: 70px; 
         min-width: 70px;
         max-width: 70px;
@@ -129,14 +130,11 @@
     }
     
     /* Reset z-index for standard sticky cells (SCREEN ONLY) */
-    /* UPDATED: Reset starts at the 7th column (Dates) */
-    .attendance-grid td:nth-child(n+7) {
+    /* UPDATED: Reset starts at the 6th column (Dates) */
+    .attendance-grid td:nth-child(n+6) {
         z-index: 5; 
     }
     
-    /* REMOVED: .attendance-grid tr:nth-child(2) th.sticky-col-header { position: static; } */
-    /* REMOVED DAHIL SA FIX SA JAVASCRIPT.HTML */
-
     /* Ensure inner header text has padding, as we removed it from TH above */
     .attendance-grid th {
         box-sizing: border-box; 
@@ -190,8 +188,6 @@
         padding-right: 50px; /* Dagdagan ang padding sa kanan para magbigay space sa 48px na icon container */
     }
     /* === END FIX === */
-
-    /* REMOVED: .edit-icon-no-col - gumamit na ng flex container */
     
     /* --- Select2 Custom Styling (para mas maging Tailwind-like) --- */
     .select2-container--default .select2-selection--single {
@@ -375,7 +371,6 @@
     }
     
     /* NEW FIX for Last Page Only: Target Page 1 ONLY to hide the fixed footer */
-    /* Tinatago natin ang fixed element sa Page 1, at inaasahan natin na mag-a-apply ito sa last page lang. */
     @page :first {
         #print-signatories-container {
             visibility: hidden !important; 
@@ -386,8 +381,7 @@
         /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
         #legend-area, .action-icon, .new-label-no-col, #floating-bulk-modal,
-        .print-header,
-        .hidden-col /* <--- NEW: Hide Version Column on print */
+        .print-header
         {
             display: none !important;
         }
@@ -458,7 +452,6 @@
         }
 
         /* NEW: Signatories Container - FIXED POSITION SA BOTTOM */
-        /* CRITICAL FIX: Ibinabalik ang fixed position para sa "footer" look */
         #print-signatories-container {
              position: fixed !important; 
              bottom: 10mm !important; /* Margin sa pinaka-ibaba */
@@ -587,18 +580,18 @@
             font-weight: bold;
         }
         
-        /* NEW: CRITICAL FIX - REMOVE FIXED WIDTHS from Personnel Info Columns (1st to 6th TH/TD) */
-        /* UPDATED: Target 1st to 6th columns (No., ID, Name, Version(Hidden), Position, Area) */
-        .attendance-grid th:nth-child(-n+6), 
-        .attendance-grid td:nth-child(-n+6) {
+        /* NEW: CRITICAL FIX - REMOVE FIXED WIDTHS from Personnel Info Columns (1st to 5th TH/TD) */
+        /* UPDATED: Target 1st to 5th columns (No., ID, Name, Position, Area) */
+        .attendance-grid th:nth-child(-n+5), 
+        .attendance-grid td:nth-child(-n+5) {
              width: auto !important; /* Auto size based on content (minimal width) */
              min-width: 0 !important;
              max-width: none !important;
         }
         
-        /* Date/Schedule Columns (7th column onwards) - Let them take up the remaining space */
-        .attendance-grid th:nth-child(n+7), 
-        .attendance-grid td:nth-child(n+7) { 
+        /* Date/Schedule Columns (6th column onwards) - Let them take up the remaining space */
+        .attendance-grid th:nth-child(n+6), 
+        .attendance-grid td:nth-child(n+6) { 
              width: auto !important; /* Auto size to fill remaining space */
              min-width: 0.5rem !important; /* Allow minimal compression */
              max-width: none !important;
