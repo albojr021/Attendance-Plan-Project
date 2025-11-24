@@ -13,7 +13,7 @@ const PLAN_MAX_DAYS_IN_HALF = 16;
 
 const MASTER_HEADER_ROW = 5;
 const SIGNATORY_MASTER_SHEET = 'SignatoryMaster';
-const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com', 'mcddatamanagement.cog@megaworld-lifestyle.com'];
+const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
 const LOG_SHEET_NAME = 'PrintLog';
 const LOG_HEADERS = [
     'Reference #', 
