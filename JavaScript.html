@@ -64,6 +64,9 @@
   
   // --- NEW GLOBAL STATE FOR PRINT LOCKING ---
   let isPlanSheetFullyLocked = false;
+  
+  // *** NEW: Global state for Bulk Print Selection ***
+  let bulkPrintSelected = [];
   // ---------------------------------------------
   
   // *** NEW GLOBAL STATE FOR BULK UNLOCK SELECTION ***
@@ -184,7 +187,7 @@
       if (areaList) {
           uniqueAreas.forEach(area => {
               const areaOption = document.createElement('option');
-              areaOption.value = area;
+              posOption.value = area;
               areaList.appendChild(areaOption);
           });
       }
@@ -670,7 +673,7 @@ function handleBulkUnlockRequest() {
     // *** NEW: Listener for Save All Button ***
     document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
     
-    // *** NEW: Listener for Print Button (Calls server function) ***
+    // *** NEW: Listener for Print Button (Calls new modal function) ***
     document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
     
     // *** NEW: Listener for Request Unlock Button (Modal Opener) ***
@@ -1087,7 +1090,7 @@ function handleAttendanceData(data) {
             deleteButton.className = `action-icon p-1 text-red-600 hover:bg-red-200 transition duration-150 delete-row-btn rounded-full ${isMarkedForDeletion ? 'bg-red-400' : ''} ${isDeleteDisabled ? 'cursor-not-allowed opacity-40' : ''}`; 
             deleteButton.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 0 00-1 1v3M4 7h16" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
             `;
             deleteButton.dataset.stableKey = stableLookupKey;
@@ -1717,8 +1720,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     if (isDeletedRow) {
         bgColor = 'bg-red-300';
         textColor = 'text-red-500';
-        status = 'DELETED';
-        innerDiv.textContent = status;
+        innerDiv.textContent = 'DELETED';
     } else if (isLockedRow) { 
         bgColor = 'bg-gray-400';
         textColor = 'text-gray-700';
@@ -2168,7 +2170,7 @@ function continueSaveProcess(groupNumber) {
   
   // --- NEW FUNCTION: Sequential Numbering and Hiding ---
 
-  function applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows) {
+  function applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows, selectedPrintIds) {
     let printNumber = 1;
     const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
 
@@ -2188,6 +2190,14 @@ function continueSaveProcess(groupNumber) {
              return;
         }
         
+        // --- NEW LOGIC: Check if ID is in the selectedPrintIds list ---
+        if (!selectedPrintIds.includes(displayId)) {
+             row.classList.add('print-hidden');
+             dynamicallyHiddenRows.push(row); // Treat as hidden for this print
+             return;
+        }
+        // --- END NEW LOGIC ---
+
         // B. Exclude rows that are already Locked 
         const stableKey = row.dataset.stableKey;
         const isLocked = !!lockedIdRefMap[stableKey];
@@ -2198,7 +2208,7 @@ function continueSaveProcess(groupNumber) {
             return;
         }
         
-        // C. Check for NA/Blank Exclusion 
+        // C. Check for NA/Blank Exclusion (This should be covered by the selection/validation flow now)
         let hasActualSchedule = false;
 
         row.querySelectorAll('.cell-container').forEach(cell => {
@@ -2210,6 +2220,7 @@ function continueSaveProcess(groupNumber) {
         });
 
         if (!hasActualSchedule) { 
+            // Should not happen if pre-validated, but as a safeguard:
             row.classList.add('print-hidden');
             dynamicallyHiddenRows.push(row); 
             return;
@@ -2269,10 +2280,40 @@ function continueSaveProcess(groupNumber) {
       return null; 
   }
 
+// --- NEW FUNCTION: Get the list of all printable employees (with schedules and unlocked) ---
+function getPrintableEmployeesForModal() {
+    const printableList = [];
+    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    const currentShift = document.getElementById('shift-period-select').value;
+    
+    gridRows.forEach(row => {
+        if (row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
+        
+        const idInput = row.querySelector('[data-field="id"]');
+        const nameInput = row.querySelector('[data-field="name"]');
+        const personnelId = (idInput?.value || '').trim();
+        const personnelName = (nameInput?.value || '').trim();
+        
+        if (!personnelId || !personnelName) return; 
 
-  // --- NEW PRINT LOGIC (UPDATED FLOW) ---
-  
-function openPrintSetupModal() {
+        const { isPrintable } = getRowScheduleStatus(row, currentShift);
+        const isLocked = !!lockedIdRefMap[personnelId];
+        const isSelected = bulkPrintSelected.includes(personnelId);
+
+        if (isPrintable && !isLocked) {
+            printableList.push({
+                id: personnelId,
+                name: personnelName,
+                isSelected: isSelected
+            });
+        }
+    });
+
+    return printableList;
+}
+
+// --- NEW FUNCTION: Open the Print Selection Modal ---
+function openPrintSelectionModal() {
     const empChangesCount = Object.keys(pendingEmployeeInfoChanges).length;
     const attChangesCount = Object.keys(pendingAttendanceChanges).length;
     
@@ -2281,15 +2322,146 @@ function openPrintSetupModal() {
         return;
     }
     
-    // NEW VALIDATION: Get Group Number dynamically (Server determines the current batch number)
-    // Note: The UI element is now gone, so we check the internal state or rely on the save flow.
-    const groupInput = document.getElementById('group-number-input');
-    const groupNumber = groupInput ? groupInput.value.trim().toUpperCase() : 'G1'; // Use G1 as safe fallback
-
-    if (!groupNumber || groupNumber === 'LOADING...') {
-        showNotification('Group Number (GROUP) is required before printing.', false);
+    const printableEmployees = getPrintableEmployeesForModal();
+    const listContainer = document.getElementById('printable-employee-list-container');
+    const modal = document.getElementById('print-selection-modal');
+    const selectAllCheckbox = document.getElementById('select-all-print');
+    
+    // Check if there are any printable schedules at all
+    if (printableEmployees.length === 0) {
+        showNotification('Cannot print: No employee data with an **actual schedule** found that is not already locked.', false);
         return;
     }
+
+    listContainer.innerHTML = '';
+    
+    printableEmployees.forEach(emp => {
+        const listItem = document.createElement('li');
+        const itemBgClass = emp.isSelected ? 'bg-blue-50 border-blue-400' : 'bg-gray-50 border-gray-200';
+        
+        listItem.className = `flex items-center space-x-3 p-2 rounded-lg border hover:bg-blue-50 transition duration-150 cursor-pointer ${itemBgClass}`;
+        
+        listItem.innerHTML = `
+            <input type="checkbox" id="print-check-${emp.id}" 
+                   data-id="${emp.id}" 
+                   data-name="${emp.name}"
+                   class="print-checkbox h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" 
+                   ${emp.isSelected ? 'checked' : ''}>
+            <label for="print-check-${emp.id}" class="flex-grow text-sm font-medium text-gray-800">
+                <span class="font-bold">${emp.name}</span> 
+                <span class="text-xs text-gray-500">(ID: ${emp.id})</span>
+            </label>
+        `;
+        
+        const checkbox = listItem.querySelector('.print-checkbox');
+        checkbox.addEventListener('change', (e) => {
+            updateBulkPrintSelection(e);
+            listItem.classList.toggle('bg-blue-50', e.target.checked);
+            listItem.classList.toggle('border-blue-400', e.target.checked);
+            listItem.classList.toggle('bg-gray-50', !e.target.checked);
+            listItem.classList.toggle('border-gray-200', !e.target.checked);
+        });
+        
+        // Add listener to the whole list item to toggle the checkbox
+        listItem.addEventListener('click', (e) => {
+            if (e.target.tagName !== 'INPUT') {
+                checkbox.checked = !checkbox.checked;
+                checkbox.dispatchEvent(new Event('change'));
+            }
+        });
+        
+        listContainer.appendChild(listItem);
+    });
+
+    // Initialize/Update the bulkPrintSelected array from rendered checkboxes
+    bulkPrintSelected = printableEmployees.filter(emp => emp.isSelected).map(emp => emp.id);
+    
+    // Update Select All Checkbox state
+    const totalPrintable = printableEmployees.length;
+    selectAllCheckbox.checked = (totalPrintable > 0 && bulkPrintSelected.length === totalPrintable);
+    
+    // Attach Select All listener
+    selectAllCheckbox.removeEventListener('change', toggleSelectAllPrint);
+    selectAllCheckbox.addEventListener('change', toggleSelectAllPrint);
+
+    updatePrintModalState(totalPrintable);
+
+    document.getElementById('print-select-cancel-btn').onclick = () => modal.classList.add('hidden');
+    // On confirm, proceed to the Signatory/Sub Property modal
+    document.getElementById('print-select-confirm-btn').onclick = () => {
+        modal.classList.add('hidden');
+        openPrintSetupModal(); // Proceed to the next step
+    };
+
+    modal.classList.remove('hidden');
+}
+
+// Helper to update count display and button enablement
+function updatePrintModalState(totalPrintable) {
+    const count = bulkPrintSelected.length;
+    
+    document.getElementById('print-selection-count').textContent = count;
+    document.getElementById('print-select-confirm-btn').disabled = count === 0;
+    document.getElementById('print-select-confirm-btn').textContent = `Proceed to Print Setup (${count} Selected)`;
+    
+    document.getElementById('total-printable-count').textContent = totalPrintable || '0';
+}
+
+// Helper to update global array and modal state on checkbox change
+function updateBulkPrintSelection(event) {
+    const checkbox = event.target;
+    const id = checkbox.dataset.id;
+    const isChecked = checkbox.checked;
+
+    const existingIndex = bulkPrintSelected.indexOf(id);
+
+    if (isChecked && existingIndex === -1) {
+        bulkPrintSelected.push(id);
+    } else if (!isChecked && existingIndex > -1) {
+        bulkPrintSelected.splice(existingIndex, 1);
+    }
+    
+    const printableCount = getPrintableEmployeesForModal().length;
+    const selectAllCheckbox = document.getElementById('select-all-print');
+
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = (bulkPrintSelected.length === printableCount);
+    }
+    
+    updatePrintModalState(printableCount);
+}
+
+// Helper for select all/none in the Print Selection Modal
+function toggleSelectAllPrint(event) {
+    const isChecked = event.target.checked;
+    const checkboxes = document.querySelectorAll('#printable-employee-list-container .print-checkbox');
+    
+    bulkPrintSelected = []; 
+
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = isChecked;
+        
+        const id = checkbox.dataset.id;
+        const listItem = checkbox.closest('li');
+        
+        if (isChecked) {
+            bulkPrintSelected.push(id);
+            listItem.classList.add('bg-blue-50', 'border-blue-400');
+            listItem.classList.remove('bg-gray-50', 'border-gray-200');
+        } else {
+            listItem.classList.remove('bg-blue-50', 'border-blue-400');
+            listItem.classList.add('bg-gray-50', 'border-gray-200');
+        }
+    });
+    
+    updatePrintModalState(getPrintableEmployeesForModal().length);
+}
+// --- END NEW PRINT SELECTION FUNCTIONS ---
+
+
+  // --- NEW PRINT LOGIC (UPDATED FLOW) ---
+  
+function openPrintSetupModal() {
     
     document.getElementById('signatory-prepared-by').value = selectedSignatories.preparedBy;
     document.getElementById('signatory-approved-by').value = selectedSignatories.approvedBy;
@@ -2322,20 +2494,91 @@ function handlePrintSetupConfirm(event) {
     }
     
     hidePrintSetupModal();
-    triggerPrintPreparation(subProperty);
+    // PASS THE LIST OF SELECTED IDS
+    triggerPrintPreparation(subProperty, bulkPrintSelected);
 }
 
+// MODIFIED: This function now calls the print selection modal first.
 function handlePrintPlan() {
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
         return;
     }
-    if (isPlanSheetFullyLocked) {
-        showNotification('Cannot print: All employees with a schedule are already locked for this period. Add a new employee with a schedule or request admin unlock.', false);
+    
+    // Go directly to print selection modal
+    openPrintSelectionModal();
+}
+
+function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selectedPrintIds parameter
+    if (!currentContract) {
+        showNotification('Please select a Contract Group ID first.', false);
         return;
     }
     
-    openPrintSetupModal();
+    const activeRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    const printedPersonnelIds = [];
+    let isPlanPrintable = false;
+
+    // Filter printedPersonnelIds based on the selectedPrintIds list
+    activeRows.forEach(row => {
+        const idInput = row.querySelector('[data-field="id"]');
+        const id = (idInput?.value || '').trim();
+        const stableKey = row.dataset.stableKey;
+
+        // Only process IDs that were explicitly selected for print
+        if (selectedPrintIds.includes(id)) {
+            const isLocked = !!lockedIdRefMap[stableKey];
+            
+            // Re-check for schedule and lock state just in case
+            let hasActualSchedule = false;
+            row.querySelectorAll('.cell-container').forEach(cell => {
+                 const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                 if (status !== '' && status !== 'NA' && status !== 'DELETED' && status !== 'LOCKED') {
+                     hasActualSchedule = true;
+                 }
+            });
+
+            if (id && PERSONNEL_ID_REGEX.test(id) && hasActualSchedule && !isLocked) {
+                printedPersonnelIds.push(id);
+                isPlanPrintable = true;
+            } else if (isLocked) {
+                 // Should not happen if modal logic is correct, but good to check
+                 showNotification(`Employee ${id} is locked and will be skipped.`, false);
+            }
+        }
+    });
+    
+    if (printedPersonnelIds.length === 0) {
+         showNotification('Cannot print: No selected employee data with an **actual schedule** found that is not already locked.', false);
+         return;
+    }
+
+
+    const dynamicallyHiddenRows = []; // Will be populated in the final print function
+    
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+    
+    const contractInfo = {
+        payor: currentContract.payorCompany,
+        agency: currentContract.agency,
+        serviceType: currentContract.serviceType,
+        headCount: currentContract.headCount
+    };
+
+    toggleLoading(true);
+
+    google.script.run
+        .withSuccessHandler((refNum) => {
+            toggleLoading(false);
+            // PASS the final list of IDs to the print function
+            triggerPrint(refNum, subProperty, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
+        })
+        .withFailureHandler((error) => {
+            handleError(error);
+        })
+        .logPrintAction(subProperty, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
 }
 
 function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
@@ -2408,6 +2651,7 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
         const restoreUI = () => {
             modal.classList.add('hidden');
             
+            // Restore visibility for rows that were hidden specifically for this print job
             document.querySelectorAll('.print-hidden').forEach(row => {
                 if (dynamicallyHiddenRows.includes(row) || row.classList.contains('print-empty-row')) {
                     row.classList.remove('print-hidden');
@@ -2466,7 +2710,8 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
         };
     };
     
-    const rowsToRestore = applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows); 
+    // Use the new numbering/hiding logic with the selected IDs
+    const rowsToRestore = applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows, printedPersonnelIds); 
 
     document.querySelectorAll('.print-empty-row').forEach(row => row.classList.add('print-hidden'));
     
@@ -2478,75 +2723,6 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
     setupModalAndPrint();
 
     window.print();
-}
-
-function triggerPrintPreparation(subProperty) {
-    if (!currentContract) {
-        showNotification('Please select a Contract Group ID first.', false);
-        return;
-    }
-    
-    const activeRows = document.querySelectorAll('#attendance-table-container tbody tr');
-    const printedPersonnelIds = [];
-    let isPlanPrintable = false;
-
-    activeRows.forEach(row => {
-        if (row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
-        
-        const idInput = row.querySelector('[data-field="id"]');
-        const id = (idInput?.value || '').trim();
-        const stableKey = row.dataset.stableKey;
-        
-        const isLocked = !!lockedIdRefMap[stableKey];
-        
-        let hasActualSchedule = false;
-        row.querySelectorAll('.cell-container').forEach(cell => {
-             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-             if (status !== '' && status !== 'NA' && status !== 'DELETED' && status !== 'LOCKED') {
-                 hasActualSchedule = true;
-             }
-        });
-
-        if (id && PERSONNEL_ID_REGEX.test(id) && hasActualSchedule && !isLocked) {
-            printedPersonnelIds.push(id);
-            isPlanPrintable = true;
-        }
-    });
-    
-    if (printedPersonnelIds.length === 0 && currentContract.employees.length > 0) {
-         showNotification('Cannot print: No employee data with an **actual schedule** found that is not already locked. Please add a plan (Work/RD/RH/SH) before printing.', false);
-         return;
-    } else if (printedPersonnelIds.length === 0 && currentContract.employees.length === 0) {
-        showNotification('Cannot print: No employee data available for printing.', false);
-        return;
-    }
-
-
-    const dynamicallyHiddenRows = filterEmptyScheduleRows(); 
-
-    const currentYear = currentPlanningDate.getFullYear();
-    const currentMonth = currentPlanningDate.getMonth();
-    const currentShift = document.getElementById('shift-period-select').value;
-    
-    const contractInfo = {
-        payor: currentContract.payorCompany,
-        agency: currentContract.agency,
-        serviceType: currentContract.serviceType,
-        headCount: currentContract.headCount
-    };
-
-    toggleLoading(true);
-
-    google.script.run
-        .withSuccessHandler((refNum) => {
-            toggleLoading(false);
-            triggerPrint(refNum, subProperty, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
-        })
-        .withFailureHandler((error) => {
-            dynamicallyHiddenRows.forEach(row => row.classList.remove('print-hidden'));
-            handleError(error);
-        })
-        .logPrintAction(subProperty, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
 }
 
 
@@ -2964,14 +3140,19 @@ function getRowScheduleStatus(row, currentShift) {
         if (d > daysInMonth) continue; 
         
         // **NEW FIX: Stop 1st Half at 15**
-        if (currentShift === '1stHalf' && d > 15) continue; // <--- ADDED LINE
+        if (currentShift === '1stHalf' && d > 15) continue; 
 
         const dayKey = `${year}-${month + 1}-${d}`;
         const originalKey = `${originalId}_${dayKey}_${currentShift}`;
         
         // Find the cell that corresponds to this column index (index 0 maps to colIndex 1)
-        const cell = cellElements[colIndex - 1]; 
-        if (!cell) continue;
+        // Note: The structure of the table in renderAttendancePlan ensures the first date column is the 6th TD (index 5), 
+        // which corresponds to the 1st day/column index (colIndex=1 in this loop). 
+        // We need to adjust: cellElements[colIndex - 1] to access the schedule cell.
+        const cellIndexInRow = colIndex + 5 - 1; // 5 fixed columns + colIndex - 1 (since colIndex is 1-based)
+        const cell = row.cells[cellIndexInRow]; 
+        
+        if (!cell || !cell.classList.contains('cell-container')) continue;
 
         let status = pendingAttendanceChanges[`${personnelId}_${dayKey}_${currentShift}`];
         
