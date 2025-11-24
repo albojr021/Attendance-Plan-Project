@@ -156,6 +156,7 @@ function createContractSheets(sfcRef, year, month, shift) {
             'SECTOR', 'PAYOR COMPANY', 'AGENCY', 'MONTH', 'YEAR', 
             'PERIOD / SHIFT', 'GROUP', 'PRINT VERSION', 'Reference #',
        
+        
         'Personnel ID', 'Personnel Name', 'POSITION', 'AREA POSTING'
         ];
         // UPDATED: Loop only up to PLAN_MAX_DAYS_IN_HALF (16)
@@ -227,6 +228,7 @@ function getContracts() {
     const sfcRefKey = findKey(c, 'SFC Ref#');
     // NEW: Get the keys for the new metadata fields
    
+    
     const 
     propOrGrpCodeKey = findKey(c, 'PROP OR GRP CODE'); // Assuming the header is exactly this (Col D)
     const sectorKey = findKey(c, 'SECTOR'); // Assuming the header is exactly this (Col O)
@@ -235,21 +237,22 @@ function getContracts() {
       id: contractIdKey ? (c[contractIdKey] || '').toString() : '',     
       status: statusKey ? (c[statusKey] || '').toString() : '',   
       payorCompany: payorKey ? (c[payorKey] || '').toString() : '', 
+      
    
       agency: agencyKey ? 
     (c[agencyKey] ||
-    '').toString() : '',       
+ '').toString() : '',       
       serviceType: serviceTypeKey ?
-    (c[serviceTypeKey] || '').toString() : '',   
+ (c[serviceTypeKey] || '').toString() : '',   
       headCount: parseInt(headCountKey ? c[headCountKey] : 0) ||
-    0, 
+ 0, 
       sfcRef: sfcRefKey ?
-    (c[sfcRefKey] || '').toString() : '', 
+ (c[sfcRefKey] || '').toString() : '', 
       // NEW FIELDS
       propOrGrpCode: propOrGrpCodeKey ?
-    (c[propOrGrpCodeKey] || '').toString() : '',
+ (c[propOrGrpCodeKey] || '').toString() : '',
       sector: sectorKey ?
-    (c[sectorKey] || '').toString() : '',
+ (c[sectorKey] || '').toString() : '',
     };
   });
 }
@@ -343,6 +346,7 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
             const printVersionString = String(row[printVersionIndex] || '').trim();
             const versionParts = printVersionString.split('-');
       
+            
             const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
             
             const monthShort = String(row[headers.indexOf('MONTH')] || '').trim();
@@ -350,12 +354,14 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
             
             let planDate = new Date(0);
       
+            
             if (monthShort && yearNum) {
                  planDate = new Date(`${monthShort} 1, ${yearNum}`);
             }
             
             if (version > latestVersion || (version === latestVersion && planDate.getTime() > latestDate.getTime())) {
         
+      
                 latestVersion = version;
                 latestDate = planDate;
                 targetRow = row;
@@ -418,11 +424,13 @@ function getLockedPersonnelIds(ss, planSheetName) {
             
             idsList.forEach(idWithPrefix => {
       
+                
                 const cleanId = cleanPersonnelId(idWithPrefix);
                  
                 if (cleanId.length >= 3 && !idWithPrefix.startsWith('UNLOCKED:')) { 
                     if (!lockedIdRefMap[cleanId]) { 
                   
+                        
                          lockedIdRefMap[cleanId] = refNum;
                     }
                 }
@@ -456,6 +464,7 @@ function getHistoricalReferenceMap(ss, planSheetName) {
                 if (cleanId.length >= 3) { 
                      if (!historicalRefMap[cleanId]) { 
                   
+                        
                        historicalRefMap[cleanId] = refNum;
                      }
                 }
@@ -524,18 +533,20 @@ function getAttendancePlan(sfcRef, year, month, shift) {
         const id = cleanPersonnelId(rawId);
         
    
+        
         if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && id) {
             
             const printVersionString = String(row[printVersionIndex] || '').trim();
             const versionParts = printVersionString.split('-');
             const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
            
+        
   
             const mapKey = id; 
             const existingRow = latestVersionMap[mapKey];
             
             if (!existingRow || version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
-    0)) {
+ 0)) {
                 latestVersionMap[mapKey] = row;
             }
         }
@@ -546,7 +557,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     
     // NEW LOGIC: Calculate actual days of the month based on shift
     const startDayOfMonth = shift === '1stHalf' ?
-    1 : 16;
+ 1 : 16;
     const endDayOfMonth = new Date(year, month + 1, 0).getDate(); 
     const loopLimit = PLAN_MAX_DAYS_IN_HALF;
     // 16
@@ -560,6 +571,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             employeesDetails.push({
                 no: 0, 
                
+        
     id: id, 
   
                 name: String(row[nameIndex] || '').trim(),
@@ -567,19 +579,21 @@ function getAttendancePlan(sfcRef, year, month, shift) {
                 area: String(row[areaIndex] || '').trim(),
             });
            
+            
             // UPDATED: Loop only up to DAY16 column
             for (let d = 1; d <= loopLimit; d++) {
                 const actualDay = startDayOfMonth + d - 1;
                 
                 if (actualDay > endDayOfMonth) continue; // Skip day if it exceeds max day of the month
 
-     
+  
+                
     const dayKey = `${year}-${month + 1}-${actualDay}`; 
                 const dayColIndex = day1Index + d - 1; 
 
                 if (dayColIndex < numColumns) {
                     const status = String(row[dayColIndex] ||
-    '').trim();
+ '').trim();
           
                     const key = `${id}_${dayKey}_${shift}`;
                     if (status) {
@@ -613,7 +627,7 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     // NEW: Get the map of currently locked IDs for contextual logging
-    const lockedIdRefMap = getLockedPersonnelIds(ss, PLAN_SHEET_NAME); 
+    const lockedIdRefMap = getLockedPersonnelIds(ss, PLAN_SHEET_NAME);
     const lockedIds = Object.keys(lockedIdRefMap);
     
     const finalEmployeeChanges = employeeChanges.filter(change => {
@@ -632,19 +646,17 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
         }
         return true;
     });
-
     // NEW LOGIC: Identify which employee IDs need their plan rows deleted (i.e., they were marked for deletion in the UI)
-    const deletionList = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId); 
-    
+    const deletionList = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
     if (finalEmployeeChanges && finalEmployeeChanges.length > 0) {
         // **UPDATED:** Pass the lockedIdRefMap for logging context
-        saveEmployeeInfoBulk(sfcRef, finalEmployeeChanges, year, month, shift, lockedIdRefMap); 
+        saveEmployeeInfoBulk(sfcRef, finalEmployeeChanges, year, month, shift, lockedIdRefMap);
     }
     
     // UPDATED CHECK: Call bulk save if there are attendance changes OR if there are deletions
     if (finalAttendanceChanges && finalAttendanceChanges.length > 0 || deletionList.length > 0) {
         // UPDATED: Pass the deletionList
-        saveAttendancePlanBulk(sfcRef, contractInfo, finalAttendanceChanges, year, month, shift, group, deletionList); 
+        saveAttendancePlanBulk(sfcRef, contractInfo, finalAttendanceChanges, year, month, shift, group, deletionList);
     }
     
     Logger.log(`[saveAllData] Save completed.`);
@@ -666,7 +678,7 @@ function getOrCreateAuditLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${AUDIT_LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateAuditLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+            return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -690,7 +702,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
     let headers = [];
     if (numRowsToRead >= 0 && numColumns > 0) {
          values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-         headers = values[0]; 
+        headers = values[0]; 
     } else {
         headers = planSheet.getRange(HEADER_ROW, 1, 1, numColumns).getDisplayValues()[0];
     }
@@ -735,6 +747,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         const id = cleanPersonnelId(row[personnelIdIndex]);
 
         if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift 
+ 
     && id) {
             const printVersionString = String(row[printVersionIndex] || '').trim();
             const versionParts = printVersionString.split('-');
@@ -742,24 +755,27 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             
             const existingRow = latestVersionMap[id];
             if (!existingRow || 
+ 
     version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) || 0)) {
  
                 latestVersionMap[id] = row;
             }
         }
     });
-
     // --- NEW LOGIC START: Handle Physical Deletion for Marked Employees ---
-    const rowsToDeleteMap = {}; // Key: Sheet Row Number, Value: Personnel ID
+    const rowsToDeleteMap = {};
+    // Key: Sheet Row Number, Value: Personnel ID
     if (deletionList && deletionList.length > 0) {
         deletionList.forEach(deletedId => {
             const latestRow = latestVersionMap[deletedId];
             if (latestRow) {
                 // Find the index of this row within the full 'values' array (including header)
+               
                 // The actual row in the sheet is r_index_in_values + HEADER_ROW 
                 const r_index_in_values = values.findIndex(r => r === latestRow);
                 
                 if (r_index_in_values > 0) { // r_index_in_values > 0 means it's a data row
+                    
                     const sheetRowIndex = r_index_in_values + HEADER_ROW; 
                     rowsToDeleteMap[sheetRowIndex] = deletedId;
                     delete latestVersionMap[deletedId]; // Remove from map so it's not processed later
@@ -817,6 +833,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         let nextGroupToUse = group; // Default to the group passed from the client input (e.g., G2)
 
      
+        
     // --- V1 Creation Logic ---
         if (!latestVersionRow) {
             const planHeadersCount = headers.length; 
@@ -824,112 +841,119 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             newRow = Array(planHeadersCount).fill('');
             
             // Set Fixed Metadata 
-            
-    newRow[sfcRefIndex] = sfcRef;
+           
+            newRow[sfcRefIndex] = sfcRef;
             newRow[headcountIndex] = contractInfo.headCount;
        
             newRow[propOrGrpCodeIndex] = contractInfo.propOrGrpCode;
             newRow[serviceTypeIndex] = contractInfo.serviceType;
             newRow[sectorIndex] = contractInfo.sector;
             newRow[payorIndex] = contractInfo.payor;
-    newRow[agencyIndex] = contractInfo.agency;
+            newRow[agencyIndex] = contractInfo.agency;
             newRow[monthIndex] = targetMonthShort;
             newRow[yearIndex] = targetYear;
             newRow[shiftIndex] = shift;
             newRow[groupIndex] = nextGroupToUse;
-    // Use the passed group for a new plan (e.g., G2)
+            // Use the passed group for a new plan (e.g., G2)
             newRow[referenceIndex] = '';
-    // Blank on initial save
+            // Blank on initial save
 
             // Set Fixed Employee Info
             newRow[personnelIdIndex] = personnelId;
-    newRow[nameIndex] = empDetails.name;
+            newRow[nameIndex] = empDetails.name;
             newRow[positionIndex] = empDetails.position;
             newRow[areaIndex] = empDetails.area;
             
             currentVersion = 0;
-    } else {
+        } else {
             // Standard Update Scenario (Copy Latest Version)
             newRow = [...latestVersionRow];
-    const versionString = latestVersionRow[printVersionIndex].split('-').pop();
+            const versionString = latestVersionRow[printVersionIndex].split('-').pop();
             currentVersion = parseFloat(versionString) || 0; 
 
             // **NEW LOGIC START: Preserve the old GROUP number for versioning**
             const oldGroup = latestVersionRow[groupIndex];
-    if (oldGroup && String(oldGroup).trim().toUpperCase() !== String(group).trim().toUpperCase()) {
+            if (oldGroup && String(oldGroup).trim().toUpperCase() !== String(group).trim().toUpperCase()) {
                  // Force use of the existing group found in the sheet if it's different from the new requested group (e.g., use G1, ignore G2 from client)
                  Logger.log(`[savePlanBulk] WARNING: Overriding requested group ${group} with existing group ${oldGroup} for versioning ID ${personnelId}.`);
-    nextGroupToUse = oldGroup;
+                nextGroupToUse = oldGroup;
             }
             // **NEW LOGIC END**
 
             // IMPORTANT: Update Group number in the row to the chosen group (usually the old one)
             newRow[groupIndex] = nextGroupToUse;
-    // IMPORTANT: Update Employee Info (Name/Position/Area) to latest master data 
+            // IMPORTANT: Update Employee Info (Name/Position/Area) to latest master data 
             newRow[nameIndex] = empDetails.name;
-    newRow[positionIndex] = empDetails.position;
+            newRow[positionIndex] = empDetails.position;
             newRow[areaIndex] = empDetails.area;
         }
         
         let isRowChanged = false;
-    // Apply all daily changes to the new row and log audit trail
+        // Apply all daily changes to the new row and log audit trail
         dailyChanges.forEach(data => {
             const { dayKey, status: newStatus } = data;
             const dayNumber = parseInt(dayKey.split('-')[2], 10); // Actual day of the month (1-31)
             
             // NEW LOGIC: Map the actual day number to the column index 
+ 
     (1-16)
             let dayColumnNumber; // 1-16 (Represents the DAYX column number)
             
             if (shift === '1stHalf') {
                 dayColumnNumber = dayNumber; // 1 -> 1, 15 -> 15
             } else { // 2ndHalf
-           
+       
+    
     dayColumnNumber = dayNumber - 15; // 16 -> 1, 31 -> 16
             }
             
             if (dayColumnNumber < 1 || dayColumnNumber > PLAN_MAX_DAYS_IN_HALF) {
                  Logger.log(`[savePlanBulk] WARNING: Day number ${dayNumber} is out of expected range for shift ${shift}. Skipping update.`);
-         
+      
+    
     return;
             }
             
             const dayColIndex = day1Index + dayColumnNumber - 1;
-    // 0-based index
+            // 0-based index
            
     
             if (dayColIndex >= day1Index && dayColIndex < numColumns) {
                 
                 const oldStatus = String((latestVersionRow || newRow)[dayColIndex] || '').trim();
-    if (oldStatus !== newStatus) {
+                if (oldStatus !== newStatus) {
    
                     isRowChanged = true;
-    newRow[dayColIndex] = newStatus; 
+                    newRow[dayColIndex] = newStatus; 
                     
                     const lockedRefNum = historicalRefMap[personnelId] || ''; 
+                    
+                    // START OF NEW LOGIC: Only log the historical reference if the old status was not blank or 'NA'.
+                    const refToLog = (oldStatus && oldStatus !== 'NA') ? lockedRefNum : '';
+                    // END OF NEW LOGIC
             
                     const personnelName = empDetails.name;
-    const logEntry = [
+                    const logEntry = [
                         new Date(), userEmail, sfcRef, personnelId, personnelName, PLAN_SHEET_NAME, 
-                        dayKey, shift, `'${lockedRefNum}`, oldStatus, newStatus
+                        dayKey, shift, `'${refToLog}`, oldStatus, newStatus // MODIFIED: Use refToLog
        
                     ];
-    auditLogSheet.appendRow(logEntry);
-                    Logger.log(`[AuditLog] Change logged for ID ${personnelId}, Day ${dayKey}: ${oldStatus} -> ${newStatus} (Ref: ${lockedRefNum})`);
-    }
+                    auditLogSheet.appendRow(logEntry);
+                    Logger.log(`[AuditLog] Change logged for ID ${personnelId}, Day ${dayKey}: ${oldStatus} -> ${newStatus} (Ref: ${refToLog})`); // MODIFIED: Use refToLog
+                }
             } else {
                 Logger.log(`[savePlanBulk] WARNING: Day column index not found for day ${dayNumber}. Skipping update for this cell.`);
-    }
+            }
         });
         
         // 5. If any change was detected, append the new row with incremented version
         if (isRowChanged) {
             const nextVersion = (currentVersion + 1).toFixed(1);
-    // Keep minor increment for save tracking
+            // Keep minor increment for save tracking
             // Format: SFC Ref#-PlanPeriod-shift-group-version
             // IMPORTANT: Use the determined nextGroupToUse here 
             const printVersionString = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${nextGroupToUse}-${nextVersion}`;
-    newRow[printVersionIndex] = printVersionString;
+            newRow[printVersionIndex] = printVersionString;
             rowsToAppend.push(newRow);
         }
     });
@@ -937,12 +961,12 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
     // 6. Bulk append new version rows
     if (rowsToAppend.length > 0) {
         const newRowLength = rowsToAppend[0].length;
-    const startRow = planSheet.getLastRow() + 1;
+        const startRow = planSheet.getLastRow() + 1;
         
         planSheet.getRange(startRow, 1, rowsToAppend.length, newRowLength).setValues(rowsToAppend);
-    // Set the format for all fixed columns to Plain Text
+        // Set the format for all fixed columns to Plain Text
         planSheet.getRange(startRow, 1, rowsToAppend.length, PLAN_FIXED_COLUMNS).setNumberFormat('@');
-    Logger.log(`[saveAttendancePlanBulk] Appended ${rowsToAppend.length} new version rows for ${PLAN_SHEET_NAME}.`);
+        Logger.log(`[saveAttendancePlanBulk] Appended ${rowsToAppend.length} new version rows for ${PLAN_SHEET_NAME}.`);
     }
 
     planSheet.setFrozenRows(HEADER_ROW); 
@@ -987,6 +1011,7 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
         const currentId = cleanPersonnelId(row[personnelIdIndex]);
         
         if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift 
+ 
     === targetShift && currentId === personnelId) {
             
             const printVersionString = String(row[printVersionIndex] || '').trim();
@@ -994,6 +1019,7 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
             const currentVersion = parseFloat(versionParts) || 0; 
             
             if (currentVersion >= latestVersion) 
+ 
             {
     
                 latestVersion = currentVersion;
@@ -1002,13 +1028,13 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
             }
         }
     });
-    if (targetRowIndex === -1) return; 
-
+    if (targetRowIndex === -1) return;
     const auditLogSheet = getOrCreateAuditLogSheet(planSheet.getParent());
     const logEntries = [];
     
     // **CHANGED LOGIC:** Use the passed lock reference instead of historical map lookup
-    const lockedRefNum = currentLockRef || ''; 
+    const lockedRefNum = currentLockRef ||
+ ''; 
     const employeeName = getEmployeeNameFromMaster(sfcRef, personnelId);
     
     // NEW LOGIC: Iterate only through DAY1 to DAY16 columns
@@ -1031,7 +1057,8 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
                  const logEntry = [
                     new Date(), userEmail, sfcRef, personnelId, employeeName, PLAN_SHEET_NAME, 
                     dayKey, targetShift, `'${lockedRefNum}`, oldStatus, 'DELETED_ROW' // Log the current lock ref (or blank)
-                ];
+               
+                 ];
                 logEntries.push(logEntry);
             }
         }
@@ -1082,6 +1109,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
 
             if (data.isMasterDelete && personnelIdMap[oldId] && personnelIdMap[oldId] > 1) {
      
+                
                 empSheet.deleteRow(personnelIdMap[oldId]);
                 delete personnelIdMap[oldId];
                 Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row from Master Sheet for ID ${oldId}.`);
@@ -1089,6 +1117,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
             
             return;
      
+            
         }
 
   
@@ -1097,20 +1126,21 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
             if (!data.isExistingEmployeeAdded) { 
                 if (personnelIdMap[newId]) return;
                 
-                const newRow = [];
+                const 
+ newRow = [];
    
                 newRow[personnelIdIndex] = data.id;
                 newRow[nameIndex] = data.name;
-    newRow[positionIndex] = data.position;
+                newRow[positionIndex] = data.position;
                 newRow[areaIndex] = data.area;
                 
                 const finalRow = [];
-    for(let i = 0; i < headers.length; i++) {
+                for(let i = 0; i < headers.length; i++) {
                     finalRow.push(newRow[i] !== undefined ? newRow[i] : '');
-    }
+                }
                 
                 rowsToAppend.push(finalRow);
-    personnelIdMap[newId] = -1;
+                personnelIdMap[newId] = -1;
             }
         }
     });
@@ -1123,6 +1153,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
         // **CHANGED LOGIC:** Get current lock reference from the passed map
         const currentLockRef = lockedIdRefMap[item.id] || '';
         
+   
         // **UPDATED CALL:** Pass the current lock reference
         logScheduleDeletion(sfcRef, planSheet, shift, item.id, userEmail, logYear, logMonth, currentLockRef);
     });
@@ -1182,6 +1213,7 @@ function getNextGroupNumber(sfcRef, year, month, shift) {
                 const numericPart = parseInt(currentGroup.replace(/[^\d]/g, ''), 10);
                 if (!isNaN(numericPart) && numericPart > maxGroupNumber) {
   
+                    
                     maxGroupNumber = numericPart;
                 }
             }
@@ -1214,7 +1246,7 @@ function getOrCreateSignatoryMasterSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${SIGNATORY_MASTER_SHEET}" already exists`)) {
              Logger.log(`[getOrCreateSignatoryMasterSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(SIGNATORY_MASTER_SHEET);
+            return ss.getSheetByName(SIGNATORY_MASTER_SHEET);
         }
         throw e;
     }
@@ -1258,7 +1290,7 @@ function getOrCreateLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(LOG_SHEET_NAME);
+            return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -1302,21 +1334,25 @@ function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
                 
                 // I-check lang ang mga logs na tugma sa SFC, Shift, at Buwan
        
+                
                 if (logRefString.includes(sfcRef) && logRefString.includes(shift) && logRefString.includes(currentMonthShort)) {
                     const parts = logRefString.split('-');
                     
                     if (parts.length === 5) { // Hal. [SFC, Period, Shift, Group, Version]
-           
+    
+        
                         const groupPart = parts[3]; // e.g., "G1"
                          const numericPart = parseInt(groupPart.replace(/[^\d]/g, ''), 10);
                          
-                         
+        
+                          
                         if (!isNaN(numericPart) && numericPart > maxGroupNumber) {
                              maxGroupNumber = numericPart;
-                             // Kuhanin ang base parts: SFC-Period-Shift (para gamitin sa final reference)
+                      
+                            // Kuhanin ang base parts: SFC-Period-Shift (para gamitin sa final reference)
                         
                             baseRefParts = parts.slice(0, 3);
-                         }
+                        }
                     }
                 }
             });
@@ -1382,6 +1418,7 @@ function recordPrintLogEntry(refNum, subProperty, signatories, sfcRef, contractI
             dateRange,     
             contractInfo.payor,
       
+            
             contractInfo.agency,
   
             subProperty,         
@@ -1491,6 +1528,7 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
 
         personnelIdsToUnlock.forEach(unlockId => {
        
+          
           const lockedIndex = updatedLockedIds.indexOf(unlockId);
           
           if (lockedIndex > -1) {
@@ -1498,6 +1536,7 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
              
              const unlockedPrefixId = `UNLOCKED:${unlockId}`;
              if (!updatedLockedIds.includes(unlockedPrefixId)) 
+    
              {
  
                 updatedLockedIds.push(unlockedPrefixId);
@@ -1507,6 +1546,7 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         });
         
         if (changed) {
+          
           const newLockedIdsString = updatedLockedIds.filter(id => id.length > 0).join(',');
           rangeToUpdate.push({
               row: rowNumInSheet,
@@ -1565,21 +1605,22 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds
     <hr style="margin: 10px 0;">
 
   
+    
     <h3 style="color: #1e40af;">Admin Action Required:</h3>
     
     <div style="margin-top: 15px;">
         <a href="${unlockUrl}" target="_blank" 
            style="background-color: #10b981; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold;
-          margin-right: 10px;">
+           margin-right: 10px;">
            ✅ APPROVE & UNLOCK ALL (${personnelIds.length})
         </a>
         
   
         <a href="${rejectUrl}" target="_blank" 
           style="background-color: #f59e0b;
-          color: white; padding: 10px 20px; text-align: center;
+           color: white; padding: 10px 20px; text-align: center;
            text-decoration: none; display: inline-block; border-radius: 5px;
-          font-weight: bold;">
+           font-weight: bold;">
            ❌ REJECT (Log Only)
         </a>
     </div>
@@ -1598,6 +1639,7 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds
     Logger.log(`[requestUnlockEmailNotification] Sent request email for ${personnelIds.length} IDs to ${adminEmails}`);
     return { success: true, message: `Unlock request sent to Admin(s): ${adminEmails} for ${personnelIds.length} IDs.` };
   
+    
     } catch (e) {
     Logger.log(`[requestUnlockEmailNotification] Failed to send email: ${e.message}`);
     return { success: false, message: `WARNING: Failed to send request email. Error: ${e.message}` };
