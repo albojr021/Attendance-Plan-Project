@@ -1220,106 +1220,64 @@ function getNextReferenceNumber(logSheet) {
     return maxRef + 1;
 }
 
-// MODIFIED: This function now returns the calculated PRINT VERSION string for the printout.
 function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
         const logSheet = getOrCreateLogSheet(ss);
         
-        const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
-        // Safely read Plan Sheet data
-        const planSheetLastRow = planSheet.getLastRow();
-        if (planSheetLastRow < PLAN_HEADER_ROW) throw new Error("Plan Sheet contains no data rows.");
-        const planValues = planSheet.getRange(PLAN_HEADER_ROW, 1, planSheetLastRow - PLAN_HEADER_ROW + 1, planSheet.getLastColumn()).getDisplayValues();
-        const headers = planValues[0];
-        const dataRows = planValues.slice(1);
-        
-        const sfcRefIndex = headers.indexOf('CONTRACT #');
-        const monthIndex = headers.indexOf('MONTH');
-        const yearIndex = headers.indexOf('YEAR');
-        const shiftIndex = headers.indexOf('PERIOD / SHIFT');
-        const printVersionIndex = headers.indexOf('PRINT VERSION');
-        
-        if (printVersionIndex === -1) throw new Error("Missing PRINT VERSION column in Consolidated Plan Sheet.");
-
-        const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' }); 
-        const targetYear = String(year);
-
-        let maxVersion = 0;
-        let latestPrintVersionString = '';
-        
-        // 1. Find the highest saved version (including minor, e.g., 1.1) for this period/shift
-        dataRows.forEach(row => {
-            const currentSfc = String(row[sfcRefIndex] || '').trim();
-            const currentMonth = String(row[monthIndex] || '').trim();
-            const currentYear = String(row[yearIndex] || '').trim();
-            const currentShift = String(row[shiftIndex] || '').trim();
-            
-            if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift) {
-                 const printVersionString = String(row[printVersionIndex] || '').trim();
-                 const versionParts = printVersionString.split('-');
-                 const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
-                 
-                 if (version > maxVersion) {
-                     maxVersion = version;
-                     latestPrintVersionString = printVersionString;
-                 }
-            }
-        });
-        
-        if (maxVersion === 0) {
-            // First time saving a version for this SFC/Period/Shift
-            const date = new Date(year, month, 1);
-            const monthYear = date.toLocaleString('en-US', { month: 'short' }) + date.getFullYear();
-            const defaultGroup = getNextGroupNumber(sfcRef, year, month, shift); // Should return G1
-            return `${sfcRef}-${monthYear}-${shift}-${defaultGroup}-1.0`; 
-        }
-
-        // 2. Generate the NEXT MAJOR Print Reference String (e.g., 1.1 -> 2.0, 2.0 -> 3.0)
-        
-        let maxPrintedMajorVersion = 0;
         const logSheetLastRow = logSheet.getLastRow();
         const numLogRows = logSheetLastRow > 1 ? logSheetLastRow - 1 : 0;
         
+        let maxGroupNumber = 0;
+        let baseRefParts = [];
+        
+        // 1. Hanapin ang Max Group Number mula sa PrintLog
         if (numLogRows > 0) {
-             // SAFELY read from row 2 up to the last data row
              const logValues = logSheet.getRange(2, 1, numLogRows, LOG_HEADERS.length).getDisplayValues();
              
              logValues.forEach(row => {
                 const logRefString = String(row[0] || '').trim();
                 const currentMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
                 
-                // Only check relevant reference strings based on current period and SFC
+                // I-check lang ang mga logs na tugma sa SFC, Shift, at Buwan
                 if (logRefString.includes(sfcRef) && logRefString.includes(shift) && logRefString.includes(currentMonthShort)) {
-                    // Split reference string (2308-Nov2025-1stHalf-G1-1.0)
                     const parts = logRefString.split('-');
-                    const version = parseFloat(parts[parts.length - 1]) || 0;
-                    const majorVersion = Math.floor(version);
                     
-                    if (majorVersion > maxPrintedMajorVersion) {
-                        maxPrintedMajorVersion = majorVersion;
+                    if (parts.length === 5) { // Hal. [SFC, Period, Shift, Group, Version]
+                         const groupPart = parts[3]; // e.g., "G1"
+                         const numericPart = parseInt(groupPart.replace(/[^\d]/g, ''), 10);
+                         
+                         if (!isNaN(numericPart) && numericPart > maxGroupNumber) {
+                             maxGroupNumber = numericPart;
+                             // Kuhanin ang base parts: SFC-Period-Shift (para gamitin sa final reference)
+                             baseRefParts = parts.slice(0, 3);
+                         }
                     }
                 }
             });
         }
         
-        // If maxPrintedMajorVersion is 0, the next version is 1.0. 
-        // If maxPrintedMajorVersion is 1 (from G1-1.0), the next version is 2.0.
-        const nextPrintMajorVersion = (maxPrintedMajorVersion + 1.0).toFixed(1);
-
-        const parts = latestPrintVersionString.split('-');
-        parts.pop(); // Remove the current minor version number (e.g., 1.1, 3.1)
+        // 2. I-calculate ang Next Group at Version
+        const nextGroupNumeric = maxGroupNumber + 1;
+        const nextGroup = `G${nextGroupNumeric}`;
+        const nextPrintVersion = '1.0'; // Laging 1.0 para sa bagong Group
         
-        // Final Reference uses the base of the latest saved version, but increments the major print version.
-        const finalPrintReference = `${parts.join('-')}-${nextPrintMajorVersion}`;
+        // 3. Kung walang nahanap na base, i-construct ang default base
+        if (baseRefParts.length === 0) {
+            const date = new Date(year, month, 1);
+            const monthYear = date.toLocaleString('en-US', { month: 'short' }) + date.getFullYear();
+            baseRefParts = [sfcRef, monthYear, shift];
+        }
 
-        Logger.log(`[logPrintAction] Calculated Print Reference String: ${finalPrintReference}.`);
+        // 4. I-construct ang Final Print Reference String
+        const finalPrintReference = `${baseRefParts.join('-')}-${nextGroup}-${nextPrintVersion}`;
         
-        return finalPrintReference; // Return the new string reference (e.g., 2308-Nov2025-1stHalf-G1-1.0 or G1-2.0)
+        Logger.log(`[logPrintAction] Calculated Print Reference String (New Group Logic): ${finalPrintReference}.`);
+        
+        return finalPrintReference;
         
     } catch (e) {
         Logger.log(`[logPrintAction] FATAL ERROR: ${e.message}`);
-        // Re-throw the error with a more specific message
         throw new Error(`Failed to generate print reference string. Error: ${e.message}`);
     }
 }
