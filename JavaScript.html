@@ -533,9 +533,40 @@ function handleBulkUnlockRequest() {
 
   // --- UI HANDLERS ---
 
-  function toggleLoading(isLoading) {
-    document.getElementById('loading-alert').classList.toggle('hidden', !isLoading);
+  // NEW: Function to control the full-screen overlay and button blocking
+  function toggleUiLock(isLocked, message = 'Processing...') {
+    const overlay = document.getElementById('full-screen-overlay');
+    const overlayMessage = document.getElementById('overlay-message');
+    const loadingAlert = document.getElementById('loading-alert');
+    
+    if (isLocked) {
+        overlayMessage.textContent = message;
+        overlay.classList.remove('hidden');
+        // Keep the old loading alert for compatibility/status (hide if not 'Loading initial data')
+        if (!message.toLowerCase().includes('loading')) {
+             loadingAlert.classList.add('hidden');
+        }
+    } else {
+        overlay.classList.add('hidden');
+        loadingAlert.classList.add('hidden');
+    }
   }
+
+  // UPDATED: Renaming and refactoring the old toggleLoading to use the new UiLock for synchronous tasks.
+  function toggleLoading(isLoading, message = 'Loading initial data from Google Sheet...') {
+    const loadingAlert = document.getElementById('loading-alert');
+    
+    if (isLoading) {
+        // Only show the prominent alert/lock for critical/synchronous tasks
+        loadingAlert.querySelector('p:first-child').textContent = message;
+        loadingAlert.classList.remove('hidden');
+        toggleUiLock(true, message); // Use the new lock for blocking
+    } else {
+        loadingAlert.classList.add('hidden');
+        toggleUiLock(false); 
+    }
+  }
+
 
   function showNotification(message, isSuccess = true) {
     const notification = document.getElementById('notification-area');
@@ -559,7 +590,7 @@ function handleBulkUnlockRequest() {
   function handleError(error) {
     console.error("APPS SCRIPT ERROR:", error);
     showNotification(`Error: ${error.message || 'An unknown error occurred in the script.'}`, false);
-    toggleLoading(false);
+    toggleLoading(false); // Make sure to unlock the UI
   }
   
   // --- NEW: RELOAD PLAN HELPER ---
@@ -617,7 +648,7 @@ function handleBulkUnlockRequest() {
           .on('select2:unselect', handleSelect2Change) 
           .on('change', handleSelect2Change); 
 
-        toggleLoading(false);
+        toggleLoading(false); // Unload the initial loading screen
         
         const picker = $('#month-year-picker');
         
@@ -690,7 +721,7 @@ function handleBulkUnlockRequest() {
     if (groupInput) {
         currentGroup = groupInput.value.trim().toUpperCase();
         // Set group input to G1 by default on load, but it's now editable/managed by logic.
-        groupInput.value = currentGroup; 
+        groupInput.value = 'G1'; 
     }
   }
 
@@ -752,7 +783,7 @@ function displayContractDetails(contract) {
 
 // NEW: Function to check if the plan sheets already exist
 function checkIfPlanExists(sfcRef) {
-    toggleLoading(true);
+    toggleLoading(true, 'Checking plan sheet existence...');
     
     const currentYear = currentPlanningDate.getFullYear();
     const currentMonth = currentPlanningDate.getMonth();
@@ -795,10 +826,6 @@ function checkIfPlanExists(sfcRef) {
 
 // NEW: Handles the response from checkContractSheets
 function handlePlanExistence(exists) {
-    toggleLoading(true); // Keep loading until data handler runs
-    const planArea = document.getElementById('planning-area');
-    const actionArea = document.getElementById('plan-action-area');
-    const statusText = document.getElementById('plan-status-text');
     const sfcRef = currentContract ? currentContract.sfcRef : null;
 
     const currentYear = currentPlanningDate.getFullYear();
@@ -807,12 +834,10 @@ function handlePlanExistence(exists) {
     updatePlanPeriodDisplay(currentYear, currentMonth, currentShift); 
     updateDatePickerDisplay(currentYear, currentMonth); 
 
-    actionArea.classList.add('hidden'); 
-
-    // REMOVED: Unnecessary call to fetchNextGroupNumberAndSetUI() here, as it incorrectly increments the Group input when loading existing data.
+    document.getElementById('plan-action-area').classList.add('hidden'); 
 
     // Since the sheet is consolidated, it always 'exists' if it's been initialized once.
-    statusText.textContent = 'Attendance Plan Status: Loading Consolidated Plan Data...';
+    document.getElementById('plan-status-text').textContent = 'Attendance Plan Status: Loading Consolidated Plan Data...';
     fetchAttendanceData(sfcRef); 
     
     // NEW: Always set the Group input to G1 by default when loading data (if it exists)
@@ -839,10 +864,6 @@ function showBlankPlan() {
     pendingAttendanceChanges = {}; 
     pendingEmployeeInfoChanges = {}; 
     
-    // CRITICAL: Fetch the next group number ONLY on blank plan load 
-    // NOTE: This call is now redundant for the display since the UI is gone/defaulted, but we keep it here for initial future logic if needed.
-    // We will rely on the save function to calculate the batch number now.
-    
     document.getElementById('planning-area').classList.remove('hidden'); 
     showNotification('Ready to plan. No existing data found for this period. Changes will be saved as V1.0.', true);
 
@@ -855,7 +876,7 @@ function showBlankPlan() {
 
 
 function fetchAttendanceData(sfcRef) {
-    toggleLoading(true);
+    toggleLoading(true, 'Fetching existing plan data...');
     pendingAttendanceChanges = {}; 
     pendingEmployeeInfoChanges = {}; 
     
@@ -1023,7 +1044,16 @@ function handleAttendanceData(data) {
          }
     });
 
-    const maxRenderedRows = Math.max(currentContract.headCount, rowsToRender.length);
+    // NEW LOGIC: Sort rowsToRender alphabetically by name
+    rowsToRender.sort((a, b) => {
+        const nameA = (a.name || '').toUpperCase();
+        const nameB = (b.name || '').toUpperCase();
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        return 0;
+    });
+
+    const maxRenderedRows = Math.max(currentContract?.headCount || 0, rowsToRender.length);
     
     rowsToRender = rowsToRender.map((emp, index) => ({
         ...emp,
@@ -1915,8 +1945,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
         return;
     }
     
-    toggleLoading(true);
-    showNotification('Preparing save batch. Checking for next available Group ID...', true);
+    toggleLoading(true, 'Preparing save batch. Checking for next available Group ID...');
 
     // 1. Get the next available Group Number from the server
     google.script.run
@@ -2105,6 +2134,7 @@ function continueSaveProcess(groupNumber) {
 
 
     // 3. Final Save Call
+    toggleUiLock(true, 'Saving all changes to Google Sheets. Please wait...');
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
@@ -2123,6 +2153,7 @@ function continueSaveProcess(groupNumber) {
       }
       
       reloadPlanAndCheckExistence(); 
+      toggleUiLock(false); 
   }
 
   function handleSaveAllError(error) {
@@ -2567,7 +2598,7 @@ function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selec
         headCount: currentContract.headCount
     };
 
-    toggleLoading(true);
+    toggleLoading(true, 'Generating Print Reference and Locking Schedules...');
 
     google.script.run
         .withSuccessHandler((refNum) => {
@@ -2683,6 +2714,7 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
 
         const handleOk = () => {
             
+            toggleUiLock(true, 'Confirming print log and locking schedules...');
             google.script.run
                 .withSuccessHandler(() => {
                     console.log(`Successfully recorded print log entry #${refNum} and locked IDs.`);
