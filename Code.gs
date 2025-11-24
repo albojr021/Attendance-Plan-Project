@@ -60,7 +60,7 @@ function include(filename) {
 
 function sanitizeHeader(header) {
     if (!header) return '';
-    return String(header).replace(/[^A-Za-z0-9#\/]/g, '');
+    return String(header).replace(/[^A-Za-z00-9#\/]/g, '');
 }
 
 function getSheetData(spreadsheetId, sheetName) {
@@ -318,7 +318,7 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
     const numRowsToRead = lastRow - PLAN_HEADER_ROW;
     const numColumns = planSheet.getLastColumn();
     if (numRowsToRead <= 0 || numColumns < (PLAN_FIXED_COLUMNS + 3)) return {};
-    const planValues = planSheet.getRange(PLAN_HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
+    const planValues = planSheet.getRange(PLAN_HEADER_ROW, 1, lastRow - PLAN_HEADER_ROW + 1, numColumns).getDisplayValues();
     const headers = planValues[0];
     const dataRows = planValues.slice(1);
     const personnelIdIndex = headers.indexOf('Personnel ID');
@@ -406,6 +406,7 @@ function getLockedPersonnelIds(ss, planSheetName) {
 
     const REF_NUM_COL = 1;
     const LOCKED_IDS_COL = LOG_HEADERS.length;
+    // NOTE: This assumes Reference # is the string version after this change.
     const values = logSheet.getRange(2, 1, lastRow - 1, LOCKED_IDS_COL).getDisplayValues();
     const lockedIdRefMap = {};
     values.forEach(row => {
@@ -436,15 +437,16 @@ function getHistoricalReferenceMap(ss, planSheetName) {
     const logSheet = ss.getSheetByName('PrintLog');
     if (!logSheet || logSheet.getLastRow() < 2) return {};
 
-    const LOG_HEADERS_COUNT = 11; 
+    const LOG_HEADERS_COUNT = LOG_HEADERS.length; 
     const REF_NUM_COL = 1;              
     const LOCKED_IDS_COL = LOG_HEADERS.length;
     const allValues = logSheet.getRange(2, 1, logSheet.getLastRow() - 1, LOG_HEADERS_COUNT).getDisplayValues();
     const historicalRefMap = {};
     for (let i = allValues.length - 1; i >= 0; i--) {
         const row = allValues[i];
+        // Reference # column (now storing the print version string)
         const refNumRaw = String(row[REF_NUM_COL - 1] || '').trim();
-        const refNum = refNumRaw.padStart(6, '0');
+        const refNum = refNumRaw;
         const lockedIdsString = String(row[LOCKED_IDS_COL - 1] || '').trim(); 
         
         if (refNum) {
@@ -489,7 +491,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
         return { employees: [], planMap: {}, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap };
     }
 
-    const planValues = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
+    const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - PLAN_HEADER_ROW + 1, numColumns).getDisplayValues();
     const headers = planValues[0];
     const dataRows = planValues.slice(1);
     
@@ -721,8 +723,8 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift 
     && id) {
             const printVersionString = String(row[printVersionIndex] || '').trim();
-            const versionParts = printVersionString.split('-').pop();
-            const version = parseFloat(versionParts) || 0; 
+            const versionParts = printVersionString.split('-');
+            const version = parseFloat(versionParts[versionParts.length - 1]) || 0; 
             
             const existingRow = latestVersionMap[id];
             if (!existingRow || version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) || 0)) {
@@ -765,7 +767,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         const empDetails = masterEmployeeMap[personnelId] || { name: 'N/A', position: '', area: '' };
 
         
-        let nextGroupToUse = group; // Default to the group passed from the client input 
+        let nextGroupToUse = group; // Default to the group passed from the client input (e.g., G2)
 
         // --- V1 Creation Logic ---
         if (!latestVersionRow) {
@@ -785,7 +787,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             newRow[monthIndex] = targetMonthShort;
             newRow[yearIndex] = targetYear;
             newRow[shiftIndex] = shift;
-            newRow[groupIndex] = nextGroupToUse; // Use the passed group for a new plan
+            newRow[groupIndex] = nextGroupToUse; // Use the passed group for a new plan (e.g., G2)
             newRow[referenceIndex] = '';
         // Blank on initial save
 
@@ -805,7 +807,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             // **NEW LOGIC START: Preserve the old GROUP number for versioning**
             const oldGroup = latestVersionRow[groupIndex]; 
             if (oldGroup && String(oldGroup).trim().toUpperCase() !== String(group).trim().toUpperCase()) {
-                 // Force use of the existing group found in the sheet if it's different from the new requested group
+                 // Force use of the existing group found in the sheet if it's different from the new requested group (e.g., use G1, ignore G2 from client)
                  Logger.log(`[savePlanBulk] WARNING: Overriding requested group ${group} with existing group ${oldGroup} for versioning ID ${personnelId}.`);
                  nextGroupToUse = oldGroup;
             }
@@ -870,9 +872,9 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         
         // 5. If any change was detected, append the new row with incremented version
         if (isRowChanged) {
-            const nextVersion = (currentVersion + 1).toFixed(1);
+            const nextVersion = (currentVersion + 0.1).toFixed(1); // Keep minor increment for save tracking
             // Format: SFC Ref#-PlanPeriod-shift-group-version
-            // IMPORTANT: Use the determined nextGroupToUse here (which is usually the old group number)
+            // IMPORTANT: Use the determined nextGroupToUse here 
             const printVersionString = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${nextGroupToUse}-${nextVersion}`; 
             newRow[printVersionIndex] = printVersionString;
             rowsToAppend.push(newRow);
@@ -1193,13 +1195,15 @@ function getOrCreateLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-    return ss.getSheetByName(LOG_SHEET_NAME);
+            return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
     }
 }
 
 function getNextReferenceNumber(logSheet) {
+    // NOTE: This numerical index function is kept for backward compatibility, but
+    // the printing logic will now generate the reference string.
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return 1;
     const range = logSheet.getRange(2, 1, lastRow - 1, 1);
@@ -1207,7 +1211,8 @@ function getNextReferenceNumber(logSheet) {
     
     let maxRef = 0;
     refNumbers.forEach(row => {
-        const currentRef = parseInt(row[0]) || 0;
+        // We rely on the row index if the column cannot be parsed numerically
+        const currentRef = parseInt(row[0].toString().replace(/[^\d]/g, '')) || 0;
         if (currentRef > maxRef) {
             maxRef = currentRef;
         }
@@ -1215,50 +1220,142 @@ function getNextReferenceNumber(logSheet) {
     return maxRef + 1;
 }
 
+// MODIFIED: This function now returns the calculated PRINT VERSION string for the printout.
 function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    const logSheet = getOrCreateLogSheet(ss);
+        const logSheet = getOrCreateLogSheet(ss);
         
-        const nextRefNum = getNextReferenceNumber(logSheet);
-        const paddedRefNum = String(nextRefNum).padStart(6, '0');
-    Logger.log(`[logPrintAction] Generated Print Reference Number: ${paddedRefNum} for ${sfcRef}.`);
-        return paddedRefNum;
+        const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
+        // Safely read Plan Sheet data
+        const planSheetLastRow = planSheet.getLastRow();
+        if (planSheetLastRow < PLAN_HEADER_ROW) throw new Error("Plan Sheet contains no data rows.");
+        const planValues = planSheet.getRange(PLAN_HEADER_ROW, 1, planSheetLastRow - PLAN_HEADER_ROW + 1, planSheet.getLastColumn()).getDisplayValues();
+        const headers = planValues[0];
+        const dataRows = planValues.slice(1);
+        
+        const sfcRefIndex = headers.indexOf('CONTRACT #');
+        const monthIndex = headers.indexOf('MONTH');
+        const yearIndex = headers.indexOf('YEAR');
+        const shiftIndex = headers.indexOf('PERIOD / SHIFT');
+        const printVersionIndex = headers.indexOf('PRINT VERSION');
+        
+        if (printVersionIndex === -1) throw new Error("Missing PRINT VERSION column in Consolidated Plan Sheet.");
+
+        const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' }); 
+        const targetYear = String(year);
+
+        let maxVersion = 0;
+        let latestPrintVersionString = '';
+        
+        // 1. Find the highest saved version (including minor, e.g., 1.1) for this period/shift
+        dataRows.forEach(row => {
+            const currentSfc = String(row[sfcRefIndex] || '').trim();
+            const currentMonth = String(row[monthIndex] || '').trim();
+            const currentYear = String(row[yearIndex] || '').trim();
+            const currentShift = String(row[shiftIndex] || '').trim();
+            
+            if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift) {
+                 const printVersionString = String(row[printVersionIndex] || '').trim();
+                 const versionParts = printVersionString.split('-');
+                 const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
+                 
+                 if (version > maxVersion) {
+                     maxVersion = version;
+                     latestPrintVersionString = printVersionString;
+                 }
+            }
+        });
+        
+        if (maxVersion === 0) {
+            // First time saving a version for this SFC/Period/Shift
+            const date = new Date(year, month, 1);
+            const monthYear = date.toLocaleString('en-US', { month: 'short' }) + date.getFullYear();
+            const defaultGroup = getNextGroupNumber(sfcRef, year, month, shift); // Should return G1
+            return `${sfcRef}-${monthYear}-${shift}-${defaultGroup}-1.0`; 
+        }
+
+        // 2. Generate the NEXT MAJOR Print Reference String (e.g., 1.1 -> 2.0, 2.0 -> 3.0)
+        
+        let maxPrintedMajorVersion = 0;
+        const logSheetLastRow = logSheet.getLastRow();
+        const numLogRows = logSheetLastRow > 1 ? logSheetLastRow - 1 : 0;
+        
+        if (numLogRows > 0) {
+             // SAFELY read from row 2 up to the last data row
+             const logValues = logSheet.getRange(2, 1, numLogRows, LOG_HEADERS.length).getDisplayValues();
+             
+             logValues.forEach(row => {
+                const logRefString = String(row[0] || '').trim();
+                const currentMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
+                
+                // Only check relevant reference strings based on current period and SFC
+                if (logRefString.includes(sfcRef) && logRefString.includes(shift) && logRefString.includes(currentMonthShort)) {
+                    // Split reference string (2308-Nov2025-1stHalf-G1-1.0)
+                    const parts = logRefString.split('-');
+                    const version = parseFloat(parts[parts.length - 1]) || 0;
+                    const majorVersion = Math.floor(version);
+                    
+                    if (majorVersion > maxPrintedMajorVersion) {
+                        maxPrintedMajorVersion = majorVersion;
+                    }
+                }
+            });
+        }
+        
+        // If maxPrintedMajorVersion is 0, the next version is 1.0. 
+        // If maxPrintedMajorVersion is 1 (from G1-1.0), the next version is 2.0.
+        const nextPrintMajorVersion = (maxPrintedMajorVersion + 1.0).toFixed(1);
+
+        const parts = latestPrintVersionString.split('-');
+        parts.pop(); // Remove the current minor version number (e.g., 1.1, 3.1)
+        
+        // Final Reference uses the base of the latest saved version, but increments the major print version.
+        const finalPrintReference = `${parts.join('-')}-${nextPrintMajorVersion}`;
+
+        Logger.log(`[logPrintAction] Calculated Print Reference String: ${finalPrintReference}.`);
+        
+        return finalPrintReference; // Return the new string reference (e.g., 2308-Nov2025-1stHalf-G1-1.0 or G1-2.0)
+        
     } catch (e) {
         Logger.log(`[logPrintAction] FATAL ERROR: ${e.message}`);
-    throw new Error(`Failed to generate print reference number. Error: ${e.message}`);
+        // Re-throw the error with a more specific message
+        throw new Error(`Failed to generate print reference string. Error: ${e.message}`);
     }
 }
 
 
+// MODIFIED: This function now logs the PRINT VERSION string into the 'Reference #' column (Column A).
 function recordPrintLogEntry(refNum, subProperty, signatories, sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
+    // refNum now contains the PRINT VERSION string, e.g., "2308-Nov2025-1stHalf-G1-2.0"
+    
     if (!refNum) {
-        Logger.log(`[recordPrintLogEntry] ERROR: No Reference Number provided.`);
-    return;
+        Logger.log(`[recordPrintLogEntry] ERROR: No Reference String provided.`);
+        return;
     }
     
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    const logSheet = getOrCreateLogSheet(ss);
+        const logSheet = getOrCreateLogSheet(ss);
 
         updateSignatoryMaster(signatories);
 
         const planSheetName = PLAN_SHEET_NAME; 
         
         const date = new Date(year, month, 1);
-    const monthName = date.toLocaleString('en-US', { month: 'long' });
+        const monthName = date.toLocaleString('en-US', { month: 'long' });
         const yearNum = date.getFullYear();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
         
         let dateRange = '';
-    if (shift === '1stHalf') {
+        if (shift === '1stHalf') {
             dateRange = `${monthName} 1-15, ${yearNum} (${shift})`;
-    } else {
+        } else {
             dateRange = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
-    }
+        }
         
         const logEntry = [
-            refNum, 
+            refNum, // Use the new string reference here (e.g., 2308-Nov2025-1stHalf-G1-2.0)
             sfcRef,
             planSheetName, 
             dateRange,     
@@ -1271,17 +1368,20 @@ function recordPrintLogEntry(refNum, subProperty, signatories, sfcRef, contractI
             new Date(),
             printedPersonnelIds.join(',') 
         ];
-    const lastLoggedRow = logSheet.getLastRow();
+        const lastLoggedRow = logSheet.getLastRow();
         const newRow = lastLoggedRow + 1;
         const LOCKED_IDS_COL = LOG_HEADERS.length;
-    const logEntryRange = logSheet.getRange(newRow, 1, 1, LOG_HEADERS.length);
+        const logEntryRange = logSheet.getRange(newRow, 1, 1, LOG_HEADERS.length);
+        
+        // Ensure first column (Reference #) is set to plain text to hold the string
+        logEntryRange.getCell(1, 1).setNumberFormat('@'); 
         logEntryRange.getCell(1, LOCKED_IDS_COL).setNumberFormat('@');
-        logEntryRange.getCell(1, 1).setNumberFormat('@');
         logEntryRange.setValues([logEntry]);
         logSheet.getRange(newRow, 1, 1, LOG_HEADERS.length).setHorizontalAlignment('left');
-    Logger.log(`[recordPrintLogEntry] Logged and Locked ${printedPersonnelIds.length} IDs for Ref# ${refNum} in ${planSheetName}.`);
+
+        Logger.log(`[recordPrintLogEntry] Logged and Locked ${printedPersonnelIds.length} IDs using Reference String ${refNum}.`);
     } catch (e) {
-        Logger.log(`[recordPrintLogEntry] FATAL ERROR: Failed to log print action #${refNum}. Error: ${e.message}`);
+        Logger.log(`[recordPrintLogEntry] FATAL ERROR: Failed to log print action ${refNum}. Error: ${e.message}`);
     }
 }
 
