@@ -150,7 +150,7 @@ function createContractSheets(sfcRef, year, month, shift) {
     // --- CONSOLIDATED ATTENDANCE PLAN SHEET ---
     let planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     const getConsolidatedPlanHeaders = () => {
-        // Total 33 Columns (17 fixed info + 16 days) <-- UPDATED FOR DAY1-DAY16
+        // Total 33 Columns (17 fixed info + 16 days) 
         const base = [
             'CONTRACT #', 'TOTAL HEADCOUNT', 'PROP OR GRP CODE', 'SERVICE TYPE', 
             'SECTOR', 'PAYOR COMPANY', 'AGENCY', 'MONTH', 'YEAR', 
@@ -765,9 +765,10 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         const empDetails = masterEmployeeMap[personnelId] || { name: 'N/A', position: '', area: '' };
 
         
+        let nextGroupToUse = group; // Default to the group passed from the client input 
+
         // --- V1 Creation Logic ---
         if (!latestVersionRow) {
-     
             const planHeadersCount = headers.length; 
             
             newRow = Array(planHeadersCount).fill('');
@@ -784,7 +785,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             newRow[monthIndex] = targetMonthShort;
             newRow[yearIndex] = targetYear;
             newRow[shiftIndex] = shift;
-            newRow[groupIndex] = group;
+            newRow[groupIndex] = nextGroupToUse; // Use the passed group for a new plan
             newRow[referenceIndex] = '';
         // Blank on initial save
 
@@ -801,8 +802,17 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             const versionString = latestVersionRow[printVersionIndex].split('-').pop();
             currentVersion = parseFloat(versionString) || 0; 
 
-            // IMPORTANT: Update Group number if it changed in the new save
-            newRow[groupIndex] = group;
+            // **NEW LOGIC START: Preserve the old GROUP number for versioning**
+            const oldGroup = latestVersionRow[groupIndex]; 
+            if (oldGroup && String(oldGroup).trim().toUpperCase() !== String(group).trim().toUpperCase()) {
+                 // Force use of the existing group found in the sheet if it's different from the new requested group
+                 Logger.log(`[savePlanBulk] WARNING: Overriding requested group ${group} with existing group ${oldGroup} for versioning ID ${personnelId}.`);
+                 nextGroupToUse = oldGroup;
+            }
+            // **NEW LOGIC END**
+
+            // IMPORTANT: Update Group number in the row to the chosen group (usually the old one)
+            newRow[groupIndex] = nextGroupToUse; 
             // IMPORTANT: Update Employee Info (Name/Position/Area) to latest master data 
             newRow[nameIndex] = empDetails.name;
             newRow[positionIndex] = empDetails.position;
@@ -862,7 +872,8 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         if (isRowChanged) {
             const nextVersion = (currentVersion + 1).toFixed(1);
             // Format: SFC Ref#-PlanPeriod-shift-group-version
-            const printVersionString = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${group}-${nextVersion}`;
+            // IMPORTANT: Use the determined nextGroupToUse here (which is usually the old group number)
+            const printVersionString = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${nextGroupToUse}-${nextVersion}`; 
             newRow[printVersionIndex] = printVersionString;
             rowsToAppend.push(newRow);
         }
