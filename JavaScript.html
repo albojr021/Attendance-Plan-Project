@@ -908,8 +908,10 @@ function handleAttendanceData(data) {
 
     updateDatePickerDisplay(year, month); 
 
-    const startDay = selectedShift === '1stHalf' ? 1 : 16;
-    const endDay = selectedShift === '1stHalf' ? 15 : daysInMonth;
+    // UPDATED LOGIC FOR DAY1-DAY16 COLUMN MAPPING
+    const startColIndex = 1;
+    const endColIndex = 16;
+    const startDayOfMonth = selectedShift === '1stHalf' ? 1 : 16;
     
     const lockedIds = Object.keys(lockedIdRefMap);
 
@@ -955,7 +957,15 @@ function handleAttendanceData(data) {
 
 
     // Date/Day Headers (Starts at index 5)
-    for (let d = startDay; d <= endDay; d++) {
+    // NEW: Loop through column index (1-16) and calculate the actual day (d)
+    for (let colIndex = startColIndex; colIndex <= endColIndex; colIndex++) {
+        const d = startDayOfMonth + colIndex - 1; // Actual Day of the Month
+
+        if (d > daysInMonth) continue; // Skip if actual day exceeds max days in month (e.g., Nov 31)
+        
+        // **NEW FIX: Stop 1st Half at 15**
+        if (selectedShift === '1stHalf' && d > 15) continue; // <--- ADDED LINE
+        
         const dayOfMonth = new Date(year, month, d);
         const dayName = dayNames[dayOfMonth.getDay()];
         const dateColWidth = '70px';
@@ -966,6 +976,7 @@ function handleAttendanceData(data) {
         th.style.width = dateColWidth;
         th.style.minWidth = dateColWidth;
         th.className = 'text-xs font-semibold uppercase tracking-wider p-1 text-center border-r border-b bg-gray-100'; 
+        // Display the actual day (d)
         th.innerHTML = `<span>${d}</span><span class="block font-medium text-[10px] uppercase text-gray-500">${monthName}</span>`; 
         headerRow1.appendChild(th);
         
@@ -1069,7 +1080,7 @@ function handleAttendanceData(data) {
             deleteButton.className = `action-icon p-1 text-red-600 hover:bg-red-200 transition duration-150 delete-row-btn rounded-full ${isMarkedForDeletion ? 'bg-red-400' : ''} ${isDeleteDisabled ? 'cursor-not-allowed opacity-40' : ''}`; 
             deleteButton.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 0 00-1 1v3M4 7h16" />
                 </svg>
             `;
             deleteButton.dataset.stableKey = stableLookupKey;
@@ -1190,8 +1201,16 @@ function handleAttendanceData(data) {
         // 2. Attendance Plan Cells (Dynamic Dates) - Starts at index 5
         const currentPersonnelId = displayId; 
         let hasScheduleForShift = false; 
+        
+        // NEW LOGIC: Loop through column index (1-16) and calculate the actual day (d)
+        for (let colIndex = startColIndex; colIndex <= endColIndex; colIndex++) {
+            const d = startDayOfMonth + colIndex - 1; // Actual Day of the Month
 
-        for (let d = startDay; d <= endDay; d++) {
+            if (d > daysInMonth) continue; // Skip if actual day exceeds max days in month
+            
+            // **NEW FIX: Stop 1st Half at 15**
+            if (selectedShift === '1stHalf' && d > 15) continue; // <--- ADDED LINE
+            
             const dayKeyUnpadded = `${year}-${month + 1}-${d}`;
             
             const trimmedCurrentId = currentPersonnelId.toString().trim();
@@ -1256,11 +1275,27 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     
     const originalId = rowElement.dataset.stableKey.startsWith('TEMP_') ? '' : rowElement.dataset.stableKey;
 
-    rowElement.querySelectorAll('.cell-container').forEach(cellElement => {
-        const dayKey = cellElement.dataset.dayKey; 
+    // UPDATED LOGIC: Loop through column index (1-16)
+    const startColIndex = 1;
+    const endColIndex = 16;
+    const startDayOfMonth = currentShift === '1stHalf' ? 1 : 16;
+    const daysInMonth = getDaysInMonth(year, month);
+    
+    rowElement.querySelectorAll('.cell-container').forEach((cellElement, cellColIndex) => {
         
-        const [y, m, d] = dayKey.split('-').map(Number);
-        const date = new Date(y, m - 1, d); 
+        // Calculate the actual day based on the cell's position relative to the 6th column (index 5)
+        const colIndex = cellColIndex + 1; // 1 to 16
+        const d = startDayOfMonth + colIndex - 1; 
+
+        if (d > daysInMonth) return; // Skip if actual day exceeds max days in month
+
+        // **NEW FIX: Stop 1st Half at 15**
+        if (currentShift === '1stHalf' && d > 15) return; // <--- ADDED LINE
+
+        const dayKey = `${year}-${month + 1}-${d}`; 
+        
+        const [y, m, day] = dayKey.split('-').map(Number);
+        const date = new Date(y, m - 1, day); 
         const dayOfWeek = date.getDay(); 
         
         const newStatus = patternMap[dayOfWeek.toString()] || ''; 
@@ -1565,7 +1600,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
                   
                   row.querySelectorAll('.cell-container').forEach(cell => {
                        const dayKey = cell.dataset.dayKey;
-                       updateCellVisuals(cell, '', dayKey); 
+                       updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
                   });
                   showNotification('Personnel info and schedule cleared locally as Personnel ID was made blank.', false);
                   checkPlanSheetLockState(); 
@@ -2188,7 +2223,6 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     });
     return rowsToHide;
   }
-  // --- END DYNAMIC ROW FILTERING ---
   
   // --- NEW FUNCTION: Sequential Numbering and Hiding ---
 
@@ -2965,6 +2999,15 @@ function saveBulkSchedule(event, fixedStatusValue) {
 // --- NEW HELPER: Get Row Schedule Status ---
 function getRowScheduleStatus(row, currentShift) {
     let hasActualSchedule = false;
+    
+    // UPDATED LOGIC: Loop through column index (1-16)
+    const startColIndex = 1;
+    const endColIndex = 16;
+    const year = currentPlanningDate.getFullYear();
+    const month = currentPlanningDate.getMonth();
+    const startDayOfMonth = currentShift === '1stHalf' ? 1 : 16;
+    const daysInMonth = getDaysInMonth(year, month);
+    
 
     const idInput = row.querySelector('[data-field="id"]');
     const personnelId = (idInput?.value || '').trim();
@@ -2972,12 +3015,24 @@ function getRowScheduleStatus(row, currentShift) {
 
     if (!personnelId) return { id: null, isPrintable: false };
 
-    row.querySelectorAll('.cell-container').forEach(cell => {
-        const dayKey = cell.dataset.dayKey;
-        const key = `${personnelId}_${dayKey}_${currentShift}`;
+    // Find the cell elements in the row
+    const cellElements = row.querySelectorAll('.cell-container');
+    
+    for(let colIndex = startColIndex; colIndex <= endColIndex; colIndex++) {
+        const d = startDayOfMonth + colIndex - 1; 
+        if (d > daysInMonth) continue; 
+        
+        // **NEW FIX: Stop 1st Half at 15**
+        if (currentShift === '1stHalf' && d > 15) continue; // <--- ADDED LINE
+
+        const dayKey = `${year}-${month + 1}-${d}`;
         const originalKey = `${originalId}_${dayKey}_${currentShift}`;
         
-        let status = pendingAttendanceChanges[key];
+        // Find the cell that corresponds to this column index (index 0 maps to colIndex 1)
+        const cell = cellElements[colIndex - 1]; 
+        if (!cell) continue;
+
+        let status = pendingAttendanceChanges[`${personnelId}_${dayKey}_${currentShift}`];
         
         if (status === undefined) {
              status = currentContract.planMap[originalKey] || '';
@@ -2985,10 +3040,11 @@ function getRowScheduleStatus(row, currentShift) {
         
         status = status.toString().trim();
 
-        if (status && status !== 'NA' && status !== 'DELETED') {
+        if (status && status !== 'NA' && status !== 'DELETED' && status !== 'LOCKED') {
             hasActualSchedule = true;
+            break;
         }
-    });
+    }
 
     return { id: personnelId, isPrintable: hasActualSchedule };
 }
