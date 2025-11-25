@@ -96,37 +96,32 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
       </select>
       
       </div>
-
-    <div class="mb-4 flex items-center justify-between space-x-4 print-hidden">
+    <div class="mb-4 flex justify-end space-x-3 print-hidden">
         
-        <input type="text" id="schedule-search-input" placeholder="Search by Personnel ID or Name..." 
-               class="w-full max-w-md p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-blue-500 focus:border-blue-500 transition duration-150 shadow-sm">
+        <button id="request-unlock-modal-btn" onclick="openUnlockSelectionModal()" class="p-3 rounded-lg bg-purple-600 text-white font-extrabold text-lg hover:bg-purple-700 transition duration-150 shadow-lg flex items-center space-x-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
+            </svg>
+            <span>Request Unlock</span>
+        </button>
         
-        <div class="flex justify-end space-x-3">
-            <button id="request-unlock-modal-btn" onclick="openUnlockSelectionModal()" class="p-3 rounded-lg bg-purple-600 text-white font-extrabold text-lg hover:bg-purple-700 transition duration-150 shadow-lg flex items-center space-x-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
-                </svg>
-                <span>Request Unlock</span>
-            </button>
-            
-            <button id="start-bulk-select-btn" class="p-3 rounded-lg bg-yellow-600 text-white font-extrabold text-lg hover:bg-yellow-700 transition duration-150 shadow-lg flex items-center space-x-2">
-                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
-                </svg>
-                <span>Start Bulk Select</span>
-            </button>
-            <button id="print-plan-btn" class="p-3 rounded-lg bg-green-600 text-white font-extrabold text-lg hover:bg-green-700 transition duration-150 shadow-lg flex items-center space-x-2">
-                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m0 0l-1 3H4a2 2 0 00-2 2v2a2 2 0 002 2h16a2 2 0 002-2v-2a2 2 0 00-2-2h-3l-1-3m0-8h.01M16 7h.01M12 21v-4a2 2 0 00-2-2h-4a2 2 0 00-2 2v4h16z" />
-                </svg>
-                <span>Print Plan</span>
-            </button>
-            
-            
-            <button id="save-all-changes-btn" class="p-3 rounded-lg bg-red-600 text-white font-extrabold text-lg hover:bg-red-700 transition duration-150 shadow-lg">Save All Changes to Sheets</button>
-        </div>
+        <button id="start-bulk-select-btn" class="p-3 rounded-lg bg-yellow-600 text-white font-extrabold text-lg hover:bg-yellow-700 transition duration-150 shadow-lg flex items-center space-x-2">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
+            </svg>
+            <span>Start Bulk Select</span>
+        </button>
+        <button id="print-plan-btn" class="p-3 rounded-lg bg-green-600 text-white font-extrabold text-lg hover:bg-green-700 transition duration-150 shadow-lg flex items-center space-x-2">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m0 0l-1 3H4a2 2 0 00-2 2v2a2 2 0 002 2h16a2 2 0 002-2v-2a2 2 0 00-2-2h-3l-1-3m0-8h.01M16 7h.01M12 21v-4a2 2 0 00-2-2h-4a2 2 0 00-2 2v4h16z" />
+            </svg>
+            <span>Print Plan</span>
+        </button>
+        
+        
+        <button id="save-all-changes-btn" class="p-3 rounded-lg bg-red-600 text-white font-extrabold text-lg hover:bg-red-700 transition duration-150 shadow-lg">Save All Changes to Sheets</button>
     </div>
+    
     <div id="legend-area" class="card mb-4 p-4 print-hidden"> 
       <h3 class="text-lg font-semibold mb-2 text-gray-700">Legend:</h3>
       <div class="flex flex-wrap gap-4 text-sm">
@@ -259,42 +254,23 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
                 <label for="signatory-prepared-by" class="block text-sm font-medium text-gray-700 mb-1">Prepared By: (Required)</label>
                 <input type="text" id="signatory-prepared-by" list="employee-name-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="PERSONNEL NAME" required>
                 <p class="text-xs text-gray-500 mt-1">Personnel Name (from Employee List)</p>
-                <input type="text" id="signatory-prepared-by-designation" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg mt-2 font-bold" placeholder="POSITION/DESIGNATION" required>
-                <p class="text-xs text-gray-500 mt-1">Personnel Position/Designation</p>
             </div>
 
             <div>
                 <label for="signatory-approved-by" class="block text-sm font-medium text-gray-700 mb-1">Approved By: (Required)</label>
                 <input type="text" id="signatory-approved-by" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="SIGNATORY NAME" required>
                 <p class="text-xs text-gray-500 mt-1">Signatory Name (from Master List)</p>
-                <input type="text" id="signatory-approved-by-designation" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg mt-2 font-bold" placeholder="DESIGNATION" required>
-                <p class="text-xs text-gray-500 mt-1">Signatory Designation</p>
             </div>
         </div>
 
         <div class="mb-6">
             <label class="block text-sm font-medium text-gray-700 mb-2">Checked By: (At least one required)</label>
-            <div class="grid grid-cols-3 gap-4">
-                <div>
-                    <input type="text" id="signatory-checked-by-0" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 1 (Required)">
-                    <input type="text" id="signatory-checked-by-designation-0" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg mt-1 text-sm" placeholder="Designation" required>
-                </div>
-                <div>
-                    <input type="text" id="signatory-checked-by-1" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 2 (Optional)">
-                    <input type="text" id="signatory-checked-by-designation-1" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg mt-1 text-sm" placeholder="Designation">
-                </div>
-                <div>
-                    <input type="text" id="signatory-checked-by-2" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 3 (Optional)">
-                    <input type="text" id="signatory-checked-by-designation-2" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg mt-1 text-sm" placeholder="Designation">
-                </div>
-                <div>
-                    <input type="text" id="signatory-checked-by-3" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 4 (Optional)">
-                    <input type="text" id="signatory-checked-by-designation-3" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg mt-1 text-sm" placeholder="Designation">
-                </div>
-                <div>
-                    <input type="text" id="signatory-checked-by-4" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 5 (Optional)">
-                    <input type="text" id="signatory-checked-by-designation-4" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg mt-1 text-sm" placeholder="Designation">
-                </div>
+            <div class="grid grid-cols-3 gap-2">
+                <input type="text" id="signatory-checked-by-0" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 1 (Required)">
+                <input type="text" id="signatory-checked-by-1" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 2 (Optional)">
+                <input type="text" id="signatory-checked-by-2" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 3 (Optional)">
+                <input type="text" id="signatory-checked-by-3" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 4 (Optional)">
+                <input type="text" id="signatory-checked-by-4" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 5 (Optional)">
             </div>
             <p class="text-xs text-gray-500 mt-1">Signatory names (from Master List). At least one field (Checked By 1) must be filled.</p>
         </div>
