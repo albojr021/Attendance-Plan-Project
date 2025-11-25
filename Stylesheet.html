@@ -471,40 +471,40 @@
             text-align: center;
         }
         
-        /* --- CRITICAL UPDATE: Styles for Name and Designation rows in print --- */
+        /* Font size for names and titles, BOLD, BLACK */
         .print-signatories p {
-            font-size: 7pt !important; /* Base font size for all p tags */
+            font-size: 8pt !important; /* Slightly larger for clarity */
             line-height: 1.1 !important;
             margin: 0 !important;
             padding: 0 !important;
-            color: black !important; 
+            font-weight: bold !important; /* Force bold */
+            color: black !important; /* Force black */
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
         }
-
-        /* 1. Style for the Name (which has the font-bold class) */
-        .print-signatories p.font-bold {
-            font-weight: bold !important; 
-            margin-bottom: 0 !important; /* Remove space under name */
+        
+        /* Style for the name line (top signature line) - REMOVE THE LINE */
+        .print-signatories .border-t {
+             border-top: none !important; /* REMOVE LINE */
+             margin-top: 5px !important;
+             padding-top: 2px !important;
         }
 
-        /* 2. Style for the Designation (which has the font-normal class) */
-        .print-signatories p.font-normal {
-            font-weight: normal !important; /* Ensure designation is NOT bold */
-            font-size: 6.5pt !important; /* Slightly smaller than name */
-            margin-bottom: 2px !important; /* Small space after designation */
-        }
-
-        /* 3. The final title (Prepared By, etc.) is the last <p> in the container */
+        /* The title (Prepared By, etc.) should be slightly smaller and not bold */
         .print-signatories .prepared-by p:last-child,
-        .print-signatories .checked-by p:nth-last-child(1),
+        .print-signatories .checked-by p:last-child,
         .print-signatories .approved-by p:last-child {
-             font-size: 7pt !important; /* Title font size */
-             font-weight: bold !important; /* Title should be bold */
+             font-size: 7pt !important;
+             font-weight: normal !important;
              color: black !important;
-             margin-top: 5px !important; /* Add space above the title */
         }
 
+        /* Style for the multi-line Checked By names */
+        .print-signatories .checked-by p:not(.border-t) {
+             margin-bottom: 2px !important;
+             font-weight: bold !important;
+        }
+        
         /* CRITICAL: Gawing mas maliit at i-compact ang label at value */
         #contract-details-grid p,
         #print-sub-property-container p, /* ADDED: Include injected container's p tags */
