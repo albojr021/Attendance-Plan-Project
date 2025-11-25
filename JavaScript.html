@@ -914,6 +914,7 @@ function handleAttendanceData(data) {
     toggleLoading(false);
     
     checkPlanSheetLockState(); 
+    filterAttendanceGrid(); // <--- NEW: Apply filter if one exists
 }
 
 // --- DATE NAVIGATION ---
@@ -1305,6 +1306,8 @@ function handleAttendanceData(data) {
     }
     
     tableContainer.appendChild(table);
+    
+    filterAttendanceGrid(); // <--- NEW: Apply filter after rendering
   }
 
   // NEW FUNCTION: Apply Schedule Pattern to a specific grid row
@@ -2162,7 +2165,7 @@ function continueSaveProcess(groupNumber) {
        toggleLoading(false); 
   }
   
-  // --- NEW FUNCTION: DYNAMIC ROW FILTERING ---
+  // --- NEW FUNCTION: Dynamic Row Filtering ---
   function filterEmptyScheduleRows() {
     const rowsToHide = [];
     const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
@@ -2198,6 +2201,40 @@ function continueSaveProcess(groupNumber) {
     });
     return rowsToHide;
   }
+  
+  // --- NEW FUNCTION: Dynamic Grid Filtering ---
+function filterAttendanceGrid() {
+    const searchTerm = document.getElementById('schedule-search-input').value.toUpperCase().trim();
+    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+
+    gridRows.forEach(row => {
+        const idInput = row.querySelector('[data-field="id"]');
+        const nameInput = row.querySelector('[data-field="name"]');
+        
+        // I-check kung may active employee details
+        const isActiveRow = (idInput?.value || '').trim() !== '' || (nameInput?.value || '').trim() !== '';
+
+        if (!isActiveRow) {
+            // Itago ang blank rows (o i-display base sa preference, pero mas maganda kung itago)
+            row.style.display = 'none';
+            return;
+        }
+
+        const personnelId = (idInput.value || '').toUpperCase();
+        const personnelName = (nameInput.value || '').toUpperCase();
+
+        let isMatch = false;
+
+        if (searchTerm === '') {
+            isMatch = true; // Walang search term, ipakita lahat
+        } else if (personnelId.includes(searchTerm) || personnelName.includes(searchTerm)) {
+            isMatch = true; // May match sa ID o Name
+        }
+        
+        row.style.display = isMatch ? '' : 'none';
+    });
+}
+// --- END NEW FUNCTION ---
   
   // --- NEW FUNCTION: Sequential Numbering and Hiding ---
 
@@ -2244,7 +2281,6 @@ function continueSaveProcess(groupNumber) {
 
         row.querySelectorAll('.cell-container').forEach(cell => {
             const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-            
             if (status !== '' && status !== 'NA' && status !== 'DELETED') { 
                 hasActualSchedule = true;
             }
@@ -3278,6 +3314,13 @@ function updatePrintButtonState() {
             input.addEventListener('input', (e) => handleSignatoryInputChange(e, 'checkedBy', i));
             input.addEventListener('change', (e) => handleSignatoryInputChange(e, 'checkedBy', i)); 
         }
+    }
+    
+    // NEW: Attach listener for Search Input
+    const searchInput = document.getElementById('schedule-search-input');
+    if(searchInput) {
+        searchInput.addEventListener('keyup', filterAttendanceGrid); 
+        searchInput.addEventListener('change', filterAttendanceGrid);
     }
   }
 </script>
