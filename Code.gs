@@ -685,8 +685,8 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     }
     
     // *** NEW LOGIC: Log user action after a successful save ***
-    logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail());
-    
+    // CRITICAL UPDATE: Pass year, month, and shift to ensure log only applies to the current plan period
+    logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift); // NEW PARAMETERS
     Logger.log(`[saveAllData] Save completed.`);
 }
 
@@ -1793,39 +1793,57 @@ function logAdminUnlockAction(status, sfcRef, personnelIds, lockedRefNums, reque
      Logger.log(`[logAdminUnlockAction] Logged ${status} for ${updatedCount} unlock requests.`);
 }
 
-// *** NEW HELPER FUNCTION: Log the user's action type after a plan is edited ***
-function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, userEmail) {
+// **UPDATED:** Added year, month, and shift parameters for contextual filtering.
+function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, userEmail, year, month, shift) { // UPDATED SIGNATURE
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const logSheet = getOrCreateUnlockRequestLogSheet(ss);
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return;
-
-    // --- NEW CONSTANT: Minimum roster size for an edit to be considered "Entire AP" ---
-    const MIN_ROSTER_FOR_ENTIRE_EDIT = 5; 
-
+    
+    // --- NEW LOGIC: Determine the current Plan Period Identifier ---
+    const targetMonthYear = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' }) + year;
+    const targetPeriodIdentifier = `${targetMonthYear}-${shift}`; // e.g., Nov2025-1stHalf
+    Logger.log(`[logUserActionAfterUnlock] Target Plan Period: ${targetPeriodIdentifier}`);
+    // -------------------------------------------------------------
+    
+    // Read only the necessary columns for filtering and updating
+    const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
+    
+    // Indices for efficiency (0-based)
+    const SFC_INDEX = 0;
+    const ID_INDEX = 1;
+    const REF_INDEX = 3; // Locked Ref # column
+    const REQUESTER_INDEX = 4;
+    const STATUS_INDEX = 8;
+    const USER_ACTION_TYPE_INDEX = 9;
+    const USER_ACTION_TIME_INDEX = 10;
+    
     // 1. Determine the type of user action based on the save operation
+    // ... (rest of the actionType determination logic remains the same)
+    const MIN_ROSTER_FOR_ENTIRE_EDIT = 5;
     let actionType = 'Edit Personal AP (Info Only)';
     if (attendanceChanges.length > 0) {
         
-        const planEmployees = getEmployeeMasterData(sfcRef); // Get all active employees in master list
+        const planEmployees = getEmployeeMasterData(sfcRef);
+        // Get all active employees in master list
         const modifiedIDs = new Set(attendanceChanges.map(c => cleanPersonnelId(c.personnelId)));
         const allPlanIDs = new Set(planEmployees.map(e => e.id));
         
         // Check for creation of a new plan/employee within an existing contract
         if (employeeChanges.some(c => c.isNew)) {
-             actionType = 'Create AP Plan For an OLD AP'; 
+             actionType = 'Create AP Plan For an OLD AP';
         } 
         // **UPDATED HEURISTIC**: Check if total employees is >= MIN_ROSTER_FOR_ENTIRE_EDIT
         else if (allPlanIDs.size >= MIN_ROSTER_FOR_ENTIRE_EDIT && 
                  modifiedIDs.size / allPlanIDs.size > 0.6) {
              actionType = 'Edit Entire AP';
         } else {
-             actionType = 'Edit Personal AP (Schedule)'; // Default for specific schedule changes
+             actionType = 'Edit Personal AP (Schedule)';
         }
     } else if (employeeChanges.length > 0) {
         actionType = 'Edit Personal AP (Info Only)';
     } else {
-        return; // No changes to log
+        return;
     }
 
     // 2. Collect all IDs involved in this save action
@@ -1833,16 +1851,6 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
         ...employeeChanges.map(c => cleanPersonnelId(c.id || c.oldPersonnelId)),
         ...attendanceChanges.map(c => cleanPersonnelId(c.personnelId))
     ]);
-
-    const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
-    
-    // Indices for efficiency (0-based)
-    const SFC_INDEX = 0;
-    const ID_INDEX = 1;
-    const STATUS_INDEX = 8;
-    const USER_ACTION_TYPE_INDEX = 9;
-    const USER_ACTION_TIME_INDEX = 10;
-    const REQUESTER_INDEX = 4;
     
     let loggedCount = 0;
     const processedKeys = new Set(); // Key: ID_SFC_Requester to prevent updating the same unlock request
@@ -1855,18 +1863,25 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
         const rowActionType = String(row[USER_ACTION_TYPE_INDEX]).trim();
         const rowRequester = String(row[REQUESTER_INDEX]).trim();
         
-        // Find the latest APPROVED entry for this ID that hasn't been logged with a user action yet
+        // --- NEW FILTERING CONDITION: Check the Locked Ref # (Column D) for the current period ---
+        const lockedRef = String(row[REF_INDEX]).trim();
+        const isTargetPeriod = lockedRef.includes(targetPeriodIdentifier);
+        // --------------------------------------------------------------------------------------
+        
+        // Find the latest APPROVED entry for this ID that hasn't been logged with a user action yet AND matches the current period
         if (rowSfc === sfcRef && 
             modifiedIdsInSave.has(rowId) &&
             rowStatus === 'APPROVED' &&
-            rowActionType === '') {
+            rowActionType === '' &&
+            isTargetPeriod // *** CRITICAL NEW CHECK ***
+           ) {
             
             const rowKey = `${rowId}_${rowSfc}_${rowRequester}`; 
             if (processedKeys.has(rowKey)) continue;
 
             const rowIndexToUpdate = i + 2; // +1 for 0-base to 1-base, +1 for header row
             const targetRow = logSheet.getRange(rowIndexToUpdate, 1, 1, UNLOCK_LOG_HEADERS.length);
-            
+
             // Update User Action Type and Timestamp
             targetRow.getCell(1, USER_ACTION_TYPE_INDEX + 1).setValue(actionType);
             targetRow.getCell(1, USER_ACTION_TIME_INDEX + 1).setValue(new Date());
@@ -1875,7 +1890,7 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
             loggedCount++;
         }
     }
-     Logger.log(`[logUserActionAfterUnlock] Logged action type "${actionType}" for ${loggedCount} recently approved unlock requests.`);
+     Logger.log(`[logUserActionAfterUnlock] Logged action type "${actionType}" for ${loggedCount} recently approved unlock requests matching period ${targetPeriodIdentifier}.`);
 }
 
 
