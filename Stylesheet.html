@@ -370,13 +370,6 @@
         }
     }
     
-    /* NEW FIX for Last Page Only: Target Page 1 ONLY to hide the fixed footer */
-    @page :first {
-        #print-signatories-container {
-            visibility: hidden !important; 
-        }
-    }
-    
     @media print {
         /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
