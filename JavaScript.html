@@ -147,6 +147,7 @@
             .getEmployeeMasterData(sfcRef);
   }
   
+  // UPDATED: Logic for Name/ID Datalist Population
   function populateDataLists(masterList) {
       employeeMasterList = masterList; 
       const idList = document.getElementById('employee-id-list');
@@ -165,20 +166,24 @@
       const uniqueAreas = new Set();
       
       employeeMasterList.forEach(emp => {
-          // ID Datalist
+          
+          const displayName = emp.name.toUpperCase(); // I-ensure na naka-uppercase (LastName, FirstName)
+          const displayPosition = emp.position.toUpperCase();
+          
+          // ID Datalist: Value is ID, Text shows Name (Formatted: LastName, FirstName)
           const idOption = document.createElement('option');
           idOption.value = emp.id;
-          idOption.textContent = `${emp.name} (${emp.position})`;
+          idOption.textContent = `${displayName} (${displayPosition})`; // I-show ang name at position
           idList.appendChild(idOption);
           
-          // Name Datalist
+          // Name Datalist: Value is Name (Formatted: LastName, FirstName), Text shows ID/Position
           const nameOption = document.createElement('option');
-          nameOption.value = emp.name;
-          nameOption.textContent = `${emp.id} (${emp.position})`;
+          nameOption.value = displayName; // Value to be used for auto-fill/lookup
+          nameOption.textContent = `${emp.id} (${displayPosition})`;
           nameList.appendChild(nameOption);
 
           // Collect unique position/area
-          if (emp.position) uniquePositions.add(emp.position.trim());
+          if (emp.position) uniquePositions.add(displayPosition.trim());
           if (emp.area) uniqueAreas.add(emp.area.trim());
       });
       
@@ -1516,16 +1521,22 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       const row = input.closest('tr');
       let masterRecordFound = null; 
       let masterRecord = null;
+      
+      const upperNewValue = newValue.trim().toUpperCase(); // I-convert sa Uppercase
+      
       if (field === 'id') {
-           masterRecord = employeeMasterList.find(e => e.id === newValue.trim());
+           masterRecord = employeeMasterList.find(e => e.id === upperNewValue);
       } else if (field === 'name') {
-           masterRecord = employeeMasterList.find(e => e.name === newValue.trim());
+           // I-compare sa name na nasa master list (na formatted at naka-uppercase)
+           masterRecord = employeeMasterList.find(e => e.name.toUpperCase() === upperNewValue);
       }
       
       const isSaved = employeeMasterList.some(e => e.id === employee.id);
 
       if (masterRecord) {
           masterRecordFound = masterRecord; 
+          
+          // I-fill ang LAHAT ng fields mula sa Master Record (ID, Name, Position, Area)
           row.querySelector('[data-field="id"]').value = masterRecord.id;
           row.querySelector('[data-field="name"]').value = masterRecord.name;
           row.querySelector('[data-field="position"]').value = masterRecord.position;
@@ -1539,7 +1550,16 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
           showNotification(`Employee details auto-filled for ${masterRecord.name}. Click 'Save All Changes' to save this new entry.`, true);
 
       } else {
-         pendingChange[field] = newValue;
+         // --- UPDATED LOGIC: Force UPPERCASE for Name, Position, Area ---
+         if (field === 'name' || field === 'position' || field === 'area') {
+             // I-apply ang UPPERCASE bago i-store sa pendingChange at i-update ang UI
+             newValue = newValue.toUpperCase(); 
+             input.value = newValue; // Update UI with uppercase value
+             pendingChange[field] = newValue;
+         } else {
+             // Para sa ID (na dapat ay numbers only)
+             pendingChange[field] = newValue;
+         }
       }
 
       if (field === 'id') {
@@ -1596,6 +1616,39 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
               pendingChange[field] = cleanedValue;
           }
 
+          // --- NEW LOGIC: CLEAR ID, POSITION, AND AREA IF NAME IS CLEARED ---
+          if (field === 'name' && pendingChange.name === '') {
+              const idInput = row.querySelector('[data-field="id"]');
+              const positionInput = row.querySelector('[data-field="position"]');
+              const areaInput = row.querySelector('[data-field="area"]');
+
+              if (idInput) idInput.value = '';
+              if (positionInput) positionInput.value = '';
+              if (areaInput) areaInput.value = '';
+
+              // I-update ang pendingChange object
+              pendingChange.id = '';
+              pendingChange.position = '';
+              pendingChange.area = '';
+
+              // Clear din ang lahat ng pending schedule changes para sa ID na ito
+              const idToClear = employee.id; // Gamitin ang original ID para i-delete sa pending changes
+              if (idToClear) {
+                  Object.keys(pendingAttendanceChanges).forEach(key => {
+                      if (key.startsWith(idToClear + '_')) { 
+                          delete pendingAttendanceChanges[key];
+                      }
+                  });
+              }
+              
+              row.querySelectorAll('.cell-container').forEach(cell => {
+                   const dayKey = cell.dataset.dayKey;
+                   updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
+              });
+
+              showNotification('Personnel Name cleared. Personnel ID, Position, Area, and local schedule changes were also cleared to prevent accidental override.', false);
+          }
+          // --- END NEW LOGIC ---
           
           if (field === 'name' && pendingChange.name) {
               if (isDuplicateName(pendingChange.name, employee.id, employee.no)) {
@@ -1710,8 +1763,8 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       const preparedByNameInput = document.getElementById('signatory-prepared-by');
       const preparedByDesignationInput = document.getElementById('signatory-prepared-by-designation');
       
-      if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === cleanedValue.toUpperCase()) {
-          const emp = employeeMasterList.find(e => e.name.toUpperCase() === cleanedValue.toUpperCase());
+      if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === newValue.toUpperCase()) {
+          const emp = employeeMasterList.find(e => e.name.toUpperCase() === newValue.toUpperCase());
           
           // Only auto-fill if the name matches a master record OR if the user has NOT typed anything
           const currentDesignationUI = preparedByDesignationInput ? preparedByDesignationInput.value.trim() : '';
@@ -1728,9 +1781,9 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
                   selectedSignatories.preparedBy.designation = currentDesignationUI;
               }
           } else {
-              selectedSignatories.preparedBy.name = cleanedValue;
+              selectedSignatories.preparedBy.name = newValue;
               // If no master match, only clear designation if name field is also empty.
-              if (cleanedValue === '') {
+              if (newValue === '') {
                   selectedSignatories.preparedBy.designation = '';
                   if (preparedByDesignationInput) preparedByDesignationInput.value = '';
               } else {
