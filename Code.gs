@@ -2110,7 +2110,7 @@ function logUserReprintAction(sfcRef, userEmail, printedPersonnelIds) {
 
 /**
  * Checks the status of the latest request for a batch of personnel IDs in the UnlockRequestLog.
- * Kung ang alinman sa mga request sa batch ay APPROVED o REJECTED na, ibabalik nito ang status na iyon.
+ * Ito ay ginagamitan ng backward iteration para mahanap ang pinakabagong status para sa ID/Ref combo.
  */
 function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEmail) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
@@ -2123,34 +2123,47 @@ function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEma
     const ID_INDEX = 1;
     const REF_INDEX = 3;
     const REQUESTER_INDEX = 4;
-    const STATUS_INDEX = 8;
-
-    // I-map ang incoming IDs/Refs para mabilis ma-check (Key: ID_Ref)
-    const pendingRequestMap = new Set(personnelIds.map((id, index) => `${id}_${lockedRefNums[index]}`));
-
+    const STATUS_INDEX = 8; 
+    
     const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
 
-    // Iterate backward upang mahanap ang pinakabagong status para sa bawat request
+    // Map ang ID at Ref# ng mga incoming request (Key: ID_Ref#)
+    const incomingKeys = new Set(personnelIds.map((id, index) => `${id}_${lockedRefNums[index]}`));
+    
+    // Map na mag-iimbak ng pinakabagong status (Key: ID_Ref# -> Value: Status)
+    const latestStatusMap = {}; 
+
+    // 1. Iterate backward para makuha ang PINAKABAGONG STATUS para sa bawat ID_Ref#
     for (let i = values.length - 1; i >= 0; i--) {
         const row = values[i];
-        const currentStatus = String(row[STATUS_INDEX] || '').trim();
-
-        if (currentStatus === 'PENDING') continue; // Huwag pansinin ang pending, hanapin lang ang processed
-
         const rowId = String(row[ID_INDEX]).trim();
         const rowRef = String(row[REF_INDEX]).trim();
         const rowKey = `${rowId}_${rowRef}`;
 
+        // I-filter: Katugma sa SFC at Requester, at kasama sa incoming batch
         if (String(row[SFC_INDEX]).trim() === sfcRef &&
             String(row[REQUESTER_INDEX]).trim() === requesterEmail &&
-            pendingRequestMap.has(rowKey)
+            incomingKeys.has(rowKey) &&
+            !latestStatusMap[rowKey] // Only map the most recent one
            ) {
-            // Nakahanap ng matching log entry na APPROVED o REJECTED.
-            return currentStatus; // Ibalik ang status na iyon
+            latestStatusMap[rowKey] = String(row[STATUS_INDEX] || '').trim();
         }
     }
     
-    return 'PENDING'; // Kung umabot dito, pending pa rin ang lahat
+    // 2. I-check ang status ng lahat ng incoming requests
+    let blockStatus = 'PENDING';
+    
+    incomingKeys.forEach(key => {
+        // Ang status ay ang pinakabagong nakuha natin, o PENDING kung hindi nahanap sa log
+        const status = latestStatusMap[key] || 'PENDING'; 
+        
+        // Kung ang pinakabagong status ay processed (APPROVED/REJECTED), i-block ang aksyon
+        if (status !== 'PENDING') {
+            blockStatus = status; 
+        }
+    });
+
+    return blockStatus;
 }
 
 function processAdminUnlockFromUrl(params) {
