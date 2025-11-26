@@ -471,39 +471,54 @@
             text-align: center;
         }
         
-        /* Font size for names and titles, BOLD, BLACK */
+        /* Font size for ALL Signatory Text */
         .print-signatories p {
-            font-size: 8pt !important; /* Slightly larger for clarity */
             line-height: 1.1 !important;
             margin: 0 !important;
             padding: 0 !important;
-            font-weight: bold !important; /* Force bold */
             color: black !important; /* Force black */
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
         }
+
+        /* --- UPDATED SIGNATORY STYLING FOR NAME, DESIGNATION, AND TITLE --- */
         
-        /* Style for the name line (top signature line) - REMOVE THE LINE */
-        .print-signatories .border-t {
-             border-top: none !important; /* REMOVE LINE */
-             margin-top: 5px !important;
-             padding-top: 2px !important;
+        /* 1. NAME Line (text-sm, border-t) - REMOVING THE BORDER LINE HERE */
+        .print-signatories p.text-sm {
+            /* ************ BINAGO START ************ */
+            border-top: none !important; /* Alisin ang linya */
+            padding-top: 0 !important;  /* Alisin ang padding sa taas */
+            margin-top: 0 !important; /* Alisin ang margin sa taas */
+            /* ************ BINAGO END ************ */
+            
+            font-weight: bold !important;
+            font-size: 7pt !important;
+            line-height: 1.1 !important;
         }
 
-        /* The title (Prepared By, etc.) should be slightly smaller and not bold */
+        /* 2. DESIGNATION Line (text-xs, font-normal) */
+        .print-signatories p.text-xs.font-normal {
+            font-weight: normal !important;
+            font-size: 6pt !important; /* Make designation smaller */
+            padding-bottom: 2px !important;
+            line-height: 1.1 !important;
+        }
+        
+        /* 3. TITLE Line (Prepared By, Checked By, Approved By - which are p:last-child and text-xs font-bold) */
         .print-signatories .prepared-by p:last-child,
         .print-signatories .checked-by p:last-child,
         .print-signatories .approved-by p:last-child {
              font-size: 7pt !important;
-             font-weight: normal !important;
-             color: black !important;
-        }
-
-        /* Style for the multi-line Checked By names */
-        .print-signatories .checked-by p:not(.border-t) {
-             margin-bottom: 2px !important;
              font-weight: bold !important;
+             color: black !important;
+             /* ************ BINAGO START ************ */
+             padding-top: 0 !important; /* Alisin ang padding sa taas */
+             border-top: none !important; /* Alisin ang linya */
+             /* ************ BINAGO END ************ */
+             margin-top: 5px !important; /* Keep space above the title/block */
         }
+        /* --- END UPDATED SIGNATORY STYLING --- */
+
         
         /* CRITICAL: Gawing mas maliit at i-compact ang label at value */
         #contract-details-grid p,
