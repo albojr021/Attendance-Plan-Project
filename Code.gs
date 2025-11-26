@@ -57,8 +57,7 @@ const UNLOCK_LOG_HEADERS = [
     'Admin Email',
     'Admin Action Timestamp',
     'Status (APPROVED/REJECTED)',
-    'User Action Type', // Hal.
-    'Edit Personal AP, Edit Entire AP, Create AP Plan For an OLD AP',
+    'User Action Type', // Hal.'Edit Personal AP, Edit Entire AP, Create AP Plan For an OLD AP',
     'User Action Timestamp'
 ];
 // ---------------------------------------
