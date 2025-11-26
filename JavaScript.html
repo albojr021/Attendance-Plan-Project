@@ -1154,7 +1154,7 @@ function handleAttendanceData(data) {
 
         // Personnel ID (Input) - Index 1
         td = tr.insertCell();
-        let input = document.createElement('input');
+        input = document.createElement('input');
         input.type = 'text';
         input.setAttribute('list', 'employee-id-list'); 
         input.value = displayId;
@@ -1708,17 +1708,29 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       
       // NEW LOGIC: Auto-fill Prepared By designation (position) if name is from master list
       const preparedByNameInput = document.getElementById('signatory-prepared-by');
+      const preparedByDesignationInput = document.getElementById('signatory-prepared-by-designation');
+      
       if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === newValue.toUpperCase()) {
           const emp = employeeMasterList.find(e => e.name.toUpperCase() === newValue.toUpperCase());
+          
+          // Only auto-fill if the name matches a master record OR if the designation input is currently blank.
+          const currentDesignationUI = preparedByDesignationInput ? preparedByDesignationInput.value.trim() : '';
+
           if (emp) {
+              const newDesignation = emp.position;
               selectedSignatories.preparedBy.name = emp.name;
-              selectedSignatories.preparedBy.designation = emp.position;
-              // I-update ang display ng designation (makikita sa index.html)
-              document.getElementById('signatory-prepared-by-designation').value = emp.position;
+              
+              if (currentDesignationUI === '' || newDesignation !== '') {
+                  selectedSignatories.preparedBy.designation = newDesignation;
+                  if (preparedByDesignationInput) preparedByDesignationInput.value = newDesignation;
+              }
           } else {
               selectedSignatories.preparedBy.name = newValue;
-              selectedSignatories.preparedBy.designation = '';
-              document.getElementById('signatory-prepared-by-designation').value = '';
+              // If no master match, only clear designation if name field is also empty.
+              if (newValue === '') {
+                  selectedSignatories.preparedBy.designation = '';
+                  if (preparedByDesignationInput) preparedByDesignationInput.value = '';
+              }
           }
       }
       // END NEW LOGIC
@@ -1982,8 +1994,8 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
              continueSaveProcess(groupNumber);
         })
         .withFailureHandler(handleSaveAllError) // Use the save handler for errors here
-        .getNextGroupNumber(sfcRefToSave, currentYear, currentMonth, currentShift); 
-}
+        .getNextGroupNumber(sfcRefToSave, currentYear, currentMonth, currentShift);
+  }
 
 // *** NEW FUNCTION: Continues the saving process after the batch number is determined ***
 function continueSaveProcess(groupNumber) {
@@ -2370,7 +2382,6 @@ function continueSaveProcess(groupNumber) {
           selectedSignatories[fieldType].designation = newValue;
       }
       
-      // 2. Ensure the associated name field is checked for content (only applies if name is not from master)
       // NOTE: Walang validation sa Designation input, basta may laman ay pwedeng i-save.
   }
   // --- END NEW FUNCTION ---
@@ -2385,7 +2396,8 @@ function continueSaveProcess(groupNumber) {
           return "Prepared By name is required.";
       }
       if (!preparedByDesignation) {
-           return "Prepared By Position/Designation is required. Please select a name from the Employee List.";
+           // UPDATED MESSAGE: Now that it's editable, the user just needs to fill it.
+           return "Prepared By Position/Designation is required. Please fill in the Designation/Position field.";
       }
       
       const approvedBy = selectedSignatories.approvedBy.name.trim();
@@ -3390,11 +3402,15 @@ function updatePrintButtonState() {
     document.getElementById('signatory-prepared-by').addEventListener('input', (e) => handleSignatoryInputChange(e, 'preparedBy'));
     document.getElementById('signatory-prepared-by').addEventListener('change', (e) => handleSignatoryInputChange(e, 'preparedBy')); 
     
+    // PREPARED BY (Designation Input) - NEW LISTENER
+    document.getElementById('signatory-prepared-by-designation').addEventListener('input', (e) => handleSignatoryDesignationChange(e, 'preparedBy'));
+    document.getElementById('signatory-prepared-by-designation').addEventListener('change', (e) => handleSignatoryDesignationChange(e, 'preparedBy'));
+
     // APPROVED BY (Name Input)
     document.getElementById('signatory-approved-by').addEventListener('input', (e) => handleSignatoryInputChange(e, 'approvedBy'));
     document.getElementById('signatory-approved-by').addEventListener('change', (e) => handleSignatoryInputChange(e, 'approvedBy')); 
     
-    // APPROVED BY (Designation Input) - NEW LISTENER
+    // APPROVED BY (Designation Input)
     document.getElementById('signatory-approved-by-designation').addEventListener('input', (e) => handleSignatoryDesignationChange(e, 'approvedBy'));
     document.getElementById('signatory-approved-by-designation').addEventListener('change', (e) => handleSignatoryDesignationChange(e, 'approvedBy'));
 
@@ -3409,7 +3425,7 @@ function updatePrintButtonState() {
         }
         
         if(inputDesignation) {
-             // CHECKED BY (Designation Input) - NEW LISTENER
+             // CHECKED BY (Designation Input)
             inputDesignation.addEventListener('input', (e) => handleSignatoryDesignationChange(e, 'checkedBy', i));
             inputDesignation.addEventListener('change', (e) => handleSignatoryDesignationChange(e, 'checkedBy', i));
         }
