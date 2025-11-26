@@ -1915,11 +1915,41 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return;
     
-    const LOCKED_IDS_COL_INDEX = LOG_HEADERS.length - 1;
-    const range = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length);
-    const values = range.getValues(); 
+    // Calculate the target Period Display string (e.g., 'December 1-15, 2025 (1stHalf)')
+    const date = new Date(year, month, 1);
+    const monthName = date.toLocaleString('en-US', { month: 'long' });
+    const yearNum = date.getFullYear();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let targetPeriodDisplay = '';
+
+    if (shift === '1stHalf') {
+        targetPeriodDisplay = `${monthName} 1-15, ${yearNum} (${shift})`;
+    } else {
+        targetPeriodDisplay = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
+    }
+
+    
+    const LOCKED_IDS_COL_INDEX = LOG_HEADERS.length - 1; // Col K (Index 10)
+    const SFC_REF_COL_INDEX = 1;                         // Col B (Index 1)
+    const PERIOD_DISPLAY_COL_INDEX = 3;                  // Col D (Index 3)
+    
+    const LOG_HEADERS_COUNT = LOG_HEADERS.length;
+    
+    // Basahin ang lahat ng columns na kailangan (Reference#, SFC Ref#, Plan Period Display, Locked IDs)
+    const values = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS_COUNT).getValues(); 
     const rangeToUpdate = [];
+
     values.forEach((row, rowIndex) => {
+      // **CRITICAL FILTERING**
+      const currentSfc = String(row[SFC_REF_COL_INDEX] || '').trim();
+      const currentPeriodDisplay = String(row[PERIOD_DISPLAY_COL_INDEX] || '').trim();
+      
+      // I-update lang ang row na TUGMA sa SFC at sa EKSAKTANG Period na ni-request
+      if (currentSfc !== sfcRef || currentPeriodDisplay !== targetPeriodDisplay) {
+          return; 
+      }
+      // **END CRITICAL FILTERING**
+        
       const rowNumInSheet = rowIndex + 2; 
       const lockedIdsString = String(row[LOCKED_IDS_COL_INDEX] || '').trim();
       
@@ -1963,12 +1993,14 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         }
       }
     });
+    
+    // Perform the batch update on the filtered rows
     rangeToUpdate.forEach(update => {
         const targetRange = logSheet.getRange(update.row, update.col);
         const newValue = update.value;
         targetRange.setNumberFormat('@').setValue(newValue);
     });
-    Logger.log(`[unlockPersonnelIds] Successfully unlocked ${personnelIdsToUnlock.length} IDs. (History preserved with UNLOCKED: prefix.)`);
+    Logger.log(`[unlockPersonnelIds] Successfully unlocked ${personnelIdsToUnlock.length} IDs for period ${targetPeriodDisplay}. (No historical locks removed.)`);
 }
 
 function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds, lockedRefNums, personnelNames) { 
