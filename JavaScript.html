@@ -1710,10 +1710,10 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       const preparedByNameInput = document.getElementById('signatory-prepared-by');
       const preparedByDesignationInput = document.getElementById('signatory-prepared-by-designation');
       
-      if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === newValue.toUpperCase()) {
-          const emp = employeeMasterList.find(e => e.name.toUpperCase() === newValue.toUpperCase());
+      if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === cleanedValue.toUpperCase()) {
+          const emp = employeeMasterList.find(e => e.name.toUpperCase() === cleanedValue.toUpperCase());
           
-          // Only auto-fill if the name matches a master record OR if the designation input is currently blank.
+          // Only auto-fill if the name matches a master record OR if the user has NOT typed anything
           const currentDesignationUI = preparedByDesignationInput ? preparedByDesignationInput.value.trim() : '';
 
           if (emp) {
@@ -1723,13 +1723,19 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
               if (currentDesignationUI === '' || newDesignation !== '') {
                   selectedSignatories.preparedBy.designation = newDesignation;
                   if (preparedByDesignationInput) preparedByDesignationInput.value = newDesignation;
+              } else {
+                  // Keep the manually typed designation in the state
+                  selectedSignatories.preparedBy.designation = currentDesignationUI;
               }
           } else {
-              selectedSignatories.preparedBy.name = newValue;
+              selectedSignatories.preparedBy.name = cleanedValue;
               // If no master match, only clear designation if name field is also empty.
-              if (newValue === '') {
+              if (cleanedValue === '') {
                   selectedSignatories.preparedBy.designation = '';
                   if (preparedByDesignationInput) preparedByDesignationInput.value = '';
+              } else {
+                  // Keep existing manual designation if name is partially typed
+                  selectedSignatories.preparedBy.designation = currentDesignationUI;
               }
           }
       }
@@ -1937,16 +1943,6 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
         if (finalStatus.length !== 11 || finalStatus.charAt(5) !== '-') {
              showNotification('Invalid schedule format detected.', false);
-             setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
-             return;
-        }
-        
-        const [startTime, endTime] = finalStatus.split('-');
-        const startTimeValue = parseInt(startTime.replace(':', ''), 10);
-        const endTimeValue = parseInt(endTime.replace(':', ''), 10);
-        
-        if (endTimeValue < startTimeValue) {
-             showNotification('FATAL ERROR: End Time cannot be earlier than Start Time. Please correct the schedule.', false);
              setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
              return;
         }
@@ -2344,7 +2340,7 @@ function continueSaveProcess(groupNumber) {
           designation = masterEntry ? masterEntry.designation : '';
       }
 
-      // 3. Update the state (designation field) and UI, but DO NOT OVERWRITE if user already manually typed a designation.
+      // 3. Update the state (designation field) and UI, but DO NOT OVERWRITE if user already manually typed something.
       const designationInputId = fieldType === 'preparedBy' 
           ? 'signatory-prepared-by-designation' 
           : (fieldType === 'approvedBy' ? 'signatory-approved-by-designation' : `signatory-checked-by-${index}-designation`);
@@ -3224,16 +3220,6 @@ function saveBulkSchedule(event, fixedStatusValue) {
     if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
         if (finalStatus.length !== 11 || finalStatus.charAt(5) !== '-') {
              showNotification('Invalid schedule format detected.', false);
-             setTimeout(openBulkScheduleModal, 100); 
-             return;
-        }
-        
-        const [startTime, endTime] = finalStatus.split('-');
-        const startTimeValue = parseInt(startTime.replace(':', ''), 10);
-        const endTimeValue = parseInt(endTime.replace(':', ''), 10);
-        
-        if (endTimeValue < startTimeValue) {
-             showNotification('FATAL ERROR: End Time cannot be earlier than Start Time. Please correct the schedule.', false);
              setTimeout(openBulkScheduleModal, 100); 
              return;
         }
