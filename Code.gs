@@ -957,6 +957,8 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             const versionString = latestVersionRow[printVersionIndex].split('-').pop();
             currentVersion = parseFloat(versionString) || 0; 
 
+            newRow[referenceIndex] = ''; // Ito ang critical reset
+
             // **NEW LOGIC START: Preserve the old GROUP number for versioning**
             const oldGroup = latestVersionRow[groupIndex];
             if (oldGroup && String(oldGroup).trim().toUpperCase() !== String(group).trim().toUpperCase()) {
@@ -1059,6 +1061,91 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
 
     planSheet.setFrozenRows(HEADER_ROW); 
     Logger.log(`[saveAttendancePlanBulk] Completed Attendance Plan update for ${PLAN_SHEET_NAME}.`);
+}
+
+/**
+ * Updates the Reference # column in AttendancePlan_Consolidated for the latest version rows 
+ * that were included in the print action.
+ */
+function updatePlanSheetReferenceBulk(refNum, sfcRef, year, month, shift, printedPersonnelIds) {
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
+    if (!planSheet) return;
+
+    const HEADER_ROW = PLAN_HEADER_ROW;
+    const lastRow = planSheet.getLastRow();
+    const numColumns = planSheet.getLastColumn();
+    
+    if (lastRow <= HEADER_ROW) return;
+
+    const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - HEADER_ROW + 1, numColumns).getValues();
+    const headers = planValues[0];
+    const dataRows = planValues.slice(1);
+    
+    // Hanapin ang mga index ng kailangang columns
+    const sfcRefIndex = headers.indexOf('CONTRACT #');
+    const monthIndex = headers.indexOf('MONTH');
+    const yearIndex = headers.indexOf('YEAR');
+    const shiftIndex = headers.indexOf('PERIOD / SHIFT');
+    const personnelIdIndex = headers.indexOf('Personnel ID');
+    const printVersionIndex = headers.indexOf('PRINT VERSION');
+    const referenceIndex = headers.indexOf('Reference #'); // Ito ang i-u-update natin
+
+    const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
+    const targetYear = String(year);
+    
+    const latestVersionMap = {}; // Key: Personnel ID, Value: Latest Row Data
+
+    dataRows.forEach((row, rowIndex) => {
+        const currentSfc = String(row[sfcRefIndex] || '').trim();
+        const currentMonth = String(row[monthIndex] || '').trim();
+        const currentYear = String(row[yearIndex] || '').trim();
+        const currentShift = String(row[shiftIndex] || '').trim();
+        const id = String(row[personnelIdIndex] || '').trim();
+        
+        // 1. I-filter base sa Context at mga ID na na-print
+        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && printedPersonnelIds.includes(id)) {
+            
+            const printVersionString = String(row[printVersionIndex] || '').trim();
+            const versionParts = printVersionString.split('-');
+            const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
+   
+            const existingEntry = latestVersionMap[id];
+            
+            // 2. Hanapin ang LATEST version row index para sa ID na ito
+            if (!existingEntry || version > existingEntry.version) {
+                latestVersionMap[id] = { 
+                    rowArray: row, 
+                    sheetRowNumber: rowIndex + HEADER_ROW + 1, // Actual row number sa sheet
+                    version: version 
+                };
+            }
+        }
+    });
+
+    const rangesToUpdate = [];
+    
+    Object.values(latestVersionMap).forEach(entry => {
+        // 3. I-handa ang update: Reference # column (index + 1 para sa 1-based column)
+        if (referenceIndex !== -1) {
+            rangesToUpdate.push({
+                row: entry.sheetRowNumber,
+                col: referenceIndex + 1, 
+                value: refNum
+            });
+        }
+    });
+    
+    // 4. Isagawa ang Batch update
+    if (rangesToUpdate.length > 0) {
+        planSheet.setFrozenRows(0);
+        rangesToUpdate.forEach(update => {
+             // Dapat i-set ang format sa @ para ma-preserve ang Reference # string
+             planSheet.getRange(update.row, update.col).setNumberFormat('@').setValue(update.value);
+        });
+        planSheet.setFrozenRows(HEADER_ROW);
+        Logger.log(`[updatePlanSheetReferenceBulk] Updated Reference # for ${rangesToUpdate.length} personnel in ${PLAN_SHEET_NAME}.`);
+    }
 }
 
 // **UPDATED:** Added currentLockRef parameter and logic change
@@ -1524,6 +1611,15 @@ function recordPrintLogEntry(refNum, subProperty, signatories, sfcRef, contractI
 
         updateSignatoryMaster(signatories);
 
+        // *** BAGONG HAKBANG: I-update ang Reference # sa Consolidated Plan Sheet ***
+        updatePlanSheetReferenceBulk(refNum, sfcRef, year, month, shift, printedPersonnelIds);
+        // ***********************************************************************
+
+        // *** Bagong Hakbang 3: I-log ang Re-Print Action sa Unlock Log ***
+        const userEmail = Session.getActiveUser().getEmail();
+        logUserReprintAction(sfcRef, userEmail, printedPersonnelIds);
+        // ***************************************************************
+
         const planSheetName = PLAN_SHEET_NAME; 
         
         const date = new Date(year, month, 1);
@@ -1958,6 +2054,59 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
      Logger.log(`[logUserActionAfterUnlock] Logged action type "${actionType}" for ${loggedCount} recently approved unlock requests matching period ${targetPeriodIdentifier}.`);
 }
 
+/**
+ * Logs a 'Re-Print Attendance Plan' action in the UnlockRequestLog for personnel 
+ * who were recently APPROVED for an unlock and are now included in a new print log.
+ */
+function logUserReprintAction(sfcRef, userEmail, printedPersonnelIds) {
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const logSheet = getOrCreateUnlockRequestLogSheet(ss);
+    const lastRow = logSheet.getLastRow();
+    if (lastRow < 2) return;
+
+    const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
+
+    const SFC_INDEX = 0;
+    const ID_INDEX = 1;
+    const REQUESTER_INDEX = 4;
+    const STATUS_INDEX = 8;
+    const USER_ACTION_TYPE_INDEX = 9;
+    const USER_ACTION_TIME_INDEX = 10;
+    
+    let loggedCount = 0;
+    const processedKeys = new Set(); // Key: ID_SFC_Requester
+
+    for (let i = values.length - 1; i >= 0; i--) {
+        const row = values[i];
+        const rowId = String(row[ID_INDEX]).trim();
+        const rowSfc = String(row[SFC_INDEX]).trim();
+        const rowStatus = String(row[STATUS_INDEX]).trim();
+        const rowActionType = String(row[USER_ACTION_TYPE_INDEX]).trim();
+        const rowRequester = String(row[REQUESTER_INDEX]).trim();
+
+        // 1. I-filter: Katugma sa SFC, ID ay na-print, Status ay APPROVED, at User Action ay blangko
+        if (rowSfc === sfcRef && 
+            printedPersonnelIds.includes(rowId) &&
+            rowStatus === 'APPROVED' &&
+            rowActionType === '' // Hindi pa na-log ang aksyon ng user
+           ) {
+            
+            const rowKey = `${rowId}_${rowSfc}_${rowRequester}`;
+            if (processedKeys.has(rowKey)) continue;
+
+            // 2. I-log ang aksyon
+            const rowIndexToUpdate = i + 2; // Actual row number sa sheet
+            const targetRow = logSheet.getRange(rowIndexToUpdate, 1, 1, UNLOCK_LOG_HEADERS.length);
+
+            targetRow.getCell(1, USER_ACTION_TYPE_INDEX + 1).setValue('Re-Print Attendance Plan');
+            targetRow.getCell(1, USER_ACTION_TIME_INDEX + 1).setValue(new Date());
+            
+            processedKeys.add(rowKey);
+            loggedCount++;
+        }
+    }
+     Logger.log(`[logUserReprintAction] Logged 'Re-Print Attendance Plan' for ${loggedCount} recently approved unlock requests.`);
+}
 
 function processAdminUnlockFromUrl(params) {
   const idsString = params.id ? decodeURIComponent(params.id) : '';
