@@ -285,10 +285,17 @@ function getSignatoryMasterData() {
         const sheet = getOrCreateSignatoryMasterSheet(ss);
 
         if (sheet.getLastRow() < 2) return [];
-        const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1);
+        // --- BINAGO START ---
+        // Basahin ang 2 columns (Name at Designation)
+        const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2); 
         const values = range.getDisplayValues();
 
-        return values.map(row => String(row[0] || '').trim()).filter(name => name);
+        // Ibalik ang listahan ng objects na may name at designation
+        return values.map(row => ({
+            name: String(row[0] || '').trim(), 
+            designation: String(row[1] || '').trim() 
+        })).filter(item => item.name); // Siguraduhin na may pangalan
+        // --- BINAGO END ---
     } catch (e) {
         Logger.log(`[getSignatoryMasterData] ERROR: ${e.message}`);
         return [];
@@ -1295,39 +1302,74 @@ function getOrCreateSignatoryMasterSheet(ss) {
 
     try {
         sheet = ss.insertSheet(SIGNATORY_MASTER_SHEET);
-        const headers = ['Signatory Name'];
+        // --- BINAGO START ---
+        const headers = ['Signatory Name', 'Designation']; // Idinagdag ang Designation
         sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
         sheet.setFrozenRows(1);
         sheet.setColumnWidth(1, 200);
+        sheet.setColumnWidth(2, 150); // Nagdagdag ng column width para sa Designation
+        // --- BINAGO END ---
         Logger.log(`[getOrCreateSignatoryMasterSheet] Created Signatory Master sheet: ${SIGNATORY_MASTER_SHEET}`);
         return sheet;
     } catch (e) {
         if (e.message.includes(`sheet with the name "${SIGNATORY_MASTER_SHEET}" already exists`)) {
              Logger.log(`[getOrCreateSignatoryMasterSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(SIGNATORY_MASTER_SHEET);
+            return ss.getSheetByName(SIGNATORY_MASTER_SHEET);
         }
         throw e;
     }
 }
 
-function updateSignatoryMaster(signatories) {
+function updateSignatoryMaster(signatories) { // <-- Binago ang parameter, pero i-a-assume muna na ito ang structure.
     if (!signatories) return;
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const sheet = getOrCreateSignatoryMasterSheet(ss);
-    const allNames = [];
-    if (signatories.approvedBy) allNames.push(signatories.approvedBy.trim());
-    signatories.checkedBy.forEach(name => {
-        if (name) allNames.push(name.trim());
+    
+    // BINAGO START: Tanggapin na ang Signatory objects (Name at Designation)
+    // Ang signatories ay dapat isang array ng {name: string, designation: string} objects na galing sa client.
+    const allSignatories = []; 
+    
+    // I-extract ang lahat ng approvedBy at checkedBy objects na may laman
+    if (signatories.approvedBy && signatories.approvedBy.name) {
+        allSignatories.push(signatories.approvedBy);
+    }
+    signatories.checkedBy.forEach(item => {
+        if (item.name) allSignatories.push(item);
     });
-    const uniqueNames = Array.from(new Set(allNames)).filter(name => name);
-    if (uniqueNames.length === 0) return;
+    
+    // I-filter out ang preparedBy dahil hindi ito naka-save sa SignatoryMaster
+    
+    const uniqueSignatories = {}; 
+    allSignatories.forEach(item => {
+        // Gumamit ng combination ng Name at Designation bilang key para maging unique
+        const key = (item.name.toUpperCase() + item.designation.toUpperCase()).trim(); 
+        if (!uniqueSignatories[key]) {
+            uniqueSignatories[key] = {
+                name: item.name.trim(),
+                designation: item.designation.trim()
+            };
+        }
+    });
 
-    const existingNames = getSignatoryMasterData().map(name => name.toUpperCase());
-    const newNamesToAppend = uniqueNames.filter(name => !existingNames.includes(name.toUpperCase()));
-    if (newNamesToAppend.length > 0) {
-        const rowsToAppend = newNamesToAppend.map(name => [name]);
-        sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 1).setValues(rowsToAppend);
-        Logger.log(`[updateSignatoryMaster] Appended ${rowsToAppend.length} new signatories.`);
+    const existingMasterData = getSignatoryMasterData(); // Ito ay nagbabalik na ng {name, designation}
+    
+    const newSignatoriesToAppend = [];
+    
+    Object.values(uniqueSignatories).forEach(newSig => {
+        const isExisting = existingMasterData.some(existSig => 
+            existSig.name.toUpperCase() === newSig.name.toUpperCase() && 
+            existSig.designation.toUpperCase() === newSig.designation.toUpperCase()
+        );
+
+        if (!isExisting) {
+            newSignatoriesToAppend.push([newSig.name, newSig.designation]);
+        }
+    });
+    
+    if (newSignatoriesToAppend.length > 0) {
+        // Magsisimula sa Column 1 at Column 2
+        sheet.getRange(sheet.getLastRow() + 1, 1, newSignatoriesToAppend.length, 2).setValues(newSignatoriesToAppend); 
+        Logger.log(`[updateSignatoryMaster] Appended ${newSignatoriesToAppend.length} new signatories (Name and Designation).`);
     }
 }
 
