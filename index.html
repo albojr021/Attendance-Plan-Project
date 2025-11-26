@@ -247,30 +247,51 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
             <input type="text" id="sub-property-input" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., TOWER 1, ANNEX BUILDING" required>
         </div>
         
-        <h4 class="text-lg font-bold mb-3 text-gray-800 border-t pt-4">Signatories (Name Validation Applies)</h4>
+        <h4 class="text-lg font-bold mb-3 text-gray-800 border-t pt-4">Signatories (Name & Designation Validation Applies)</h4>
 
         <div class="grid grid-cols-2 gap-4 mb-4">
             <div>
-                <label for="signatory-prepared-by" class="block text-sm font-medium text-gray-700 mb-1">Prepared By: (Required)</label>
+                <label for="signatory-prepared-by" class="block text-sm font-medium text-gray-700 mb-1">Prepared By: (Required - Personnel Name)</label>
                 <input type="text" id="signatory-prepared-by" list="employee-name-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="PERSONNEL NAME" required>
                 <p class="text-xs text-gray-500 mt-1">Personnel Name (from Employee List)</p>
+                
+                <label for="signatory-prepared-by-designation" class="block text-sm font-medium text-gray-700 mt-3 mb-1">Designation/Position:</label>
+                <input type="text" id="signatory-prepared-by-designation" class="w-full p-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-default" placeholder="POSITION (Auto-filled)" readonly>
             </div>
 
             <div>
-                <label for="signatory-approved-by" class="block text-sm font-medium text-gray-700 mb-1">Approved By: (Required)</label>
+                <label for="signatory-approved-by" class="block text-sm font-medium text-gray-700 mb-1">Approved By: (Required - Signatory Name)</label>
                 <input type="text" id="signatory-approved-by" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="SIGNATORY NAME" required>
                 <p class="text-xs text-gray-500 mt-1">Signatory Name (from Master List)</p>
+
+                <label for="signatory-approved-by-designation" class="block text-sm font-medium text-gray-700 mt-3 mb-1">Designation:</label>
+                <input type="text" id="signatory-approved-by-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="DESIGNATION (Editable)">
             </div>
         </div>
 
         <div class="mb-6">
             <label class="block text-sm font-medium text-gray-700 mb-2">Checked By: (At least one required)</label>
-            <div class="grid grid-cols-3 gap-2">
-                <input type="text" id="signatory-checked-by-0" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 1 (Required)">
-                <input type="text" id="signatory-checked-by-1" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 2 (Optional)">
-                <input type="text" id="signatory-checked-by-2" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 3 (Optional)">
-                <input type="text" id="signatory-checked-by-3" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 4 (Optional)">
-                <input type="text" id="signatory-checked-by-4" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 5 (Optional)">
+            <div class="grid grid-cols-3 gap-x-2 gap-y-2">
+                <div>
+                    <input type="text" id="signatory-checked-by-0" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 1 (Name)" required>
+                    <input type="text" id="signatory-checked-by-0-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                </div>
+                <div>
+                    <input type="text" id="signatory-checked-by-1" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 2 (Name)">
+                    <input type="text" id="signatory-checked-by-1-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                </div>
+                <div>
+                    <input type="text" id="signatory-checked-by-2" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 3 (Name)">
+                    <input type="text" id="signatory-checked-by-2-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                </div>
+                <div>
+                    <input type="text" id="signatory-checked-by-3" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 4 (Name)">
+                    <input type="text" id="signatory-checked-by-3-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                </div>
+                <div>
+                    <input type="text" id="signatory-checked-by-4" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 5 (Name)">
+                    <input type="text" id="signatory-checked-by-4-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                </div>
             </div>
             <p class="text-xs text-gray-500 mt-1">Signatory names (from Master List). At least one field (Checked By 1) must be filled.</p>
         </div>
