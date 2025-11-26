@@ -16,6 +16,10 @@ const SIGNATORY_MASTER_SHEET = 'SignatoryMaster';
 // --- BAGONG CONSTANT PARA SA CONSOLIDATED EMPLOYEE MASTER ---
 const EMPLOYEE_MASTER_SHEET_NAME = 'EmployeeMaster_Consolidated'; 
 // ------------------------------------------------------------
+// *** NEW CONSTANTS FOR CENTRALIZED 201 FILE ***
+const FILE_201_ID = '19eJ-qC68eazrVMmjPzZjTvfns_N9h03Ha6SDGTvuv0E'; 
+const FILE_201_SHEET_NAME = 'Basic Information'; 
+// ----------------------------------------------
 const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
 const LOG_SHEET_NAME = 'PrintLog';
 const LOG_HEADERS = [
@@ -286,6 +290,64 @@ function getContracts() {
   });
 }
 
+/**
+ * Reads Personnel ID (CODE), First Name, and Last Name from the 201 Master File.
+ * Formats the name as "LastName, FirstName" and cleans the ID.
+ */
+function get201FileMasterData() {
+    if (FILE_201_ID === 'PUNAN_MO_ITO_NG_201_SPREADSHEET_ID') {
+        Logger.log('[get201FileMasterData] ERROR: FILE_201_ID is not set.');
+        return [];
+    }
+
+    try {
+        const ss = SpreadsheetApp.openById(FILE_201_ID);
+        const sheet = ss.getSheetByName(FILE_201_SHEET_NAME);
+        
+        if (!sheet) {
+            Logger.log(`[get201FileMasterData] ERROR: Sheet ${FILE_201_SHEET_NAME} not found.`);
+            return [];
+        }
+
+        // Start reading from Row 6 (Index 5)
+        const START_ROW = 6; 
+        const NUM_ROWS = sheet.getLastRow() - START_ROW + 1;
+        const NUM_COLS = 11; // Up to Column K (Last Name)
+
+        if (NUM_ROWS <= 0) return [];
+        
+        // Read range from Col D (CODE) to Col K (LAST NAME) which is 8 columns wide (D to K)
+        // D(4) E(5) F(6) G(7) H(8) I(9) J(10) K(11) -> 8 columns
+        // We will read from Column D (4) to Column K (11).
+        const values = sheet.getRange(START_ROW, 4, NUM_ROWS, 8).getDisplayValues(); 
+
+        const masterData = values.map(row => {
+            // Indices based on the read range (D is index 0, K is index 7)
+            const personnelIdRaw = row[0]; // Col D (CODE)
+            const firstName = String(row[4] || '').trim(); // Col H (FIRST NAME) -> Index 4
+            const lastName = String(row[7] || '').trim();  // Col K (LAST NAME) -> Index 7
+            
+            const cleanId = cleanPersonnelId(personnelIdRaw); // Assuming cleanPersonnelId exists and works
+            const formattedName = lastName ? `${lastName}, ${firstName}` : firstName;
+            
+            if (!cleanId || !formattedName) return null; // Skip if ID or Name is blank
+
+            return {
+                id: cleanId,
+                name: formattedName.toUpperCase(),
+                // NOTE: Walang Position/Area dito. Ikakabit ito sa front-end gamit ang SFC Master list.
+            };
+        }).filter(item => item !== null);
+
+        Logger.log(`[get201FileMasterData] Retrieved ${masterData.length} records from 201 file.`);
+        return masterData;
+
+    } catch (e) {
+        Logger.log(`[get201FileMasterData] ERROR: ${e.message}`);
+        throw new Error(`Failed to access 201 Master File. Please check ID and sheet name in Code.gs. Error: ${e.message}`);
+    }
+}
+
 function cleanPersonnelId(rawId) {
     let idString = String(rawId || '').trim();
     return idString.replace(/\D/g, '');
@@ -324,21 +386,62 @@ function getDynamicSheetName(sfcRef, type, year, month, shift) {
 
 function getEmployeeMasterData(sfcRef) {
     if (!sfcRef) throw new Error("SFC Ref# is required.");
-    // --- BINAGO START: Basahin ang Consolidated sheet at i-filter ---
-    const allMasterData = getSheetData(TARGET_SPREADSHEET_ID, EMPLOYEE_MASTER_SHEET_NAME);
+
+    // --- NEW LOGIC: 1. Get ALL records from the centralized 201 File ---
+    const all201Data = get201FileMasterData();
+    const clean201DataMap = {}; // Key: ID
+    all201Data.forEach(e => {
+        // Ang 201 data ay walang Position/Area, kaya ito ang initial details.
+        clean201DataMap[e.id] = { 
+            id: e.id, 
+            name: e.name, 
+            position: '', 
+            area: '' 
+        };
+    });
+    // --- END NEW LOGIC ---
     
-    const filteredMasterData = allMasterData.filter(e => {
+    // 2. Basahin ang Consolidated sheet (SFC-specific Position/Area)
+const allMasterData = getSheetData(TARGET_SPREADSHEET_ID, EMPLOYEE_MASTER_SHEET_NAME);
+    
+const filteredMasterData = allMasterData.filter(e => {
         const contractRef = String(e['CONTRACT #'] || '').trim();
         return contractRef === sfcRef;
     });
+    
+    // 3. I-Merge ang data: Gamitin ang Position/Area mula sa SFC Master (EmployeeMaster_Consolidated) 
+    // at idagdag ang mga record mula sa 201 na wala pa sa SFC master.
 
-    return filteredMasterData.map((e, index) => ({
-        id: cleanPersonnelId(e['Personnel ID']),
-        name: String(e['Personnel Name'] || '').trim(),
-        position: String(e['Position'] || '').trim(),
-        area: String(e['Area Posting'] || '').trim(),
+    const finalEmployeeList = filteredMasterData.map(e => {
+        const id = cleanPersonnelId(e['Personnel ID']);
+        const name = String(e['Personnel Name'] || '').trim();
+        const position = String(e['Position'] || '').trim();
+        const area = String(e['Area Posting'] || '').trim();
+        
+        // Tanggalin ang ID na ito sa 201 map dahil na-process na ito gamit ang SFC data
+        if (clean201DataMap[id]) {
+            delete clean201DataMap[id];
+        }
+
+        return { id, name, position, area };
+    }).filter(e => e.id); // Filter out records na walang ID
+    
+    // 4. Idagdag ang natitirang records mula sa 201 (ito ang mga record na walang Position/Area sa SFC master)
+    Object.values(clean201DataMap).forEach(emp => {
+        // Tiyakin lang na walang duplicate na ID (kahit na dapat walang ganyan dahil sa filter)
+        if (!finalEmployeeList.some(e => e.id === emp.id)) {
+             finalEmployeeList.push(emp);
+        }
+    });
+
+    Logger.log(`[getEmployeeMasterData] Final Employee List Count: ${finalEmployeeList.length} (Merged 201 + SFC Master)`);
+    
+return finalEmployeeList.map((e, index) => ({
+        id: e.id,
+        name: e.name,
+        position: e.position,
+        area: e.area,
     })).filter(e => e.id);
-    // --- BINAGO END ---
 }
 
 function getEmployeeNameFromMaster(sfcRef, personnelId) {
