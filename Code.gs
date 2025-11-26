@@ -1,26 +1,32 @@
 const SPREADSHEET_ID = '1rQnJGqcWcEBjoyAccjYYMOQj7EkIu1ykXTMLGFzzn2I';
 const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; 
 const CONTRACTS_SHEET_NAME = 'MASTER';
+
+// *** NEW CONSTANTS FOR CENTRALIZED 201 FILE ***
+const FILE_201_ID = '19eJ-qC68eazrVMmjPzZjTvfns_N9h03Ha6SDGTvuv0E';
+const FILE_201_SHEET_NAME = 'Basic Information'; 
+// ----------------------------------------------
+
 // *** NEW CONSTANTS FOR CONSOLIDATED PLAN SHEET ***
 const PLAN_SHEET_NAME = 'AttendancePlan_Consolidated';
 const PLAN_HEADER_ROW = 1;
+
 // Header is at Row 1
 // CONTRACT # to AREA POSTING = 17 Columns (0-based index 0 to 16)
 const PLAN_FIXED_COLUMNS = 17;
+
 // *** NEW CONSTANT FOR HALF-MONTH PLANNING ***
 const PLAN_MAX_DAYS_IN_HALF = 16; 
 // ------------------------------------------------
 
 const MASTER_HEADER_ROW = 5;
 const SIGNATORY_MASTER_SHEET = 'SignatoryMaster';
+
 // --- BAGONG CONSTANT PARA SA CONSOLIDATED EMPLOYEE MASTER ---
 const EMPLOYEE_MASTER_SHEET_NAME = 'EmployeeMaster_Consolidated'; 
 // ------------------------------------------------------------
-// *** NEW CONSTANTS FOR CENTRALIZED 201 FILE ***
-const FILE_201_ID = '19eJ-qC68eazrVMmjPzZjTvfns_N9h03Ha6SDGTvuv0E'; 
-const FILE_201_SHEET_NAME = 'Basic Information'; 
-// ----------------------------------------------
 const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
+
 const LOG_SHEET_NAME = 'PrintLog';
 const LOG_HEADERS = [
     'Reference #', 
@@ -35,6 +41,7 @@ const LOG_HEADERS = [
     'Timestamp',
     'Locked Personnel IDs'  
 ];
+
 const AUDIT_LOG_SHEET_NAME = 'ScheduleAuditLog';
 const AUDIT_LOG_HEADERS = [
     'Timestamp', 
@@ -49,8 +56,10 @@ const AUDIT_LOG_HEADERS = [
     'Old Status', 
     'New Status'
 ];
+
 // --- NEW CONSTANTS FOR UNLOCK REQUEST LOGGING ---
 const UNLOCK_LOG_SHEET_NAME = 'UnlockRequestLog';
+
 const UNLOCK_LOG_HEADERS = [
     'SFC Ref#',
     'Personnel ID',
@@ -92,6 +101,7 @@ function getSheetData(spreadsheetId, sheetName) {
   let startRow = 1;
   let numRows = sheet.getLastRow();
   let numColumns = sheet.getLastColumn();
+  
   if (sheetName === CONTRACTS_SHEET_NAME) {
     startRow = MASTER_HEADER_ROW;
     if (numRows < startRow) {
@@ -102,7 +112,8 @@ function getSheetData(spreadsheetId, sheetName) {
   } 
   // No longer checking for Plan Sheet name prefix, as it's a single sheet
   else if (sheetName === PLAN_SHEET_NAME || sheetName === EMPLOYEE_MASTER_SHEET_NAME) {
-      startRow = 1; // Assuming headers are at Row 1 for both consolidated sheets
+      startRow = 1;
+      // Assuming headers are at Row 1 for both consolidated sheets
       if (numRows < startRow) {
           numRows = 0;
       } else {
@@ -142,7 +153,7 @@ function getSheetData(spreadsheetId, sheetName) {
 function checkContractSheets(sfcRef, year, month, shift) {
     if (!sfcRef || year === undefined || month === undefined || !shift) return false;
     try {
-        const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
+        const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
         // --- BINAGO: Check na lang ang Consolidated Plan at Employee Master Sheets ---
         const empSheet = ss.getSheetByName(EMPLOYEE_MASTER_SHEET_NAME);
         const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
@@ -170,10 +181,8 @@ function getOrCreateConsolidatedEmployeeMasterSheet(ss) {
 
 function createContractSheets(sfcRef, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    
     // --- EMPLOYEES MASTER SHEET (Consolidated) ---
     getOrCreateConsolidatedEmployeeMasterSheet(ss);
-    
     // --- CONSOLIDATED ATTENDANCE PLAN SHEET ---
     let planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     const getConsolidatedPlanHeaders = () => {
@@ -290,6 +299,11 @@ function getContracts() {
   });
 }
 
+function cleanPersonnelId(rawId) {
+    let idString = String(rawId || '').trim();
+    return idString.replace(/\D/g, '');
+}
+
 /**
  * Reads Personnel ID (CODE), First Name, and Last Name from the 201 Master File.
  * Formats the name as "LastName, FirstName" and cleans the ID.
@@ -318,7 +332,6 @@ function get201FileMasterData() {
         
         // Read range from Col D (CODE) to Col K (LAST NAME) which is 8 columns wide (D to K)
         // D(4) E(5) F(6) G(7) H(8) I(9) J(10) K(11) -> 8 columns
-        // We will read from Column D (4) to Column K (11).
         const values = sheet.getRange(START_ROW, 4, NUM_ROWS, 8).getDisplayValues(); 
 
         const masterData = values.map(row => {
@@ -348,11 +361,6 @@ function get201FileMasterData() {
     }
 }
 
-function cleanPersonnelId(rawId) {
-    let idString = String(rawId || '').trim();
-    return idString.replace(/\D/g, '');
-}
-
 function getSignatoryMasterData() {
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
@@ -360,14 +368,15 @@ function getSignatoryMasterData() {
 
         if (sheet.getLastRow() < 2) return [];
         // Basahin ang 2 columns (Name at Designation)
-        const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2); 
+        const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2);
         const values = range.getDisplayValues();
 
         // Ibalik ang listahan ng objects na may name at designation
         return values.map(row => ({
             name: String(row[0] || '').trim(), 
             designation: String(row[1] || '').trim() 
-        })).filter(item => item.name); // Siguraduhin na may pangalan
+        })).filter(item => item.name);
+        // Siguraduhin na may pangalan
     } catch (e) {
         Logger.log(`[getSignatoryMasterData] ERROR: ${e.message}`);
         return [];
@@ -379,7 +388,7 @@ function getDynamicSheetName(sfcRef, type, year, month, shift) {
     const safeRef = (sfcRef || '').replace(/[\\/?*[]/g, '_');
     if (type === 'employees') {
         // Ibalik na lang ang consolidated name
-        return EMPLOYEE_MASTER_SHEET_NAME; 
+        return EMPLOYEE_MASTER_SHEET_NAME;
     }
     return `${safeRef} - AttendancePlan`; 
 }
@@ -402,9 +411,9 @@ function getEmployeeMasterData(sfcRef) {
     // --- END NEW LOGIC ---
     
     // 2. Basahin ang Consolidated sheet (SFC-specific Position/Area)
-const allMasterData = getSheetData(TARGET_SPREADSHEET_ID, EMPLOYEE_MASTER_SHEET_NAME);
+    const allMasterData = getSheetData(TARGET_SPREADSHEET_ID, EMPLOYEE_MASTER_SHEET_NAME);
     
-const filteredMasterData = allMasterData.filter(e => {
+    const filteredMasterData = allMasterData.filter(e => {
         const contractRef = String(e['CONTRACT #'] || '').trim();
         return contractRef === sfcRef;
     });
@@ -436,7 +445,7 @@ const filteredMasterData = allMasterData.filter(e => {
 
     Logger.log(`[getEmployeeMasterData] Final Employee List Count: ${finalEmployeeList.length} (Merged 201 + SFC Master)`);
     
-return finalEmployeeList.map((e, index) => ({
+    return finalEmployeeList.map((e, index) => ({
         id: e.id,
         name: e.name,
         position: e.position,
@@ -449,7 +458,8 @@ function getEmployeeNameFromMaster(sfcRef, personnelId) {
     const masterData = getEmployeeMasterData(sfcRef);
     const cleanId = cleanPersonnelId(personnelId);
     const employee = masterData.find(e => e.id === cleanId);
-    return employee ? employee.name : 'N/A';
+    return employee ?
+employee.name : 'N/A';
 }
 
 function getSortedPlanSheets(sfcRef, ss) {
@@ -508,6 +518,7 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
             }
             
     
+            
             if (version 
 > latestVersion || (version === latestVersion && planDate.getTime() > latestDate.getTime())) {
         
@@ -555,17 +566,50 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
     return dayPatternMap;
 }
 
-function getLockedPersonnelIds(ss, planSheetName) {
+/**
+ * FIX: This function is updated to filter the PrintLog by sfcRef, year, month, and shift
+ * to ensure that only IDs locked for the CURRENT PERIOD are considered locked in the UI.
+ */
+function getLockedPersonnelIds(ss, sfcRef, year, month, shift) {
     const logSheet = getOrCreateLogSheet(ss);
     const lastRow = logSheet.getLastRow();
+    
     if (lastRow < 2) return {};
 
     const REF_NUM_COL = 1;
+    const SFC_REF_COL = 2; 
+    const PERIOD_DISPLAY_COL = 4; 
     const LOCKED_IDS_COL = LOG_HEADERS.length;
-    // NOTE: This assumes Reference # is the string version after this change.
-    const values = logSheet.getRange(2, 1, lastRow - 1, LOCKED_IDS_COL).getDisplayValues();
+    
+    const LOG_HEADERS_COUNT = LOG_HEADERS.length; 
+    
+    const values = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS_COUNT).getDisplayValues(); 
     const lockedIdRefMap = {};
+    
+    // Calculate target period display string for filtering (e.g., 'November 1-15, 2025 (1stHalf)')
+    const date = new Date(year, month, 1);
+    const monthName = date.toLocaleString('en-US', { month: 'long' });
+    const yearNum = date.getFullYear();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let dateRange = '';
+    
+    if (shift === '1stHalf') {
+        dateRange = `${monthName} 1-15, ${yearNum} (${shift})`;
+    } else {
+        dateRange = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
+    }
+    
     values.forEach(row => {
+        // --- NEW FILTERING LOGIC START (Filter by context) ---
+        const currentSfc = String(row[SFC_REF_COL - 1] || '').trim();
+        const currentPeriodDisplay = String(row[PERIOD_DISPLAY_COL - 1] || '').trim();
+
+        // Only process rows that match the current SFC and Period/Shift loaded in the UI
+        if (currentSfc !== sfcRef || currentPeriodDisplay !== dateRange) {
+             return; 
+        }
+        // --- NEW FILTERING LOGIC END ---
+        
         const refNum = String(row[REF_NUM_COL - 1] || '').trim();
         const lockedIdsString = String(row[LOCKED_IDS_COL - 1] || '').trim(); 
         
@@ -573,18 +617,13 @@ function getLockedPersonnelIds(ss, planSheetName) {
             const idsList = lockedIdsString.split(',').map(id => id.trim());
             
             idsList.forEach(idWithPrefix => {
-      
-                
                 const cleanId = cleanPersonnelId(idWithPrefix);
                  
                 if (cleanId.length >= 3 && !idWithPrefix.startsWith('UNLOCKED:')) { 
                     if (!lockedIdRefMap[cleanId]) { 
-  
-                        
+                         // Map the locked ID to the Reference # (Print Version String)
                          lockedIdRefMap[cleanId] = refNum;
                     }
-             
-                
                 }
             });
         }
@@ -593,27 +632,61 @@ function getLockedPersonnelIds(ss, planSheetName) {
 }
 
 
-function getHistoricalReferenceMap(ss, planSheetName) {
+/**
+ * FIX: This function is updated to filter the PrintLog by sfcRef, year, month, and shift
+ * to ensure that only the most recent Print Version for the CURRENT PERIOD is used for Audit logging.
+ */
+function getHistoricalReferenceMap(ss, sfcRef, year, month, shift) {
     const logSheet = ss.getSheetByName('PrintLog');
     if (!logSheet || logSheet.getLastRow() < 2) return {};
 
     const LOG_HEADERS_COUNT = LOG_HEADERS.length; 
     const REF_NUM_COL = 1;              
+    const SFC_REF_COL = 2;
+    const PERIOD_DISPLAY_COL = 4;
     const LOCKED_IDS_COL = LOG_HEADERS.length;
+    
     const allValues = logSheet.getRange(2, 1, logSheet.getLastRow() - 1, LOG_HEADERS_COUNT).getDisplayValues();
     const historicalRefMap = {};
+    
+    // Calculate target period display string for filtering
+    const date = new Date(year, month, 1);
+    const monthName = date.toLocaleString('en-US', { month: 'long' });
+    const yearNum = date.getFullYear();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let dateRange = '';
+    
+    if (shift === '1stHalf') {
+        dateRange = `${monthName} 1-15, ${yearNum} (${shift})`;
+    } else {
+        dateRange = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
+    }
+
     for (let i = allValues.length - 1; i >= 0; i--) {
         const row = allValues[i];
-    // Reference # column (now storing the print version string)
+        
+        // --- NEW FILTERING LOGIC START (Filter by context) ---
+        const currentSfc = String(row[SFC_REF_COL - 1] || '').trim();
+        const currentPeriodDisplay = String(row[PERIOD_DISPLAY_COL - 1] || '').trim();
+
+        // Filter by current SFC and Period/Shift Display
+        if (currentSfc !== sfcRef || currentPeriodDisplay !== dateRange) {
+             continue; // Skip logs that do not match the current period/shift
+        }
+        // --- NEW FILTERING LOGIC END ---
+
+        // Reference # column (now storing the print version string)
         const refNumRaw = String(row[REF_NUM_COL - 1] || '').trim();
         const refNum = refNumRaw;
         const lockedIdsString = String(row[LOCKED_IDS_COL - 1] || '').trim();
+        
         if (refNum) {
             const allIdsInString = lockedIdsString.split(',').map(s => s.trim());
             allIdsInString.forEach(idWithPrefix => {
                 const cleanId = cleanPersonnelId(idWithPrefix);
                 
-                if (cleanId.length >= 3) { 
+                // Only consider unlocked (non-prefixed) IDs
+                if (cleanId.length >= 3 && !idWithPrefix.startsWith('UNLOCKED:')) { 
                      if (!historicalRefMap[cleanId]) { 
                   
                         
@@ -633,7 +706,8 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     ensureContractSheets(sfcRef, year, month, shift);
 
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
-    const lockedIdRefMap = getLockedPersonnelIds(ss, PLAN_SHEET_NAME);
+    // FIX: Pass context parameters to getLockedPersonnelIds
+    const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     const empMasterData = getEmployeeMasterData(sfcRef);
     const empDetailMap = {};
     empMasterData.forEach(e => {
@@ -699,7 +773,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             const existingRow = latestVersionMap[mapKey];
             
             if (!existingRow ||
-            version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
+version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
  0)) {
                 latestVersionMap[mapKey] = row;
             }
@@ -711,7 +785,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     
     // NEW LOGIC: Calculate actual days of the month based on shift
     const startDayOfMonth = shift === '1stHalf' ?
- 1 : 16;
+1 : 16;
     const endDayOfMonth = new Date(year, month + 1, 0).getDate(); 
     const loopLimit = PLAN_MAX_DAYS_IN_HALF;
     // 16
@@ -748,7 +822,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const dayKey = `${year}-${month + 1}-${actualDay}`; 
                 const dayColIndex = day1Index + d - 1; 
 
-             
+     
                 if (dayColIndex < numColumns) {
           
                     const status = String(row[dayColIndex] ||
@@ -785,8 +859,8 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     ensureContractSheets(sfcRef, year, month, shift);
     
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    // NEW: Get the map of currently locked IDs for contextual logging
-    const lockedIdRefMap = getLockedPersonnelIds(ss, PLAN_SHEET_NAME);
+    // NEW: Get the map of currently locked IDs for contextual logging (PASS CONTEXT)
+    const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     const lockedIds = Object.keys(lockedIdRefMap);
     
     const finalEmployeeChanges = employeeChanges.filter(change => {
@@ -876,7 +950,8 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     if (!planSheet) throw new Error(`AttendancePlan Sheet for ${PLAN_SHEET_NAME} not found.`);
     const HEADER_ROW = PLAN_HEADER_ROW;
-    const historicalRefMap = getHistoricalReferenceMap(ss, PLAN_SHEET_NAME);
+    // FIX: Pass context parameters to getHistoricalReferenceMap
+    const historicalRefMap = getHistoricalReferenceMap(ss, sfcRef, year, month, shift);
     
     // 1. Read all data
     planSheet.setFrozenRows(0);
@@ -1060,7 +1135,8 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             const versionString = latestVersionRow[printVersionIndex].split('-').pop();
             currentVersion = parseFloat(versionString) || 0; 
 
-            newRow[referenceIndex] = ''; // Ito ang critical reset
+            newRow[referenceIndex] = '';
+            // Ito ang critical reset
 
             // **NEW LOGIC START: Preserve the old GROUP number for versioning**
             const oldGroup = latestVersionRow[groupIndex];
@@ -1101,6 +1177,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             if (dayColumnNumber < 1 || dayColumnNumber > PLAN_MAX_DAYS_IN_HALF) {
                  Logger.log(`[savePlanBulk] WARNING: Day number ${dayNumber} is out of expected range for shift ${shift}. Skipping update.`);
      
+ 
                 
     
     return;
@@ -1180,11 +1257,9 @@ function updatePlanSheetReferenceBulk(refNum, sfcRef, year, month, shift, printe
     const numColumns = planSheet.getLastColumn();
     
     if (lastRow <= HEADER_ROW) return;
-
     const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - HEADER_ROW + 1, numColumns).getValues();
     const headers = planValues[0];
     const dataRows = planValues.slice(1);
-    
     // Hanapin ang mga index ng kailangang columns
     const sfcRefIndex = headers.indexOf('CONTRACT #');
     const monthIndex = headers.indexOf('MONTH');
@@ -1206,39 +1281,42 @@ function updatePlanSheetReferenceBulk(refNum, sfcRef, year, month, shift, printe
         const currentShift = String(row[shiftIndex] || '').trim();
         const id = String(row[personnelIdIndex] || '').trim();
         
-        // 1. I-filter base sa Context at mga ID na na-print
+     
+       // 1. I-filter base sa Context at mga ID na na-print
         if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && printedPersonnelIds.includes(id)) {
             
             const printVersionString = String(row[printVersionIndex] || '').trim();
             const versionParts = printVersionString.split('-');
-            const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
+            const version = parseFloat(versionParts[versionParts.length - 
+ 1]) || 0;
    
             const existingEntry = latestVersionMap[id];
             
             // 2. Hanapin ang LATEST version row index para sa ID na ito
-            if (!existingEntry || version > existingEntry.version) {
+            if (!existingEntry ||
+version > existingEntry.version) {
                 latestVersionMap[id] = { 
                     rowArray: row, 
                     sheetRowNumber: rowIndex + HEADER_ROW + 1, // Actual row number sa sheet
                     version: version 
-                };
-            }
+   
+             };
+}
         }
     });
 
     const rangesToUpdate = [];
-    
     Object.values(latestVersionMap).forEach(entry => {
         // 3. I-handa ang update: Reference # column (index + 1 para sa 1-based column)
         if (referenceIndex !== -1) {
             rangesToUpdate.push({
                 row: entry.sheetRowNumber,
                 col: referenceIndex + 1, 
-                value: refNum
+               
+                 value: refNum
             });
         }
     });
-    
     // 4. Isagawa ang Batch update
     if (rangesToUpdate.length > 0) {
         planSheet.setFrozenRows(0);
@@ -1313,7 +1391,7 @@ latestVersion)
     
     // **CHANGED LOGIC:** Use the passed lock reference instead of historical map lookup
     const lockedRefNum = currentLockRef ||
- ''; 
+''; 
     const employeeName = getEmployeeNameFromMaster(sfcRef, personnelId);
     
     // NEW LOGIC: Iterate only through DAY1 to DAY16 columns
@@ -1356,13 +1434,13 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
     const empSheet = getOrCreateConsolidatedEmployeeMasterSheet(ss); // Gagamitin ang Consolidated Sheet
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     const userEmail = Session.getActiveUser().getEmail();
-
     if (!empSheet) throw new Error(`Employee Consolidated Sheet not found.`);
     empSheet.setFrozenRows(0);
     const numRows = empSheet.getLastRow() > 0 ? empSheet.getLastRow() : 1;
-    const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 5; // CONTRACT # + 4 fields
+    const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 5;
+    // CONTRACT # + 4 fields
     const values = empSheet.getRange(1, 1, numRows, numColumns).getValues();
-    const headers = values[0]; 
+    const headers = values[0];
     empSheet.setFrozenRows(1); 
     
     // BAGONG INDICES (Dahil may CONTRACT # na sa Column A)
@@ -1371,17 +1449,17 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
     const nameIndex = headers.indexOf('Personnel Name');
     const positionIndex = headers.indexOf('Position');
     const areaIndex = headers.indexOf('Area Posting');
-
     const rowsToAppend = [];
     const rowsToDelete = [];
     
-    const personnelIdMap = {}; 
+    const personnelIdMap = {};
     // Gagawa ng map gamit ang composite key: [SFC_ID]
     for (let i = 1; i < values.length; i++) { 
         const sfc = String(values[i][contractRefIndex] || '').trim();
         const id = String(values[i][personnelIdIndex] || '').trim();
         if (sfc === sfcRef) {
-            personnelIdMap[id] = i + 1; // Row number
+            personnelIdMap[id] = i + 1;
+            // Row number
         }
     }
     
@@ -1392,11 +1470,13 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
         if (data.isDeleted && oldId && planSheet) {
             rowsToDelete.push({ id: oldId, isMasterDelete: false }); // Log deletion to Plan Log
 
+     
             // NOTE: Hindi na dinelete sa Master sheet ang existing employee, kundi sa Plan lang.
             // Kung mayaman ang data, hahanapin natin ang row number sa empSheet para burahin.
             
             // Temporary fix: If it's deleted from the UI, we only track the deletion for the plan data.
             
+ 
             return;
         }
 
@@ -1406,6 +1486,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
             
             const newRow = [];
             
+      
             newRow[contractRefIndex] = sfcRef; // CRITICAL: I-tag ang SFC Ref#
             newRow[personnelIdIndex] = data.id;
             newRow[nameIndex] = data.name;
@@ -1424,7 +1505,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
         }
         // BINAGO END
     });
-    
     // 1. Log schedule deletion for current context
     rowsToDelete.forEach(item => {
         const date = new Date(year, month, 1);
@@ -1490,7 +1570,7 @@ function getNextGroupNumber(sfcRef, year, month, shift) {
             const currentShift = String(row[shiftIndex] || '').trim();
             const currentGroup = String(row[groupIndex] || '').trim().toUpperCase();
 
-            // Filter by context
+            // 
             if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift) {
                 // Extract numeric part from group (e.g., 'G1' -> 1)
                 const numericPart = parseInt(currentGroup.replace(/[^\d]/g, ''), 10);
@@ -1521,11 +1601,13 @@ function getOrCreateSignatoryMasterSheet(ss) {
     try {
         sheet = ss.insertSheet(SIGNATORY_MASTER_SHEET);
         // --- BINAGO START ---
-        const headers = ['Signatory Name', 'Designation']; // Idinagdag ang Designation
+        const headers = ['Signatory Name', 'Designation'];
+        // Idinagdag ang Designation
         sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
         sheet.setFrozenRows(1);
         sheet.setColumnWidth(1, 200);
-        sheet.setColumnWidth(2, 150); // Nagdagdag ng column width para sa Designation
+        sheet.setColumnWidth(2, 150);
+        // Nagdagdag ng column width para sa Designation
         // --- BINAGO END ---
         Logger.log(`[getOrCreateSignatoryMasterSheet] Created Signatory Master sheet: ${SIGNATORY_MASTER_SHEET}`);
         return sheet;
@@ -1543,17 +1625,14 @@ function updateSignatoryMaster(signatories) {
     if (!signatories) return;
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const sheet = getOrCreateSignatoryMasterSheet(ss);
-    
     // I-extract ang lahat ng approvedBy at checkedBy objects na may laman
-    const allSignatories = []; 
-    
+    const allSignatories = [];
     if (signatories.approvedBy && signatories.approvedBy.name) {
         allSignatories.push(signatories.approvedBy);
     }
     signatories.checkedBy.forEach(item => {
         if (item.name) allSignatories.push(item);
     });
-    
     const uniqueSignatories = {}; 
     allSignatories.forEach(item => {
         // Gumamit ng combination ng Name at Designation bilang key para maging unique
@@ -1562,14 +1641,13 @@ function updateSignatoryMaster(signatories) {
             uniqueSignatories[key] = {
                 name: item.name.trim(),
                 designation: item.designation.trim()
-            };
+  
+          };
         }
     });
-
     const existingMasterData = getSignatoryMasterData(); // Ito ay nagbabalik na ng {name, designation}
     
     const newSignatoriesToAppend = [];
-    
     Object.values(uniqueSignatories).forEach(newSig => {
         const isExisting = existingMasterData.some(existSig => 
             existSig.name.toUpperCase() === newSig.name.toUpperCase() && 
@@ -1580,10 +1658,9 @@ function updateSignatoryMaster(signatories) {
             newSignatoriesToAppend.push([newSig.name, newSig.designation]);
         }
     });
-    
     if (newSignatoriesToAppend.length > 0) {
         // Magsisimula sa Column 1 at Column 2
-        sheet.getRange(sheet.getLastRow() + 1, 1, newSignatoriesToAppend.length, 2).setValues(newSignatoriesToAppend); 
+        sheet.getRange(sheet.getLastRow() + 1, 1, newSignatoriesToAppend.length, 2).setValues(newSignatoriesToAppend);
         Logger.log(`[updateSignatoryMaster] Appended ${newSignatoriesToAppend.length} new signatories (Name and Designation).`);
     }
 }
@@ -1723,8 +1800,7 @@ function recordPrintLogEntry(refNum, subProperty, signatories, sfcRef, contractI
         logUserReprintAction(sfcRef, userEmail, printedPersonnelIds);
         // ***************************************************************
 
-        const planSheetName = PLAN_SHEET_NAME; 
-        
+        const planSheetName = PLAN_SHEET_NAME;
         const date = new Date(year, month, 1);
         const monthName = date.toLocaleString('en-US', { month: 'long' });
         const yearNum = date.getFullYear();
@@ -1753,6 +1829,7 @@ function recordPrintLogEntry(refNum, subProperty, signatories, sfcRef, contractI
             new Date(),
             printedPersonnelIds.join(',') 
   
+        
         ];
         const lastLoggedRow = logSheet.getLastRow();
         const newRow = lastLoggedRow + 1;
@@ -1872,12 +1949,13 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
           }
         });
      
+        
        
       
         if (changed) {
           
           const newLockedIdsString = updatedLockedIds.filter(id => id.length > 0).join(',');
-            rangeToUpdate.push({
+          rangeToUpdate.push({
               row: rowNumInSheet,
               col: LOCKED_IDS_COL_INDEX + 1, // 1-based
               value: newLockedIdsString
@@ -1921,7 +1999,7 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds
   });
   if (logEntries.length > 0) {
       unlockLogSheet.getRange(unlockLogSheet.getLastRow() + 1, 1, logEntries.length, UNLOCK_LOG_HEADERS.length).setValues(logEntries);
-    Logger.log(`[requestUnlockEmailNotification] Logged ${logEntries.length} PENDING unlock requests.`);
+      Logger.log(`[requestUnlockEmailNotification] Logged ${logEntries.length} PENDING unlock requests.`);
   }
   // --- END NEW LOGIC ---
 
@@ -2038,12 +2116,13 @@ function logAdminUnlockAction(status, sfcRef, personnelIds, lockedRefNums, reque
             if (String(row[SFC_INDEX]).trim() === sfcRef &&
                 String(row[ID_INDEX]).trim() === id &&
                 String(row[REF_INDEX]).trim() === targetRef &&
-       
+   
                  String(row[REQUESTER_INDEX]).trim() === requesterEmail &&
                 currentStatus === 'PENDING') {
                 
                 rowIndexToUpdate = i + 2; // +1 for 0-base to 1-base, +1 for header row
-                break;
+           
+             break;
        
            }
         }
@@ -2175,7 +2254,6 @@ function logUserReprintAction(sfcRef, userEmail, printedPersonnelIds) {
     const STATUS_INDEX = 8;
     const USER_ACTION_TYPE_INDEX = 9;
     const USER_ACTION_TIME_INDEX = 10;
-    
     let loggedCount = 0;
     const processedKeys = new Set(); // Key: ID_SFC_Requester
 
@@ -2186,21 +2264,20 @@ function logUserReprintAction(sfcRef, userEmail, printedPersonnelIds) {
         const rowStatus = String(row[STATUS_INDEX]).trim();
         const rowActionType = String(row[USER_ACTION_TYPE_INDEX]).trim();
         const rowRequester = String(row[REQUESTER_INDEX]).trim();
-
         // 1. I-filter: Katugma sa SFC, ID ay na-print, Status ay APPROVED, at User Action ay blangko
         if (rowSfc === sfcRef && 
             printedPersonnelIds.includes(rowId) &&
             rowStatus === 'APPROVED' &&
             rowActionType === '' // Hindi pa na-log ang aksyon ng user
            ) {
-            
+         
             const rowKey = `${rowId}_${rowSfc}_${rowRequester}`;
             if (processedKeys.has(rowKey)) continue;
 
             // 2. I-log ang aksyon
-            const rowIndexToUpdate = i + 2; // Actual row number sa sheet
+            const rowIndexToUpdate = i + 2;
+            // Actual row number sa sheet
             const targetRow = logSheet.getRange(rowIndexToUpdate, 1, 1, UNLOCK_LOG_HEADERS.length);
-
             targetRow.getCell(1, USER_ACTION_TYPE_INDEX + 1).setValue('Re-Print Attendance Plan');
             targetRow.getCell(1, USER_ACTION_TIME_INDEX + 1).setValue(new Date());
             
@@ -2219,8 +2296,7 @@ function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEma
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const logSheet = getOrCreateUnlockRequestLogSheet(ss);
     const lastRow = logSheet.getLastRow();
-    if (lastRow < 2) return 'PENDING'; 
-
+    if (lastRow < 2) return 'PENDING';
     // Indices for efficiency (0-based)
     const SFC_INDEX = 0;
     const ID_INDEX = 1;
@@ -2229,20 +2305,16 @@ function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEma
     const STATUS_INDEX = 8; 
     
     const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
-
     // Map ang ID at Ref# ng mga incoming request (Key: ID_Ref#)
     const incomingKeys = new Set(personnelIds.map((id, index) => `${id}_${lockedRefNums[index]}`));
-    
     // Map na mag-iimbak ng pinakabagong status (Key: ID_Ref# -> Value: Status)
-    const latestStatusMap = {}; 
-
+    const latestStatusMap = {};
     // 1. Iterate backward para makuha ang PINAKABAGONG STATUS para sa bawat ID_Ref#
     for (let i = values.length - 1; i >= 0; i--) {
         const row = values[i];
         const rowId = String(row[ID_INDEX]).trim();
         const rowRef = String(row[REF_INDEX]).trim();
         const rowKey = `${rowId}_${rowRef}`;
-
         // I-filter: Katugma sa SFC at Requester, at kasama sa incoming batch
         if (String(row[SFC_INDEX]).trim() === sfcRef &&
             String(row[REQUESTER_INDEX]).trim() === requesterEmail &&
@@ -2255,7 +2327,6 @@ function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEma
     
     // 2. I-check ang status ng lahat ng incoming requests
     let blockStatus = 'PENDING';
-    
     incomingKeys.forEach(key => {
         // Ang status ay ang pinakabagong nakuha natin, o PENDING kung hindi nahanap sa log
         const status = latestStatusMap[key] || 'PENDING'; 
@@ -2264,6 +2335,7 @@ function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEma
         if (status !== 'PENDING') {
             blockStatus = status; 
         }
+ 
     });
 
     return blockStatus;
@@ -2291,7 +2363,6 @@ function processAdminUnlockFromUrl(params) {
   // *** START OF ONE-CLICK GUARDRAIL CHECK ***
   // I-check kung na-proseso na ang request (approved/rejected) sa UnlockRequestLog
   const currentBatchStatus = getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEmail);
-    
   if (currentBatchStatus !== 'PENDING') {
       const template = HtmlService.createTemplateFromFile('UnlockStatus');
       template.status = 'INFO';
@@ -2301,7 +2372,6 @@ function processAdminUnlockFromUrl(params) {
   // *** END OF ONE-CLICK GUARDRAIL CHECK ***
   
   const summary = `${personnelIds.length} schedules (Ref# ${lockedRefNums.join(', ')})`;
-  
   if (params.action === 'reject_info') {
       sendRequesterNotification('REJECTED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
       logAdminUnlockAction('REJECTED', sfcRef, personnelIds, lockedRefNums, requesterEmail, userEmail);
@@ -2310,7 +2380,8 @@ function processAdminUnlockFromUrl(params) {
       template.status = 'INFO';
       template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}.
       Notification sent to ${requesterEmail}.
-      No data was changed. The locks remain active.`;
+      No data was changed.
+      The locks remain active.`;
       return template.evaluate().setTitle('Reject Status');
   }
   
