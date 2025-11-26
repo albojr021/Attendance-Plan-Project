@@ -13,6 +13,9 @@ const PLAN_MAX_DAYS_IN_HALF = 16;
 
 const MASTER_HEADER_ROW = 5;
 const SIGNATORY_MASTER_SHEET = 'SignatoryMaster';
+// --- BAGONG CONSTANT PARA SA CONSOLIDATED EMPLOYEE MASTER ---
+const EMPLOYEE_MASTER_SHEET_NAME = 'EmployeeMaster_Consolidated'; 
+// ------------------------------------------------------------
 const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
 const LOG_SHEET_NAME = 'PrintLog';
 const LOG_HEADERS = [
@@ -54,10 +57,10 @@ const UNLOCK_LOG_HEADERS = [
     'Admin Email',
     'Admin Action Timestamp',
     'Status (APPROVED/REJECTED)',
-    'User Action Type', // Hal. Edit Personal AP, Edit Entire AP, Create AP Plan For an OLD AP
+    'User Action Type', // Hal.
+    'Edit Personal AP, Edit Entire AP, Create AP Plan For an OLD AP',
     'User Action Timestamp'
 ];
-
 // ---------------------------------------
 
 function doGet(e) {
@@ -95,16 +98,13 @@ function getSheetData(spreadsheetId, sheetName) {
     numRows = sheet.getLastRow() - startRow + 1;
   } 
   // No longer checking for Plan Sheet name prefix, as it's a single sheet
-  else if (sheetName === PLAN_SHEET_NAME) {
-      startRow = PLAN_HEADER_ROW;
+  else if (sheetName === PLAN_SHEET_NAME || sheetName === EMPLOYEE_MASTER_SHEET_NAME) {
+      startRow = 1; // Assuming headers are at Row 1 for both consolidated sheets
       if (numRows < startRow) {
           numRows = 0;
       } else {
           numRows = sheet.getLastRow() - startRow + 1;
       }
-  }
-  else if (sheetName.includes('Employees')) {
-      startRow = 1;
   }
 
 
@@ -117,7 +117,7 @@ function getSheetData(spreadsheetId, sheetName) {
   const data = [];
   for (let i = 1; i < values.length; i++) { 
     const row = values[i];
-    if (sheetName === CONTRACTS_SHEET_NAME || sheetName.includes('Employees')) {
+    if (sheetName === CONTRACTS_SHEET_NAME || sheetName === EMPLOYEE_MASTER_SHEET_NAME) {
       if (!row.some(cell => String(cell).trim() !== '')) {
         continue;
       }
@@ -132,7 +132,7 @@ function getSheetData(spreadsheetId, sheetName) {
     data.push(item);
   }
   
-  Logger.log(`[getSheetData] Total data rows processed (excluding header): ${data.length}`);
+  Logger.log(`[getSheetData] Total data rows processed (excluding header): ${data.length} from ${sheetName}`);
   return data;
 }
 
@@ -140,28 +140,36 @@ function checkContractSheets(sfcRef, year, month, shift) {
     if (!sfcRef || year === undefined || month === undefined || !shift) return false;
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
-        const empSheetName = getDynamicSheetName(sfcRef, 'employees');
+        // --- BINAGO: Check na lang ang Consolidated Plan at Employee Master Sheets ---
+        const empSheet = ss.getSheetByName(EMPLOYEE_MASTER_SHEET_NAME);
         const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
-        return !!ss.getSheetByName(empSheetName) && !!planSheet;
+        return !!empSheet && !!planSheet;
+        // -------------------------------------------------------------------------
     } catch (e) {
          Logger.log(`[checkContractSheets] ERROR: Failed to open Spreadsheet ID ${TARGET_SPREADSHEET_ID}. Error: ${e.message}`);
-         return false;
+        return false;
     }
+}
+
+function getOrCreateConsolidatedEmployeeMasterSheet(ss) {
+    let empSheet = ss.getSheetByName(EMPLOYEE_MASTER_SHEET_NAME);
+    if (!empSheet) {
+        empSheet = ss.insertSheet(EMPLOYEE_MASTER_SHEET_NAME);
+        empSheet.clear();
+        // --- BAGONG HEADERS KASAMA ANG CONTRACT # ---
+        const empHeaders = ['CONTRACT #', 'Personnel ID', 'Personnel Name', 'Position', 'Area Posting'];
+        empSheet.getRange(1, 1, 1, empHeaders.length).setValues([empHeaders]);
+        empSheet.setFrozenRows(1);
+        Logger.log(`[getOrCreateConsolidatedEmployeeMasterSheet] Created Consolidated Employee sheet: ${EMPLOYEE_MASTER_SHEET_NAME}`);
+    } 
+    return empSheet;
 }
 
 function createContractSheets(sfcRef, year, month, shift) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    // --- EMPLOYEES MASTER SHEET (Per Contract) ---
-    const empSheetName = `${(sfcRef || '').replace(/[\\/?*[]/g, '_')} - Employees`;
-    let empSheet = ss.getSheetByName(empSheetName);
-    if (!empSheet) {
-        empSheet = ss.insertSheet(empSheetName);
-        empSheet.clear();
-        const empHeaders = ['Personnel ID', 'Personnel Name', 'Position', 'Area Posting'];
-        empSheet.getRange(1, 1, 1, empHeaders.length).setValues([empHeaders]);
-        empSheet.setFrozenRows(1);
-        Logger.log(`[createContractSheets] Created Employee sheet for ${sfcRef}`);
-    } 
+    
+    // --- EMPLOYEES MASTER SHEET (Consolidated) ---
+    getOrCreateConsolidatedEmployeeMasterSheet(ss);
     
     // --- CONSOLIDATED ATTENDANCE PLAN SHEET ---
     let planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
@@ -197,12 +205,17 @@ function createContractSheets(sfcRef, year, month, shift) {
 function ensureContractSheets(sfcRef, year, month, shift) {
     if (!sfcRef) throw new Error("SFC Ref# is required to ensure sheets.");
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
-    const empSheetName = `${(sfcRef || '').replace(/[\\/?*[]/g, '_')} - Employees`;
+    
+    // BINAGO START: Check/create lang ang Consolidated Sheets
+    const empSheet = getOrCreateConsolidatedEmployeeMasterSheet(ss);
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
-    if (!ss.getSheetByName(empSheetName) || !planSheet) {
+    
+    if (!planSheet) {
+        // Since getOrCreateConsolidatedEmployeeMasterSheet is called, we only need to check the plan sheet
         createContractSheets(sfcRef, year, month, shift);
-        Logger.log(`[ensureContractSheets] Ensured Employee sheet and Consolidated Plan sheet existence.`);
+        Logger.log(`[ensureContractSheets] Ensured Consolidated Plan sheet existence.`);
     }
+    // BINAGO END
 }
 
 function getContracts() {
@@ -285,7 +298,6 @@ function getSignatoryMasterData() {
         const sheet = getOrCreateSignatoryMasterSheet(ss);
 
         if (sheet.getLastRow() < 2) return [];
-        // --- BINAGO START ---
         // Basahin ang 2 columns (Name at Designation)
         const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2); 
         const values = range.getDisplayValues();
@@ -295,30 +307,39 @@ function getSignatoryMasterData() {
             name: String(row[0] || '').trim(), 
             designation: String(row[1] || '').trim() 
         })).filter(item => item.name); // Siguraduhin na may pangalan
-        // --- BINAGO END ---
     } catch (e) {
         Logger.log(`[getSignatoryMasterData] ERROR: ${e.message}`);
         return [];
     }
 }
 
+// --- BINAGO: Aalisin na ang dynamic sheet name para sa employees ---
 function getDynamicSheetName(sfcRef, type, year, month, shift) {
     const safeRef = (sfcRef || '').replace(/[\\/?*[]/g, '_');
     if (type === 'employees') {
-        return `${safeRef} - Employees`;
+        // Ibalik na lang ang consolidated name
+        return EMPLOYEE_MASTER_SHEET_NAME; 
     }
     return `${safeRef} - AttendancePlan`; 
 }
 
 function getEmployeeMasterData(sfcRef) {
     if (!sfcRef) throw new Error("SFC Ref# is required.");
-    const masterData = getSheetData(TARGET_SPREADSHEET_ID, getDynamicSheetName(sfcRef, 'employees'));
-    return masterData.map((e, index) => ({
+    // --- BINAGO START: Basahin ang Consolidated sheet at i-filter ---
+    const allMasterData = getSheetData(TARGET_SPREADSHEET_ID, EMPLOYEE_MASTER_SHEET_NAME);
+    
+    const filteredMasterData = allMasterData.filter(e => {
+        const contractRef = String(e['CONTRACT #'] || '').trim();
+        return contractRef === sfcRef;
+    });
+
+    return filteredMasterData.map((e, index) => ({
         id: cleanPersonnelId(e['Personnel ID']),
         name: String(e['Personnel Name'] || '').trim(),
         position: String(e['Position'] || '').trim(),
         area: String(e['Area Posting'] || '').trim(),
     })).filter(e => e.id);
+    // --- BINAGO END ---
 }
 
 function getEmployeeNameFromMaster(sfcRef, personnelId) {
@@ -384,6 +405,7 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
                  planDate = new Date(`${monthShort} 1, ${yearNum}`);
             }
             
+    
             if (version 
 > latestVersion || (version === latestVersion && planDate.getTime() > latestDate.getTime())) {
         
@@ -460,6 +482,7 @@ function getLockedPersonnelIds(ss, planSheetName) {
                          lockedIdRefMap[cleanId] = refNum;
                     }
              
+                
                 }
             });
         }
@@ -479,7 +502,7 @@ function getHistoricalReferenceMap(ss, planSheetName) {
     const historicalRefMap = {};
     for (let i = allValues.length - 1; i >= 0; i--) {
         const row = allValues[i];
-        // Reference # column (now storing the print version string)
+    // Reference # column (now storing the print version string)
         const refNumRaw = String(row[REF_NUM_COL - 1] || '').trim();
         const refNum = refNumRaw;
         const lockedIdsString = String(row[LOCKED_IDS_COL - 1] || '').trim();
@@ -574,7 +597,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             const existingRow = latestVersionMap[mapKey];
             
             if (!existingRow ||
-version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
+            version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
  0)) {
                 latestVersionMap[mapKey] = row;
             }
@@ -586,7 +609,7 @@ version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
     
     // NEW LOGIC: Calculate actual days of the month based on shift
     const startDayOfMonth = shift === '1stHalf' ?
-1 : 16;
+ 1 : 16;
     const endDayOfMonth = new Date(year, month + 1, 0).getDate(); 
     const loopLimit = PLAN_MAX_DAYS_IN_HALF;
     // 16
@@ -614,7 +637,8 @@ version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
             for (let d = 1; d <= loopLimit; d++) {
                 const actualDay = startDayOfMonth + d - 1;
                 
-             
+         
+            
                 if (actualDay > endDayOfMonth) continue; // Skip day if it exceeds max day of the month
 
   
@@ -622,6 +646,7 @@ version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
     const dayKey = `${year}-${month + 1}-${actualDay}`; 
                 const dayColIndex = day1Index + d - 1; 
 
+             
                 if (dayColIndex < numColumns) {
           
                     const status = String(row[dayColIndex] ||
@@ -693,7 +718,8 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     
     // *** NEW LOGIC: Log user action after a successful save ***
     // CRITICAL UPDATE: Pass year, month, and shift to ensure log only applies to the current plan period
-    logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift); // NEW PARAMETERS
+    logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift);
+    // NEW PARAMETERS
     Logger.log(`[saveAllData] Save completed.`);
 }
 
@@ -713,7 +739,7 @@ function getOrCreateAuditLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${AUDIT_LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateAuditLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
+            return ss.getSheetByName(AUDIT_LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -736,7 +762,7 @@ function getOrCreateUnlockRequestLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${UNLOCK_LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateUnlockRequestLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(UNLOCK_LOG_SHEET_NAME);
+            return ss.getSheetByName(UNLOCK_LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -760,7 +786,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
     let headers = [];
     if (numRowsToRead >= 0 && numColumns > 0) {
          values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-         headers = values[0]; 
+        headers = values[0]; 
     } else {
         headers = planSheet.getRange(HEADER_ROW, 1, 1, numColumns).getDisplayValues()[0];
     }
@@ -813,6 +839,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             
             const existingRow = latestVersionMap[id];
             if (!existingRow 
+ 
 || 
     version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) || 0)) {
  
@@ -838,7 +865,8 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
                     rowsToDeleteMap[sheetRowIndex] = deletedId;
                     delete latestVersionMap[deletedId]; // Remove from map so it's not processed later
        
-                 }
+               
+                  }
             }
         });
     }
@@ -914,7 +942,6 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             newRow[yearIndex] = targetYear;
             newRow[shiftIndex] = shift;
             newRow[groupIndex] = nextGroupToUse;
-            // Use the passed group for a new plan (e.g., G2)
             newRow[referenceIndex] = '';
             // Blank on initial save
 
@@ -936,7 +963,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             if (oldGroup && String(oldGroup).trim().toUpperCase() !== String(group).trim().toUpperCase()) {
                  // Force use of the existing group found in the sheet if it's different from the new requested group (e.g., use G1, ignore G2 from client)
                  Logger.log(`[savePlanBulk] WARNING: Overriding requested group ${group} with existing group ${oldGroup} for versioning ID ${personnelId}.`);
-                 nextGroupToUse = oldGroup;
+                nextGroupToUse = oldGroup;
             }
             // **NEW LOGIC END**
 
@@ -962,7 +989,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             if (shift === '1stHalf') {
                 dayColumnNumber = dayNumber; // 1 -> 1, 15 -> 15
             } else { // 2ndHalf
-      
+     
     
     dayColumnNumber = dayNumber - 15; // 16 -> 1, 31 -> 16
             }
@@ -1097,7 +1124,7 @@ latestVersion)
     
     // **CHANGED LOGIC:** Use the passed lock reference instead of historical map lookup
     const lockedRefNum = currentLockRef ||
-''; 
+ ''; 
     const employeeName = getEmployeeNameFromMaster(sfcRef, personnelId);
     
     // NEW LOGIC: Iterate only through DAY1 to DAY16 columns
@@ -1137,19 +1164,20 @@ latestVersion)
 // **UPDATED:** Added lockedIdRefMap parameter
 function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMap) {
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    const empSheetName = `${(sfcRef || '').replace(/[\\/?*[]/g, '_')} - Employees`;
-    const empSheet = ss.getSheetByName(empSheetName);
+    const empSheet = getOrCreateConsolidatedEmployeeMasterSheet(ss); // Gagamitin ang Consolidated Sheet
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     const userEmail = Session.getActiveUser().getEmail();
 
-    if (!empSheet) throw new Error(`Employee Sheet for SFC Ref# ${sfcRef} not found.`);
+    if (!empSheet) throw new Error(`Employee Consolidated Sheet not found.`);
     empSheet.setFrozenRows(0);
     const numRows = empSheet.getLastRow() > 0 ? empSheet.getLastRow() : 1;
-    const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 4;
+    const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 5; // CONTRACT # + 4 fields
     const values = empSheet.getRange(1, 1, numRows, numColumns).getValues();
     const headers = values[0]; 
     empSheet.setFrozenRows(1); 
     
+    // BAGONG INDICES (Dahil may CONTRACT # na sa Column A)
+    const contractRefIndex = headers.indexOf('CONTRACT #');
     const personnelIdIndex = headers.indexOf('Personnel ID');
     const nameIndex = headers.indexOf('Personnel Name');
     const positionIndex = headers.indexOf('Position');
@@ -1159,8 +1187,13 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
     const rowsToDelete = [];
     
     const personnelIdMap = {}; 
+    // Gagawa ng map gamit ang composite key: [SFC_ID]
     for (let i = 1; i < values.length; i++) { 
-        personnelIdMap[String(values[i][personnelIdIndex] || '').trim()] = i + 1;
+        const sfc = String(values[i][contractRefIndex] || '').trim();
+        const id = String(values[i][personnelIdIndex] || '').trim();
+        if (sfc === sfcRef) {
+            personnelIdMap[id] = i + 1; // Row number
+        }
     }
     
     changes.forEach((data) => {
@@ -1168,47 +1201,41 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
         const newId = String(data.id || '').trim();
         
         if (data.isDeleted && oldId && planSheet) {
-            rowsToDelete.push({ id: oldId, isMasterDelete: false });
+            rowsToDelete.push({ id: oldId, isMasterDelete: false }); // Log deletion to Plan Log
 
-            if (data.isMasterDelete && personnelIdMap[oldId] && personnelIdMap[oldId] > 1) {
-     
-                
-                empSheet.deleteRow(personnelIdMap[oldId]);
-                delete personnelIdMap[oldId];
-                Logger.log(`[saveEmployeeInfoBulk] Deleted NEW Employee row from Master Sheet for ID ${oldId}.`);
-            }
+            // NOTE: Hindi na dinelete sa Master sheet ang existing employee, kundi sa Plan lang.
+            // Kung mayaman ang data, hahanapin natin ang row number sa empSheet para burahin.
             
- 
+            // Temporary fix: If it's deleted from the UI, we only track the deletion for the plan data.
+            
             return;
-     
-            
         }
 
   
-        if (data.isNew && !data.isDeleted) {
+        // BINAGO START: Logic for Appending (New/Existing Employee added to the Contract)
+        if (newId && !data.isDeleted && !personnelIdMap[newId]) { 
             
-            if (!data.isExistingEmployeeAdded) { 
-                if (personnelIdMap[newId]) return;
-     
+            const newRow = [];
             
-                const 
- newRow = [];
-   
-                newRow[personnelIdIndex] = data.id;
-                newRow[nameIndex] = data.name;
-                newRow[positionIndex] = data.position;
-                newRow[areaIndex] = data.area;
-                
-                const finalRow = [];
-                for(let i = 0; i < headers.length; i++) {
-                    finalRow.push(newRow[i] !== undefined ? newRow[i] : '');
-                }
-                
-                rowsToAppend.push(finalRow);
-                personnelIdMap[newId] = -1;
+            newRow[contractRefIndex] = sfcRef; // CRITICAL: I-tag ang SFC Ref#
+            newRow[personnelIdIndex] = data.id;
+            newRow[nameIndex] = data.name;
+            newRow[positionIndex] = data.position;
+            newRow[areaIndex] = data.area;
+            
+            const finalRow = [];
+            for(let i = 0; i < headers.length; i++) {
+                finalRow.push(newRow[i] !== undefined ? newRow[i] : '');
             }
+            
+            rowsToAppend.push(finalRow);
+            personnelIdMap[newId] = -1; // Mark as pending
+            
+            Logger.log(`[saveEmployeeInfoBulk] Appending new/existing employee to Consolidated Master: ${newId}`);
         }
+        // BINAGO END
     });
+    
     // 1. Log schedule deletion for current context
     rowsToDelete.forEach(item => {
         const date = new Date(year, month, 1);
@@ -1228,6 +1255,8 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
           empSheet.appendRow(row); 
       });
     }
+    
+    Logger.log(`[saveEmployeeInfoBulk] Completed Employee Info update. Appended ${rowsToAppend.length} rows.`);
 }
 
 // *** NEW FUNCTION: Get the next available Group Number ***
@@ -1320,24 +1349,21 @@ function getOrCreateSignatoryMasterSheet(ss) {
     }
 }
 
-function updateSignatoryMaster(signatories) { // <-- Binago ang parameter, pero i-a-assume muna na ito ang structure.
+// BINAGO START: Updated logic para tanggapin ang Signatory objects at i-save ang bago.
+function updateSignatoryMaster(signatories) {
     if (!signatories) return;
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const sheet = getOrCreateSignatoryMasterSheet(ss);
     
-    // BINAGO START: Tanggapin na ang Signatory objects (Name at Designation)
-    // Ang signatories ay dapat isang array ng {name: string, designation: string} objects na galing sa client.
+    // I-extract ang lahat ng approvedBy at checkedBy objects na may laman
     const allSignatories = []; 
     
-    // I-extract ang lahat ng approvedBy at checkedBy objects na may laman
     if (signatories.approvedBy && signatories.approvedBy.name) {
         allSignatories.push(signatories.approvedBy);
     }
     signatories.checkedBy.forEach(item => {
         if (item.name) allSignatories.push(item);
     });
-    
-    // I-filter out ang preparedBy dahil hindi ito naka-save sa SignatoryMaster
     
     const uniqueSignatories = {}; 
     allSignatories.forEach(item => {
@@ -1372,6 +1398,7 @@ function updateSignatoryMaster(signatories) { // <-- Binago ang parameter, pero 
         Logger.log(`[updateSignatoryMaster] Appended ${newSignatoriesToAppend.length} new signatories (Name and Designation).`);
     }
 }
+// BINAGO END
 
 function getOrCreateLogSheet(ss) {
     let sheet = ss.getSheetByName(LOG_SHEET_NAME);
@@ -1390,7 +1417,7 @@ function getOrCreateLogSheet(ss) {
     } catch (e) {
         if (e.message.includes(`sheet with the name "${LOG_SHEET_NAME}" already exists`)) {
              Logger.log(`[getOrCreateLogSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
-             return ss.getSheetByName(LOG_SHEET_NAME);
+            return ss.getSheetByName(LOG_SHEET_NAME);
         }
         throw e;
     }
@@ -1428,7 +1455,7 @@ function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
         // 1. Hanapin ang Max Group Number mula sa PrintLog
         if (numLogRows > 0) {
              const logValues = logSheet.getRange(2, 1, numLogRows, LOG_HEADERS.length).getDisplayValues();
-             logValues.forEach(row => {
+            logValues.forEach(row => {
                 const logRefString = String(row[0] || '').trim();
                 const currentMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
                 
@@ -1443,14 +1470,14 @@ function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
     
         
                         const groupPart = parts[3]; // e.g., "G1"
-                         const numericPart = parseInt(groupPart.replace(/[^\d]/g, ''), 10);
+                         const numericPart 
+= parseInt(groupPart.replace(/[^\d]/g, ''), 10);
                 
                           
                         if (!isNaN(numericPart) && numericPart > maxGroupNumber) {
-                           
+                         
                             maxGroupNumber = numericPart;
-                      
-                            // Kuhanin ang base parts: SFC-Period-Shift (para gamitin sa final reference)
+                        // Kuhanin ang base parts: SFC-Period-Shift (para gamitin sa final reference)
                         
                             baseRefParts = parts.slice(0, 3);
                         }
@@ -1646,12 +1673,13 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
              changed = true;
           }
         });
-        
+     
+       
       
         if (changed) {
           
           const newLockedIdsString = updatedLockedIds.filter(id => id.length > 0).join(',');
-          rangeToUpdate.push({
+            rangeToUpdate.push({
               row: rowNumInSheet,
               col: LOCKED_IDS_COL_INDEX + 1, // 1-based
               value: newLockedIdsString
@@ -1685,6 +1713,7 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds
           refNum,
           requestingUserEmail,
           new Date(),
+      
           '', // Admin Email (Blank)
           '', // Admin Action Timestamp (Blank)
           'PENDING', // Status
@@ -1692,10 +1721,9 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds
           '' // User Action Timestamp (Blank)
       ]);
   });
-  
   if (logEntries.length > 0) {
       unlockLogSheet.getRange(unlockLogSheet.getLastRow() + 1, 1, logEntries.length, UNLOCK_LOG_HEADERS.length).setValues(logEntries);
-      Logger.log(`[requestUnlockEmailNotification] Logged ${logEntries.length} PENDING unlock requests.`);
+    Logger.log(`[requestUnlockEmailNotification] Logged ${logEntries.length} PENDING unlock requests.`);
   }
   // --- END NEW LOGIC ---
 
@@ -1744,22 +1772,22 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, personnelIds
     <div style="margin-top: 15px;">
         <a href="${unlockUrl}" target="_blank" 
            style="background-color: #10b981; color: white; padding: 10px 20px; text-align: center; text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold;
-           margin-right: 10px;">
+margin-right: 10px;">
            ✅ APPROVE & UNLOCK ALL (${personnelIds.length})
         </a>
         
   
         <a href="${rejectUrl}" target="_blank" 
           style="background-color: #f59e0b;
-          color: white; padding: 10px 20px; text-align: center;
+color: white; padding: 10px 20px; text-align: center;
            text-decoration: none; display: inline-block; border-radius: 5px;
-          font-weight: bold;">
+font-weight: bold;">
            ❌ REJECT (Log Only)
         </a>
     </div>
 
     <p style="margin-top: 20px;
-    font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
+font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
   `;
   
   try {
@@ -1785,10 +1813,8 @@ function logAdminUnlockAction(status, sfcRef, personnelIds, lockedRefNums, reque
     const logSheet = getOrCreateUnlockRequestLogSheet(ss);
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return;
-
     // Read only the necessary columns for filtering and updating
     const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
-    
     // Indices for efficiency (0-based) based on UNLOCK_LOG_HEADERS
     const SFC_INDEX = 0;
     const ID_INDEX = 1;
@@ -1797,7 +1823,6 @@ function logAdminUnlockAction(status, sfcRef, personnelIds, lockedRefNums, reque
     const ADMIN_EMAIL_INDEX = 6;
     const ADMIN_ACTION_TIME_INDEX = 7;
     const STATUS_INDEX = 8;
-    
     let updatedCount = 0;
 
     personnelIds.forEach((id, index) => {
@@ -1808,23 +1833,25 @@ function logAdminUnlockAction(status, sfcRef, personnelIds, lockedRefNums, reque
         
         // Iterate backward to find the latest request
         for (let i = values.length - 1; i >= 0; i--) {
-            const row = values[i];
+     
+           const row = values[i];
             const currentStatus = String(row[STATUS_INDEX] || '').trim();
             
             if (String(row[SFC_INDEX]).trim() === sfcRef &&
                 String(row[ID_INDEX]).trim() === id &&
                 String(row[REF_INDEX]).trim() === targetRef &&
-                String(row[REQUESTER_INDEX]).trim() === requesterEmail &&
+       
+                 String(row[REQUESTER_INDEX]).trim() === requesterEmail &&
                 currentStatus === 'PENDING') {
                 
                 rowIndexToUpdate = i + 2; // +1 for 0-base to 1-base, +1 for header row
                 break;
-            }
+       
+           }
         }
 
         if (rowIndexToUpdate !== -1) {
             const targetRow = logSheet.getRange(rowIndexToUpdate, 1, 1, UNLOCK_LOG_HEADERS.length);
-            
             // Update Admin Email, Timestamp, and Status
             targetRow.getCell(1, ADMIN_EMAIL_INDEX + 1).setValue(adminEmail);
             targetRow.getCell(1, ADMIN_ACTION_TIME_INDEX + 1).setValue(new Date());
@@ -1832,7 +1859,7 @@ function logAdminUnlockAction(status, sfcRef, personnelIds, lockedRefNums, reque
             updatedCount++;
         }
     });
-     Logger.log(`[logAdminUnlockAction] Logged ${status} for ${updatedCount} unlock requests.`);
+    Logger.log(`[logAdminUnlockAction] Logged ${status} for ${updatedCount} unlock requests.`);
 }
 
 // **UPDATED:** Added year, month, and shift parameters for contextual filtering.
@@ -1841,7 +1868,6 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
     const logSheet = getOrCreateUnlockRequestLogSheet(ss);
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return;
-    
     // --- NEW LOGIC: Determine the current Plan Period Identifier ---
     const targetMonthYear = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' }) + year;
     const targetPeriodIdentifier = `${targetMonthYear}-${shift}`; // e.g., Nov2025-1stHalf
@@ -1850,11 +1876,11 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
     
     // Read only the necessary columns for filtering and updating
     const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
-    
     // Indices for efficiency (0-based)
     const SFC_INDEX = 0;
     const ID_INDEX = 1;
-    const REF_INDEX = 3; // Locked Ref # column
+    const REF_INDEX = 3;
+    // Locked Ref # column
     const REQUESTER_INDEX = 4;
     const STATUS_INDEX = 8;
     const USER_ACTION_TYPE_INDEX = 9;
@@ -1893,7 +1919,6 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
         ...employeeChanges.map(c => cleanPersonnelId(c.id || c.oldPersonnelId)),
         ...attendanceChanges.map(c => cleanPersonnelId(c.personnelId))
     ]);
-    
     let loggedCount = 0;
     const processedKeys = new Set(); // Key: ID_SFC_Requester to prevent updating the same unlock request
 
@@ -1904,7 +1929,6 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
         const rowStatus = String(row[STATUS_INDEX]).trim();
         const rowActionType = String(row[USER_ACTION_TYPE_INDEX]).trim();
         const rowRequester = String(row[REQUESTER_INDEX]).trim();
-        
         // --- NEW FILTERING CONDITION: Check the Locked Ref # (Column D) for the current period ---
         const lockedRef = String(row[REF_INDEX]).trim();
         const isTargetPeriod = lockedRef.includes(targetPeriodIdentifier);
@@ -1915,15 +1939,15 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
             modifiedIdsInSave.has(rowId) &&
             rowStatus === 'APPROVED' &&
             rowActionType === '' &&
+ 
             isTargetPeriod // *** CRITICAL NEW CHECK ***
            ) {
             
-            const rowKey = `${rowId}_${rowSfc}_${rowRequester}`; 
+            const rowKey = `${rowId}_${rowSfc}_${rowRequester}`;
             if (processedKeys.has(rowKey)) continue;
 
             const rowIndexToUpdate = i + 2; // +1 for 0-base to 1-base, +1 for header row
             const targetRow = logSheet.getRange(rowIndexToUpdate, 1, 1, UNLOCK_LOG_HEADERS.length);
-
             // Update User Action Type and Timestamp
             targetRow.getCell(1, USER_ACTION_TYPE_INDEX + 1).setValue(actionType);
             targetRow.getCell(1, USER_ACTION_TIME_INDEX + 1).setValue(new Date());
@@ -1945,7 +1969,6 @@ function processAdminUnlockFromUrl(params) {
   const sfcRef = params.sfc;
   const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER';
   const personnelNames = personnelIds.map(id => getEmployeeNameFromMaster(sfcRef, id));
-
   if (personnelIds.length === 0 || lockedRefNums.length === 0 || personnelIds.length !== lockedRefNums.length) {
      return HtmlService.createHtmlOutput('<h1 style="color: red;">INVALID REQUEST</h1><p>The Unlock URL is incomplete or the number of Personnel IDs does not match the number of Reference Numbers.</p>');
   }
@@ -1958,12 +1981,12 @@ function processAdminUnlockFromUrl(params) {
   const summary = `${personnelIds.length} schedules (Ref# ${lockedRefNums.join(', ')})`;
   if (params.action === 'reject_info') {
       sendRequesterNotification('REJECTED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
-      // *** NEW LOGIC: Log REJECTED Action ***
+    // *** NEW LOGIC: Log REJECTED Action ***
       logAdminUnlockAction('REJECTED', sfcRef, personnelIds, lockedRefNums, requesterEmail, userEmail);
-      
-      const template = HtmlService.createTemplateFromFile('UnlockStatus');
+    const template = HtmlService.createTemplateFromFile('UnlockStatus');
       template.status = 'INFO';
-      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}. Notification sent to ${requesterEmail}.
+      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}.
+      Notification sent to ${requesterEmail}.
       No data was changed. The locks remain active.`;
       return template.evaluate().setTitle('Reject Status');
   }
@@ -1979,18 +2002,17 @@ function processAdminUnlockFromUrl(params) {
         
         // *** NEW LOGIC: Log APPROVED Action ***
         logAdminUnlockAction('APPROVED', sfcRef, personnelIds, lockedRefNums, requesterEmail, userEmail);
-        
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
         template.status = 'SUCCESS';
         template.message = `Successfully unlocked ${summary}.
         The Print Locks have been removed by Admin (${userEmail}). Notification sent to ${requesterEmail}.`;
         return template.evaluate().setTitle('Unlock Status');
-      } catch (e) {
+    } catch (e) {
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
         template.status = 'ERROR';
         template.message = `Failed to unlock ${summary}. Error: ${e.message}`;
         return template.evaluate().setTitle('Unlock Status');
-      }
+    }
   }
   
   return HtmlService.createHtmlOutput('<h1>Invalid Action</h1><p>The URL provided is incomplete or incorrect.</p>');
