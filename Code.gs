@@ -2108,6 +2108,51 @@ function logUserReprintAction(sfcRef, userEmail, printedPersonnelIds) {
      Logger.log(`[logUserReprintAction] Logged 'Re-Print Attendance Plan' for ${loggedCount} recently approved unlock requests.`);
 }
 
+/**
+ * Checks the status of the latest request for a batch of personnel IDs in the UnlockRequestLog.
+ * Kung ang alinman sa mga request sa batch ay APPROVED o REJECTED na, ibabalik nito ang status na iyon.
+ */
+function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEmail) {
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const logSheet = getOrCreateUnlockRequestLogSheet(ss);
+    const lastRow = logSheet.getLastRow();
+    if (lastRow < 2) return 'PENDING'; 
+
+    // Indices for efficiency (0-based)
+    const SFC_INDEX = 0;
+    const ID_INDEX = 1;
+    const REF_INDEX = 3;
+    const REQUESTER_INDEX = 4;
+    const STATUS_INDEX = 8;
+
+    // I-map ang incoming IDs/Refs para mabilis ma-check (Key: ID_Ref)
+    const pendingRequestMap = new Set(personnelIds.map((id, index) => `${id}_${lockedRefNums[index]}`));
+
+    const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
+
+    // Iterate backward upang mahanap ang pinakabagong status para sa bawat request
+    for (let i = values.length - 1; i >= 0; i--) {
+        const row = values[i];
+        const currentStatus = String(row[STATUS_INDEX] || '').trim();
+
+        if (currentStatus === 'PENDING') continue; // Huwag pansinin ang pending, hanapin lang ang processed
+
+        const rowId = String(row[ID_INDEX]).trim();
+        const rowRef = String(row[REF_INDEX]).trim();
+        const rowKey = `${rowId}_${rowRef}`;
+
+        if (String(row[SFC_INDEX]).trim() === sfcRef &&
+            String(row[REQUESTER_INDEX]).trim() === requesterEmail &&
+            pendingRequestMap.has(rowKey)
+           ) {
+            // Nakahanap ng matching log entry na APPROVED o REJECTED.
+            return currentStatus; // Ibalik ang status na iyon
+        }
+    }
+    
+    return 'PENDING'; // Kung umabot dito, pending pa rin ang lahat
+}
+
 function processAdminUnlockFromUrl(params) {
   const idsString = params.id ? decodeURIComponent(params.id) : '';
   const refsString = params.ref ? decodeURIComponent(params.ref) : '';
@@ -2117,6 +2162,7 @@ function processAdminUnlockFromUrl(params) {
   const sfcRef = params.sfc;
   const requesterEmail = params.req_email ? decodeURIComponent(params.req_email) : 'UNKNOWN_REQUESTER';
   const personnelNames = personnelIds.map(id => getEmployeeNameFromMaster(sfcRef, id));
+  
   if (personnelIds.length === 0 || lockedRefNums.length === 0 || personnelIds.length !== lockedRefNums.length) {
      return HtmlService.createHtmlOutput('<h1 style="color: red;">INVALID REQUEST</h1><p>The Unlock URL is incomplete or the number of Personnel IDs does not match the number of Reference Numbers.</p>');
   }
@@ -2126,12 +2172,25 @@ function processAdminUnlockFromUrl(params) {
     return HtmlService.createHtmlOutput('<h1 style="color: red;">AUTHORIZATION FAILED</h1><p>You are not authorized to perform this action. Your email: ' + userEmail + '</p>');
   }
   
+  // *** START OF ONE-CLICK GUARDRAIL CHECK ***
+  // I-check kung na-proseso na ang request (approved/rejected) sa UnlockRequestLog
+  const currentBatchStatus = getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEmail);
+    
+  if (currentBatchStatus !== 'PENDING') {
+      const template = HtmlService.createTemplateFromFile('UnlockStatus');
+      template.status = 'INFO';
+      template.message = `This unlock request has already been processed as **${currentBatchStatus}** by Admin (${userEmail}). No further action will be taken.`;
+      return template.evaluate().setTitle('Request Already Processed');
+  }
+  // *** END OF ONE-CLICK GUARDRAIL CHECK ***
+  
   const summary = `${personnelIds.length} schedules (Ref# ${lockedRefNums.join(', ')})`;
+  
   if (params.action === 'reject_info') {
       sendRequesterNotification('REJECTED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
-    // *** NEW LOGIC: Log REJECTED Action ***
       logAdminUnlockAction('REJECTED', sfcRef, personnelIds, lockedRefNums, requesterEmail, userEmail);
-    const template = HtmlService.createTemplateFromFile('UnlockStatus');
+      
+      const template = HtmlService.createTemplateFromFile('UnlockStatus');
       template.status = 'INFO';
       template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}.
       Notification sent to ${requesterEmail}.
@@ -2148,19 +2207,19 @@ function processAdminUnlockFromUrl(params) {
         unlockPersonnelIds(sfcRef, year, month, shift, personnelIds);
         sendRequesterNotification('APPROVED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
         
-        // *** NEW LOGIC: Log APPROVED Action ***
         logAdminUnlockAction('APPROVED', sfcRef, personnelIds, lockedRefNums, requesterEmail, userEmail);
+        
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
         template.status = 'SUCCESS';
         template.message = `Successfully unlocked ${summary}.
         The Print Locks have been removed by Admin (${userEmail}). Notification sent to ${requesterEmail}.`;
         return template.evaluate().setTitle('Unlock Status');
-    } catch (e) {
+      } catch (e) {
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
         template.status = 'ERROR';
         template.message = `Failed to unlock ${summary}. Error: ${e.message}`;
         return template.evaluate().setTitle('Unlock Status');
-    }
+      }
   }
   
   return HtmlService.createHtmlOutput('<h1>Invalid Action</h1><p>The URL provided is incomplete or incorrect.</p>');
