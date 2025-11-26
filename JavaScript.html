@@ -24,6 +24,7 @@
   // *** NEW: Global state for Employee Master Data ***
   let employeeMasterList = []; 
   // NEW: Global state for Signatory Master Data
+  // UPDATED: Now stores objects {name: string, designation: string}
   let signatoryMasterList = [];
   
   // *** NEW: Global state for Group Number (Read-only input value) ***
@@ -74,10 +75,17 @@
   let bulkUnlockSelected = []; 
 
   // *** NEW GLOBAL STATE FOR SIGNATORIES ***
+  // UPDATED: Now stores {name: '', designation: ''} objects for preparedBy, approvedBy, and checkedBy array
   let selectedSignatories = {
-      preparedBy: '',
-      checkedBy: ['', '', '', '', ''], // Up to 5 checkedBy
-      approvedBy: ''
+      preparedBy: { name: '', designation: '' },
+      checkedBy: [ 
+        { name: '', designation: '' }, 
+        { name: '', designation: '' }, 
+        { name: '', designation: '' }, 
+        { name: '', designation: '' }, 
+        { name: '', designation: '' }
+      ], 
+      approvedBy: { name: '', designation: '' }
   };
 
   const fixedStatusOptions = [
@@ -204,19 +212,22 @@
             .getSignatoryMasterData(); 
   }
 
+  // UPDATED: Now expects a list of {name, designation} objects
   function populateSignatoryDataLists(masterList) {
       signatoryMasterList = masterList;
       const signatoryList = document.getElementById('signatory-master-list');
 
       signatoryList.innerHTML = '';
       
-      signatoryMasterList.forEach(name => {
+      signatoryMasterList.forEach(item => {
           const option = document.createElement('option');
-          option.value = name;
+          option.value = item.name;
+          // Gamitin ang designation para sa mas madaling hanapin
+          option.textContent = `${item.name} (${item.designation})`;
           signatoryList.appendChild(option);
       });
 
-      console.log(`Signatory datalist populated with ${masterList.length} names for Checked/Approved By.`);
+      console.log(`Signatory datalist populated with ${masterList.length} names/designations for Checked/Approved By.`);
   }
   // *** END NEW SIGNATORY FETCH FUNCTIONS ***
 
@@ -634,7 +645,7 @@ function handleBulkUnlockRequest() {
     contracts.forEach(contract => {
       const option = document.createElement('option');
       option.value = contract.id;
-      // Gumamit ng Contract ID at SFC Ref# para sa mas madaling hanapin
+      // Gamumat ng Contract ID at SFC Ref# para sa mas madaling hanapin
       option.textContent = `${contract.id} - ${contract.status} (Ref#: ${contract.sfcRef})`;
       select.appendChild(option);
     });
@@ -845,7 +856,7 @@ function handlePlanExistence(exists) {
     if (groupInput) groupInput.value = 'G1'; 
 }
 
-// NEW WORKFLOW: Show blank plan (No server call) - Now triggered after failed fetchAttendanceData
+// NEW WORKFLOW: Show blank Plan (No server call) - Now triggered after failed fetchAttendanceData
 function showBlankPlan() {
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
@@ -1694,6 +1705,23 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
               }
           }
       }
+      
+      // NEW LOGIC: Auto-fill Prepared By designation (position) if name is from master list
+      const preparedByNameInput = document.getElementById('signatory-prepared-by');
+      if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === newValue.toUpperCase()) {
+          const emp = employeeMasterList.find(e => e.name.toUpperCase() === newValue.toUpperCase());
+          if (emp) {
+              selectedSignatories.preparedBy.name = emp.name;
+              selectedSignatories.preparedBy.designation = emp.position;
+              // I-update ang display ng designation (makikita sa index.html)
+              document.getElementById('signatory-prepared-by-designation').value = emp.position;
+          } else {
+              selectedSignatories.preparedBy.name = newValue;
+              selectedSignatories.preparedBy.designation = '';
+              document.getElementById('signatory-prepared-by-designation').value = '';
+          }
+      }
+      // END NEW LOGIC
   }
 
 
@@ -2269,7 +2297,7 @@ function continueSaveProcess(groupNumber) {
     return dynamicallyHiddenRows; 
   }
   
-  // --- NEW FUNCTION: Signatory Input Handler (Validation/CAPS) ---
+  // --- NEW FUNCTION: Signatory Input Handler (Name) ---
   function handleSignatoryInputChange(event, fieldType, index = null) {
       const input = event.target;
       let newValue = input.value.toUpperCase(); 
@@ -2277,34 +2305,110 @@ function continueSaveProcess(groupNumber) {
       let cleanedValue = newValue.replace(SAFE_NAME_REGEX, '');
       input.value = cleanedValue; 
 
+      // 1. Update the state (name field)
+      let targetSignatory;
       if (fieldType === 'checkedBy' && index !== null) {
-          selectedSignatories.checkedBy[index] = cleanedValue;
+          targetSignatory = selectedSignatories.checkedBy[index];
+          targetSignatory.name = cleanedValue;
       } else {
-          selectedSignatories[fieldType] = cleanedValue;
+          targetSignatory = selectedSignatories[fieldType];
+          targetSignatory.name = cleanedValue;
       }
 
       if (newValue !== cleanedValue) {
           showNotification(`Only letters, spaces, commas, periods, and dashes are allowed in names. Invalid characters removed.`, false);
       }
+      
+      // 2. Auto-fill Designation/Position based on NAME input
+      let designation = '';
+      
+      if (fieldType === 'preparedBy') {
+          // Prepared By designation comes from Employee Position (master list)
+          const emp = employeeMasterList.find(e => e.name.toUpperCase() === cleanedValue);
+          designation = emp ? emp.position : '';
+      } else {
+          // Approved By / Checked By designation comes from Signatory Master List
+          const masterEntry = signatoryMasterList.find(item => item.name.toUpperCase() === cleanedValue);
+          designation = masterEntry ? masterEntry.designation : '';
+      }
+
+      // 3. Update the state (designation field) and UI, but DO NOT OVERWRITE if user already manually typed a designation.
+      const designationInputId = fieldType === 'preparedBy' 
+          ? 'signatory-prepared-by-designation' 
+          : (fieldType === 'approvedBy' ? 'signatory-approved-by-designation' : `signatory-checked-by-${index}-designation`);
+      
+      const designationInput = document.getElementById(designationInputId);
+
+      // Check if the current name input is blank (clear both name/designation state/UI)
+      if (cleanedValue === '') {
+          targetSignatory.designation = '';
+          if (designationInput) designationInput.value = '';
+          return;
+      }
+      
+      // Check if a master record was found OR if the current designation in the UI is blank
+      const designationCurrentUI = designationInput ? designationInput.value.trim() : '';
+
+      if (designation !== '' || designationCurrentUI === '') {
+          targetSignatory.designation = designation;
+          if (designationInput) designationInput.value = designation;
+      } else {
+          // Keep the manually typed designation in the state
+          targetSignatory.designation = designationCurrentUI;
+      }
+  }
+  
+  // --- NEW FUNCTION: Signatory Designation Input Handler (Designation) ---
+  function handleSignatoryDesignationChange(event, fieldType, index = null) {
+      const input = event.target;
+      let newValue = input.value.toUpperCase().trim(); 
+
+      // 1. Update the state (designation field)
+      if (fieldType === 'checkedBy' && index !== null) {
+          selectedSignatories.checkedBy[index].designation = newValue;
+      } else {
+          selectedSignatories[fieldType].designation = newValue;
+      }
+      
+      // 2. Ensure the associated name field is checked for content (only applies if name is not from master)
+      // NOTE: Walang validation sa Designation input, basta may laman ay pwedeng i-save.
   }
   // --- END NEW FUNCTION ---
   
   // --- NEW FUNCTION: Validation check for all signatories ---
   function validateAllSignatories() {
       
-      const approvedBy = selectedSignatories.approvedBy.trim();
+      const preparedBy = selectedSignatories.preparedBy.name.trim();
+      const preparedByDesignation = selectedSignatories.preparedBy.designation.trim();
+      
+      if (!preparedBy) {
+          return "Prepared By name is required.";
+      }
+      if (!preparedByDesignation) {
+           return "Prepared By Position/Designation is required. Please select a name from the Employee List.";
+      }
+      
+      const approvedBy = selectedSignatories.approvedBy.name.trim();
+      const approvedByDesignation = selectedSignatories.approvedBy.designation.trim();
+      
       if (!approvedBy || !approvedBy.match(SIGNATORY_REGEX)) {
           return "Approved By name is required and must contain only letters, spaces, commas, periods, or dashes.";
       }
+      if (!approvedByDesignation) {
+          return "Approved By Designation is required. Please fill in the Designation field.";
+      }
       
-      const checkedByList = selectedSignatories.checkedBy.filter(name => name.trim() !== '');
+      const checkedByList = selectedSignatories.checkedBy.filter(item => item.name.trim() !== '');
       if (checkedByList.length === 0) {
           return "At least one name for 'Checked By' is required.";
       }
       
-      for (const name of checkedByList) {
-          if (!name.match(SIGNATORY_REGEX)) {
-              return `Checked By name "${name}" has invalid characters. Only letters, spaces, commas, periods, or dashes are allowed.`;
+      for (const item of checkedByList) {
+          if (!item.name.match(SIGNATORY_REGEX)) {
+              return `Checked By name "${item.name}" has invalid characters. Only letters, spaces, commas, periods, or dashes are allowed.`;
+          }
+          if (!item.designation) {
+              return `Checked By name "${item.name}" is missing a Designation. Please fill in the Designation field.`;
           }
       }
 
@@ -2494,12 +2598,19 @@ function toggleSelectAllPrint(event) {
   
 function openPrintSetupModal() {
     
-    document.getElementById('signatory-prepared-by').value = selectedSignatories.preparedBy;
-    document.getElementById('signatory-approved-by').value = selectedSignatories.approvedBy;
+    // UPDATED: Populate Name and Designation/Position
+    document.getElementById('signatory-prepared-by').value = selectedSignatories.preparedBy.name;
+    document.getElementById('signatory-prepared-by-designation').value = selectedSignatories.preparedBy.designation;
+
+    document.getElementById('signatory-approved-by').value = selectedSignatories.approvedBy.name;
+    document.getElementById('signatory-approved-by-designation').value = selectedSignatories.approvedBy.designation;
     
     for(let i = 0; i < 5; i++) {
-        const input = document.getElementById(`signatory-checked-by-${i}`);
-        if(input) input.value = selectedSignatories.checkedBy[i];
+        const inputName = document.getElementById(`signatory-checked-by-${i}`);
+        const inputDesignation = document.getElementById(`signatory-checked-by-${i}-designation`);
+        
+        if(inputName) inputName.value = selectedSignatories.checkedBy[i].name;
+        if(inputDesignation) inputDesignation.value = selectedSignatories.checkedBy[i].designation;
     }
     
     document.getElementById('print-setup-modal').classList.remove('hidden'); 
@@ -2614,6 +2725,10 @@ function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selec
 
 function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
+    
+    // DESTUCTURE SIGNATORIES FOR EASIER USE
+    const { preparedBy, approvedBy } = signatories;
+    const checkedByNames = signatories.checkedBy.filter(item => item.name.trim() !== '');
 
     let printRefElement = document.getElementById('print-ref-display');
     if (!printRefElement) {
@@ -2624,10 +2739,11 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
     }
     printRefElement.textContent = refNum; 
     
-    const checkedByNames = signatories.checkedBy.map(name => name.trim()).filter(name => name);
-
-    const checkedByHtml = checkedByNames.map(name => {
-        return `<p class="text-base font-bold text-black line-break">${name}</p>`;
+    const checkedByHtml = checkedByNames.map(item => {
+        return `
+            <p class="text-sm font-bold text-black line-break border-t pt-1">${item.name.trim()}</p>
+            <p class="text-xs font-normal text-black pb-1">${item.designation.trim()}</p>
+        `;
     }).join('');
 
 
@@ -2644,7 +2760,8 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
         <div id="print-signatories-container" class="print-only-container">
             <div class="grid grid-cols-3 gap-x-4 gap-y-2 text-center print-signatories">
                 <div class="prepared-by">
-                    <p class="text-sm font-bold text-black mb-1">${signatories.preparedBy.trim()}</p>
+                    <p class="text-sm font-bold text-black line-break border-t pt-1">${preparedBy.name.trim()}</p>
+                    <p class="text-xs font-normal text-black pb-1">${preparedBy.designation.trim()}</p>
                     <p class="text-xs font-bold text-black pt-1">Prepared By</p>
                 </div>
 
@@ -2654,7 +2771,8 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
                 </div>
 
                 <div class="approved-by">
-                    <p class="text-sm font-bold text-black mb-1">${signatories.approvedBy.trim()}</p>
+                    <p class="text-sm font-bold text-black line-break border-t pt-1">${approvedBy.name.trim()}</p>
+                    <p class="text-xs font-normal text-black pb-1">${approvedBy.designation.trim()}</p>
                     <p class="text-xs font-bold text-black pt-1">Approved By</p>
                 </div>
             </div>
@@ -3266,18 +3384,36 @@ function updatePrintButtonState() {
     document.getElementById('print-setup-confirm-btn').addEventListener('click', handlePrintSetupConfirm);
     document.getElementById('print-setup-cancel-btn').addEventListener('click', hidePrintSetupModal);
 
+    // ************************ UPDATED SIGNATORY LISTENERS ************************
+    
+    // PREPARED BY (Name Input)
     document.getElementById('signatory-prepared-by').addEventListener('input', (e) => handleSignatoryInputChange(e, 'preparedBy'));
     document.getElementById('signatory-prepared-by').addEventListener('change', (e) => handleSignatoryInputChange(e, 'preparedBy')); 
-
+    
+    // APPROVED BY (Name Input)
     document.getElementById('signatory-approved-by').addEventListener('input', (e) => handleSignatoryInputChange(e, 'approvedBy'));
     document.getElementById('signatory-approved-by').addEventListener('change', (e) => handleSignatoryInputChange(e, 'approvedBy')); 
+    
+    // APPROVED BY (Designation Input) - NEW LISTENER
+    document.getElementById('signatory-approved-by-designation').addEventListener('input', (e) => handleSignatoryDesignationChange(e, 'approvedBy'));
+    document.getElementById('signatory-approved-by-designation').addEventListener('change', (e) => handleSignatoryDesignationChange(e, 'approvedBy'));
 
     for(let i = 0; i < 5; i++) {
-        const input = document.getElementById(`signatory-checked-by-${i}`);
-        if(input) {
-            input.addEventListener('input', (e) => handleSignatoryInputChange(e, 'checkedBy', i));
-            input.addEventListener('change', (e) => handleSignatoryInputChange(e, 'checkedBy', i)); 
+        const inputName = document.getElementById(`signatory-checked-by-${i}`);
+        const inputDesignation = document.getElementById(`signatory-checked-by-${i}-designation`);
+        
+        if(inputName) {
+            // CHECKED BY (Name Input)
+            inputName.addEventListener('input', (e) => handleSignatoryInputChange(e, 'checkedBy', i));
+            inputName.addEventListener('change', (e) => handleSignatoryInputChange(e, 'checkedBy', i)); 
+        }
+        
+        if(inputDesignation) {
+             // CHECKED BY (Designation Input) - NEW LISTENER
+            inputDesignation.addEventListener('input', (e) => handleSignatoryDesignationChange(e, 'checkedBy', i));
+            inputDesignation.addEventListener('change', (e) => handleSignatoryDesignationChange(e, 'checkedBy', i));
         }
     }
+    // *****************************************************************************
   }
 </script>
