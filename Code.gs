@@ -7,6 +7,14 @@ const FILE_201_ID = '19eJ-qC68eazrVMmjPzZjTvfns_N9h03Ha6SDGTvuv0E';
 const FILE_201_SHEET_NAME = 'Basic Information'; 
 // ----------------------------------------------
 
+// *** NEW CONSTANTS FOR BLACKLIST CHECK ***
+const BLACKLIST_FILE_ID = '1tl6gQ7yDSyixmf1usZUhGU4qwj75fYG8CAzOme9-rVU'; // Placeholder ID
+const BLACKLIST_SHEET_NAMES = ['MALL', 'MEG']; 
+const BLACKLIST_ID_COL_INDEX = 4;   // Employee Code (Col E, 0-based index 4)
+const BLACKLIST_NAME_COL_INDEX = 3; // Personnel Name (Col D, 0-based index 3)
+const BLACKLIST_STATUS_COL_INDEX = 9; // Remarks (Col J, 0-based index 9)
+// ------------------------------------------
+
 // *** NEW CONSTANTS FOR CONSOLIDATED PLAN SHEET ***
 const PLAN_SHEET_NAME = 'AttendancePlan_Consolidated';
 const PLAN_HEADER_ROW = 1;
@@ -359,6 +367,157 @@ function get201FileMasterData() {
         Logger.log(`[get201FileMasterData] ERROR: ${e.message}`);
         throw new Error(`Failed to access 201 Master File. Please check ID and sheet name in Code.gs. Error: ${e.message}`);
     }
+}
+
+/**
+ * Fetches Personnel IDs and Names of all BLACKLISTED employees from the dedicated sheet(s).
+ * @returns {Array<Object>} An array of objects {id: string, name: string}.
+ */
+function getBlacklistData() {
+  if (BLACKLIST_FILE_ID === '19eJ-qC68eazvMmjPzZjTvfns_N9h03Ha6SDGTvuv0E') {
+    Logger.log('[getBlacklistData] WARNING: BLACKLIST_FILE_ID is a placeholder. Skipping fetch.');
+    return [];
+  }
+
+  try {
+    const ss = SpreadsheetApp.openById(BLACKLIST_FILE_ID);
+    const blacklistedEmployees = [];
+
+    BLACKLIST_SHEET_NAMES.forEach(sheetName => {
+      const sheet = ss.getSheetByName(sheetName);
+      if (!sheet) return;
+
+      const lastRow = sheet.getLastRow();
+      
+      // CRITICAL CHANGE: Start reading from Row 4.
+      const START_ROW = 4;
+      if (lastRow < START_ROW) return;
+
+      const numRows = lastRow - START_ROW + 1;
+
+      // Range: Mula Row 4 hanggang sa huli, at hanggang Column J
+      const range = sheet.getRange(START_ROW, 1, numRows, BLACKLIST_STATUS_COL_INDEX + 1);
+      const values = range.getDisplayValues();
+
+      values.forEach(row => {
+        const status = String(row[BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase();
+        
+        if (status === 'BLACKLISTED') {
+          const rawId = row[BLACKLIST_ID_COL_INDEX];
+          const name = String(row[BLACKLIST_NAME_COL_INDEX] || '').trim().toUpperCase(); 
+          const id = cleanPersonnelId(rawId); 
+
+          if (id) {
+            blacklistedEmployees.push({ id: id, name: name });
+          }
+        }
+      });
+    });
+
+    return blacklistedEmployees;
+  } catch (e) {
+    Logger.log(`[getBlacklistData] ERROR accessing Blacklist file: ${e.message}`);
+    return []; 
+  }
+}
+
+/**
+ * Checks if a specific personnel ID is on the blacklist.
+ * @param {string} personnelId The ID to check.
+ * @returns {boolean} True if blacklisted, false otherwise.
+ */
+function checkBlacklistForPersonnel(personnelId) {
+  if (!personnelId) return false;
+  const cleanId = cleanPersonnelId(personnelId);
+  if (!cleanId) return false;
+  
+  // Tawagin ang getBlacklistData at gumawa ng map para sa mabilis na lookup
+  const blacklistedList = getBlacklistData();
+  const blacklistMap = blacklistedList.reduce((map, emp) => {
+    map[emp.id] = true;
+    return map;
+  }, {});
+  
+  return !!blacklistMap[cleanId];
+}
+
+/**
+ * Checks a bulk list of Personnel IDs and Names against the blacklist data.
+ * @param {Array<Object>} employeeList An array of objects {id: string, name: string} to check.
+ * @returns {Array<string>} An array containing only the IDs that are blacklisted.
+ */
+function checkBulkBlacklist(employeeList) { 
+    if (!employeeList || employeeList.length === 0) return [];
+
+    const blacklistedList = getBlacklistData();
+    
+    // Create map for Name and ID check
+    const blacklistIdMap = blacklistedList.reduce((map, emp) => {
+        map[emp.id] = emp.name; // ID -> Name
+        return map;
+    }, {});
+    
+    const blacklistNameMap = blacklistedList.reduce((map, emp) => {
+        map[emp.name] = emp.id; // Name -> ID
+        return map;
+    }, {});
+    
+    const blacklistedHits = [];
+    
+    employeeList.forEach(emp => {
+        const cleanId = cleanPersonnelId(emp.id);
+        const cleanName = String(emp.name || '').trim().toUpperCase();
+
+        // Check 1: ID is blacklisted
+        if (blacklistIdMap[cleanId]) {
+            blacklistedHits.push(cleanId);
+            return;
+        }
+        
+        // Check 2: Name is blacklisted (Ito ang haharang kay Bautista, Criselda)
+        if (blacklistNameMap[cleanName]) {
+             blacklistedHits.push(cleanId);
+             return;
+        }
+    });
+
+    return blacklistedHits;
+}
+
+/**
+ * Checks if a specific personnel ID OR Name is on the blacklist.
+ * @param {string} personnelId The ID provided in the grid.
+ * @param {string} personnelName The Name provided in the grid.
+ * @returns {object} Returns {isBlacklisted: boolean, reason: string}
+ */
+function checkBlacklistByIdOrName(personnelId, personnelName) {
+    const cleanId = cleanPersonnelId(personnelId);
+    const cleanName = String(personnelName || '').trim().toUpperCase();
+    
+    const blacklistedList = getBlacklistData();
+    
+    // Gagawa ng map na may Name at ID lookup
+    const blacklistIdMap = blacklistedList.reduce((map, emp) => {
+        map[emp.id] = emp.name; // ID -> Name
+        return map;
+    }, {});
+    
+    const blacklistNameMap = blacklistedList.reduce((map, emp) => {
+        map[emp.name] = emp.id; // Name -> ID
+        return map;
+    }, {});
+    
+    // Check 1: ID is blacklisted (Primary validation)
+    if (blacklistIdMap[cleanId]) {
+        return { isBlacklisted: true, reason: `Personnel ID ${cleanId} is BLACKLISTED.` };
+    }
+    
+    // Check 2: Name is blacklisted (Ito ang sagot sa iyong scenario)
+    if (blacklistNameMap[cleanName]) {
+        return { isBlacklisted: true, reason: `Personnel Name "${cleanName}" is BLACKLISTED (Linked ID: ${blacklistNameMap[cleanName]}).` };
+    }
+    
+    return { isBlacklisted: false, reason: '' };
 }
 
 function getSignatoryMasterData() {
@@ -850,7 +1009,6 @@ version > (parseFloat(existingRow[printVersionIndex].split('-').pop()) ||
 }
 
 
-// **UPDATED:** Refactored saveAllData to fetch and pass the lockedIdRefMap to saveEmployeeInfoBulk
 function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, year, month, shift, group) { 
     Logger.log(`[saveAllData] Starting save for SFC Ref#: ${sfcRef}, Month/Shift: ${month}/${shift}, Group: ${group}`);
     if (!sfcRef) {
@@ -863,24 +1021,55 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     const lockedIds = Object.keys(lockedIdRefMap);
     
+    // *** NEW LOGIC: FILTERING AGAINST BLACKLIST AND LOCKED IDS (SERVER-SIDE) ***
+    
+    // 1. Fetch Blacklist IDs map (Mabilis na pagkuha)
+    const blacklistedIdsMap = getBlacklistData().reduce((map, emp) => {
+        map[emp.id] = true;
+        return map;
+    }, {});
+    
+    // 2. Filter Employee Changes (Check Blacklist AND Lock)
     const finalEmployeeChanges = employeeChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.id || change.oldPersonnelId);
+        
+        // CHECK 1: BLACKLIST (Huwag isama kung blacklisted)
+        if (blacklistedIdsMap[idToCheck]) {
+            Logger.log(`[saveAllData] Skipping employee info update for BLACKLISTED ID: ${idToCheck}`);
+            return false;
+        }
+        
+        // CHECK 2: LOCKED IDS (Existing check)
         if (lockedIds.includes(idToCheck) && !change.isDeleted) {
             Logger.log(`[saveAllData] Skipping employee info update for locked ID: ${idToCheck}`);
             return false;
         }
         return true;
      });
+
+    // 3. Filter Attendance Changes (Check Blacklist AND Lock)
     const finalAttendanceChanges = attendanceChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.personnelId);
+        
+        // CHECK 1: BLACKLIST (Huwag isama kung blacklisted)
+        if (blacklistedIdsMap[idToCheck]) {
+             Logger.log(`[saveAllData] Skipping attendance plan update for BLACKLISTED ID: ${idToCheck}`);
+             return false;
+        }
+
+        // CHECK 2: LOCKED IDS (Existing check)
         if (lockedIds.includes(idToCheck)) {
             Logger.log(`[saveAllData] Skipping attendance plan update for locked ID: ${idToCheck}`);
             return false;
         }
         return true;
     });
+    
+    // *** END NEW LOGIC ***
+    
     // NEW LOGIC: Identify which employee IDs need their plan rows deleted (i.e., they were marked for deletion in the UI)
-    const deletionList = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
+    const deletionList = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId); 
+
     if (finalEmployeeChanges && finalEmployeeChanges.length > 0) {
         // **UPDATED:** Pass the lockedIdRefMap for logging context
         saveEmployeeInfoBulk(sfcRef, finalEmployeeChanges, year, month, shift, lockedIdRefMap);
@@ -895,7 +1084,6 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     // *** NEW LOGIC: Log user action after a successful save ***
     // CRITICAL UPDATE: Pass year, month, and shift to ensure log only applies to the current plan period
     logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift);
-    // NEW PARAMETERS
     Logger.log(`[saveAllData] Save completed.`);
 }
 
