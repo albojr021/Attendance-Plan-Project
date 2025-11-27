@@ -1492,6 +1492,31 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       
   }
   
+  // --- NEW HELPER: Visually manage warning state for a personnel row ---
+function showPersonnelWarning(rowElement, message) {
+    const warningClass = 'border-red-500 ring-4 ring-red-200';
+    
+    if (message) {
+        rowElement.classList.add(warningClass);
+        let warningDiv = rowElement.querySelector('.blacklist-warning');
+        if (!warningDiv) {
+            warningDiv = document.createElement('div');
+            warningDiv.className = 'blacklist-warning absolute bottom-0 left-0 right-0 p-1 text-xs font-semibold text-white bg-red-600 z-50';
+            
+            const nameCell = rowElement.querySelector('td.freeze-2'); 
+            if (nameCell) nameCell.style.position = 'relative'; 
+            if (nameCell) nameCell.appendChild(warningDiv);
+        }
+        warningDiv.textContent = message;
+        warningDiv.style.display = 'block';
+        
+    } else {
+        rowElement.classList.remove(warningClass);
+        const warningDiv = rowElement.querySelector('.blacklist-warning');
+        if (warningDiv) warningDiv.style.display = 'none';
+    }
+}
+
   // --- EMPLOYEE INFO HANDLERS (Manual Save) ---
   
   function handlePersonnelInfoChange(event, employee) {
@@ -1522,12 +1547,43 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       let masterRecordFound = null; 
       let masterRecord = null;
       
-      const upperNewValue = newValue.trim().toUpperCase(); // I-convert sa Uppercase
+      const upperNewValue = newValue.trim().toUpperCase(); 
       
+      // --- Blacklist Check Trigger (Integrated Proactive Validation) ---
+      const idInput = row.querySelector('[data-field="id"]');
+      const nameInput = row.querySelector('[data-field="name"]');
+      const currentId = idInput?.value.trim() || '';
+      const currentName = nameInput?.value.trim() || '';
+
+      if (field === 'id' || field === 'name') {
+           // Asynchronous call sa server para i-check ang ID at NAME
+           google.script.run
+                .withSuccessHandler((result) => {
+                    // I-verify ulit ang latest value bago i-update ang UI (dahil asynchronous)
+                    const latestId = row.querySelector('[data-field="id"]').value.trim();
+                    const latestName = row.querySelector('[data-field="name"]').value.trim();
+
+                    if (latestId || latestName) {
+                        if (result.isBlacklisted) {
+                            showPersonnelWarning(row, `BLACKLISTED! (${result.reason.split('(')[0].trim()})`);
+                            showNotification(`BLACKLIST ALERT: ${result.reason} Plan not allowed.`, false);
+                        } else {
+                            showPersonnelWarning(row, null);
+                        }
+                    } else {
+                        showPersonnelWarning(row, null); // Clear if both fields are empty
+                    }
+                })
+                .withFailureHandler(handleError)
+                .checkBlacklistByIdOrName(currentId, currentName); 
+      }
+      // --- End Blacklist Check Trigger ---
+
+      // --- Start Original Autofill and Pending Change Logic ---
+
       if (field === 'id') {
            masterRecord = employeeMasterList.find(e => e.id === upperNewValue);
       } else if (field === 'name') {
-           // I-compare sa name na nasa master list (na formatted at naka-uppercase)
            masterRecord = employeeMasterList.find(e => e.name.toUpperCase() === upperNewValue);
       }
       
@@ -1536,12 +1592,13 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       if (masterRecord) {
           masterRecordFound = masterRecord; 
           
-          // I-fill ang LAHAT ng fields mula sa Master Record (ID, Name, Position, Area)
+          // I-fill ang LAHAT ng fields mula sa Master Record
           row.querySelector('[data-field="id"]').value = masterRecord.id;
           row.querySelector('[data-field="name"]').value = masterRecord.name;
           row.querySelector('[data-field="position"]').value = masterRecord.position;
           row.querySelector('[data-field="area"]').value = masterRecord.area;
           
+          // I-update ang pendingChange
           pendingChange.id = masterRecord.id;
           pendingChange.name = masterRecord.name;
           pendingChange.position = masterRecord.position;
@@ -1552,16 +1609,17 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
       } else {
          // --- UPDATED LOGIC: Force UPPERCASE for Name, Position, Area ---
          if (field === 'name' || field === 'position' || field === 'area') {
-             // I-apply ang UPPERCASE bago i-store sa pendingChange at i-update ang UI
+             
              newValue = newValue.toUpperCase(); 
-             input.value = newValue; // Update UI with uppercase value
+             input.value = newValue; 
              pendingChange[field] = newValue;
          } else {
-             // Para sa ID (na dapat ay numbers only)
+             
              pendingChange[field] = newValue;
          }
       }
 
+      // --- Original Logic: ID validation and Duplicate Check ---
       if (field === 'id') {
           const cleanId = pendingChange.id; 
           
@@ -1579,6 +1637,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
                   const positionInput = row.querySelector('[data-field="position"]');
                   const areaInput = row.querySelector('[data-field="area"]');
                   
+                  // Revert values to old state
                   input.value = employee.id; 
                   if (nameInput) nameInput.value = employee.name; 
                   if (positionInput) positionInput.value = employee.position; 
@@ -1596,6 +1655,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
               }
           }
       } else if (field === 'name' || field === 'position' || field === 'area') {
+          // --- Name sanitation and duplication check ---
           if (!masterRecord) { 
               let cleanedValue = pendingChange[field].toUpperCase(); 
               let regexToUse = '';
@@ -1616,7 +1676,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
               pendingChange[field] = cleanedValue;
           }
 
-          // --- NEW LOGIC: CLEAR ID, POSITION, AND AREA IF NAME IS CLEARED ---
+          
           if (field === 'name' && pendingChange.name === '') {
               const idInput = row.querySelector('[data-field="id"]');
               const positionInput = row.querySelector('[data-field="position"]');
@@ -1626,13 +1686,13 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
               if (positionInput) positionInput.value = '';
               if (areaInput) areaInput.value = '';
 
-              // I-update ang pendingChange object
+              
               pendingChange.id = '';
               pendingChange.position = '';
               pendingChange.area = '';
 
-              // Clear din ang lahat ng pending schedule changes para sa ID na ito
-              const idToClear = employee.id; // Gamitin ang original ID para i-delete sa pending changes
+              
+              const idToClear = employee.id; 
               if (idToClear) {
                   Object.keys(pendingAttendanceChanges).forEach(key => {
                       if (key.startsWith(idToClear + '_')) { 
@@ -1648,7 +1708,6 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
 
               showNotification('Personnel Name cleared. Personnel ID, Position, Area, and local schedule changes were also cleared to prevent accidental override.', false);
           }
-          // --- END NEW LOGIC ---
           
           if (field === 'name' && pendingChange.name) {
               if (isDuplicateName(pendingChange.name, employee.id, employee.no)) {
@@ -1676,7 +1735,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
           }
       }
 
-      
+      // --- Original Logic: Clearing ID/Name for schedule clearing ---
       if (field === 'id') {
           
           if (pendingChange.id === '' && previousIdValue !== '') {
@@ -1712,6 +1771,7 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
           }
       }
 
+      // --- Original Logic: Autofill schedule pattern ---
       if (masterRecordFound && !isSaved && !pendingChange.isDeleted && !lockedIdRefMap[oldPersonnelKey]) {
           const currentIdInInput = row.querySelector('[data-field="id"]').value.trim();
           if (currentIdInInput === masterRecordFound.id) {
@@ -1727,6 +1787,42 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
           }
       }
       
+      // --- Original Logic: Signatory Autofill ---
+      const preparedByNameInput = document.getElementById('signatory-prepared-by');
+      const preparedByDesignationInput = document.getElementById('signatory-prepared-by-designation');
+      
+      if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === newValue.toUpperCase()) {
+          const emp = employeeMasterList.find(e => e.name.toUpperCase() === newValue.toUpperCase());
+          
+          
+          const currentDesignationUI = preparedByDesignationInput ? preparedByDesignationInput.value.trim() : '';
+
+          if (emp) {
+              const newDesignation = emp.position;
+              selectedSignatories.preparedBy.name = emp.name;
+              
+              if (currentDesignationUI === '' || newDesignation !== '') {
+                  selectedSignatories.preparedBy.designation = newDesignation;
+                  if (preparedByDesignationInput) preparedByDesignationInput.value = newDesignation;
+              } else {
+                  
+                  selectedSignatories.preparedBy.designation = currentDesignationUI;
+              }
+          } else {
+              selectedSignatories.preparedBy.name = newValue;
+              
+              if (newValue === '') {
+                  selectedSignatories.preparedBy.designation = '';
+                  if (preparedByDesignationInput) preparedByDesignationInput.value = '';
+              } else {
+                  
+                  selectedSignatories.preparedBy.designation = currentDesignationUI;
+              }
+          }
+      }
+      
+
+      // --- Original Logic: Final State Update ---
       const isChanged = (pendingChange.id.trim() !== employee.id || 
                          pendingChange.name.trim() !== employee.name || 
                          pendingChange.position.trim() !== employee.position || 
@@ -1759,40 +1855,6 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
           }
       }
       
-      // NEW LOGIC: Auto-fill Prepared By designation (position) if name is from master list
-      const preparedByNameInput = document.getElementById('signatory-prepared-by');
-      const preparedByDesignationInput = document.getElementById('signatory-prepared-by-designation');
-      
-      if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === newValue.toUpperCase()) {
-          const emp = employeeMasterList.find(e => e.name.toUpperCase() === newValue.toUpperCase());
-          
-          // Only auto-fill if the name matches a master record OR if the user has NOT typed anything
-          const currentDesignationUI = preparedByDesignationInput ? preparedByDesignationInput.value.trim() : '';
-
-          if (emp) {
-              const newDesignation = emp.position;
-              selectedSignatories.preparedBy.name = emp.name;
-              
-              if (currentDesignationUI === '' || newDesignation !== '') {
-                  selectedSignatories.preparedBy.designation = newDesignation;
-                  if (preparedByDesignationInput) preparedByDesignationInput.value = newDesignation;
-              } else {
-                  // Keep the manually typed designation in the state
-                  selectedSignatories.preparedBy.designation = currentDesignationUI;
-              }
-          } else {
-              selectedSignatories.preparedBy.name = newValue;
-              // If no master match, only clear designation if name field is also empty.
-              if (newValue === '') {
-                  selectedSignatories.preparedBy.designation = '';
-                  if (preparedByDesignationInput) preparedByDesignationInput.value = '';
-              } else {
-                  // Keep existing manual designation if name is partially typed
-                  selectedSignatories.preparedBy.designation = currentDesignationUI;
-              }
-          }
-      }
-      // END NEW LOGIC
   }
 
 
@@ -2039,12 +2101,13 @@ function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
     // 1. Get the next available Group Number from the server
     google.script.run
         .withSuccessHandler(function(groupNumber) {
-             // 2. Once the batch number is determined (e.g., G1 or G2), proceed with validation and saving
-             continueSaveProcess(groupNumber);
+             // 2. Once the batch number is determined (e.g., G1 or G2), 
+             // magsisimula ang blacklist check bago ang final save.
+             validateBlacklistAndContinueSave(groupNumber); // BAGONG CALL
         })
-        .withFailureHandler(handleSaveAllError) // Use the save handler for errors here
+        .withFailureHandler(handleSaveAllError)
         .getNextGroupNumber(sfcRefToSave, currentYear, currentMonth, currentShift);
-  }
+}
 
 // *** NEW FUNCTION: Continues the saving process after the batch number is determined ***
 function continueSaveProcess(groupNumber) {
@@ -2232,6 +2295,49 @@ function continueSaveProcess(groupNumber) {
 }
 // *** END REFRACTORED SAVE FUNCTIONS ***
 
+// --- NEW FUNCTION: BLACKLIST VALIDATION WRAPPER ---
+function validateBlacklistAndContinueSave(groupNumber) {
+    // NEW LOGIC: Kunin ang lahat ng active IDs na nasa grid (at hindi deleted)
+    // Ang getActiveEmployeesInGrid ay existing helper na
+    const activeEmployees = getActiveEmployeesInGrid(); 
+    const idsToCheck = activeEmployees.map(emp => emp.id).filter(id => id); 
+    
+    if (idsToCheck.length === 0) {
+        // Walang IDs na ipi-plan. Ipagpatuloy sa normal save.
+        continueSaveProcess(groupNumber);
+        return;
+    }
+
+    toggleUiLock(true, 'Checking blacklist status for active personnel...');
+
+    google.script.run
+        .withSuccessHandler(function(blacklistedIds) {
+            toggleUiLock(false);
+            
+            if (blacklistedIds && blacklistedIds.length > 0) {
+                const blacklistedNames = [];
+                
+                // Humanap ng corresponding name para sa error message
+                blacklistedIds.forEach(id => {
+                     const emp = activeEmployees.find(e => e.id === id);
+                     // If the employee is still in the grid (active), collect their details
+                     if (emp) blacklistedNames.push(`${emp.name} (ID: ${id})`);
+                });
+                
+                showNotification(`FATAL SAVE ERROR: Cannot save plan. The following employees are BLACKLISTED and must be removed from the plan: ${blacklistedNames.join(', ')}.`, false);
+                toggleLoading(false);
+                return; // BLOCK THE SAVE
+            }
+
+            // Kung walang blacklist hit, magpatuloy sa orihinal na save logic
+            // Ito ang magpapatakbo ng final client-side validation (like empty schedule check)
+            continueSaveProcess(groupNumber);
+        })
+        .withFailureHandler(handleSaveAllError)
+        .checkBulkBlacklist(idsToCheck); // Tatawag sa bagong bulk function sa server
+}
+// --- END NEW BLACKLIST VALIDATION ---
+
   function handleSaveAllSuccess(response) {
       showNotification('All changes saved successfully! Refreshing data...', true);
       pendingAttendanceChanges = {}; 
@@ -2244,6 +2350,48 @@ function continueSaveProcess(groupNumber) {
       reloadPlanAndCheckExistence(); 
       toggleUiLock(false); 
   }
+
+  // --- NEW FUNCTION: BLACKLIST VALIDATION ---
+function validateBlacklistAndContinueSave(groupNumber) {
+    const activeEmployees = getActiveEmployeesInGrid(); 
+    
+    // CRITICAL CHANGE: I-map ang active employees para maging {id, name} objects
+    const employeesToCheck = activeEmployees.map(emp => ({
+        id: emp.id, 
+        name: emp.name // Kasama na ang Name sa payload
+    })).filter(emp => emp.id); 
+    
+    if (employeesToCheck.length === 0) {
+        continueSaveProcess(groupNumber);
+        return;
+    }
+
+    toggleUiLock(true, 'Checking blacklist status for active personnel...');
+
+    google.script.run
+        .withSuccessHandler(function(blacklistedIds) {
+            toggleUiLock(false);
+            
+            if (blacklistedIds && blacklistedIds.length > 0) {
+                const blacklistedNames = [];
+                
+                // Humanap ng corresponding name para sa error message
+                blacklistedIds.forEach(id => {
+                     const emp = activeEmployees.find(e => e.id === id);
+                     if (emp) blacklistedNames.push(`${emp.name} (ID: ${id})`);
+                });
+                
+                showNotification(`FATAL SAVE ERROR: Cannot save plan. The following employees are BLACKLISTED and must be removed from the plan: ${blacklistedNames.join(', ')}.`, false);
+                toggleLoading(false);
+                return; // BLOCK THE SAVE
+            }
+
+            // Kung walang blacklist hit, magpatuloy sa orihinal na save logic
+            continueSaveProcess(groupNumber);
+        })
+        .withFailureHandler(handleSaveAllError)
+        .checkBulkBlacklist(employeesToCheck); // BAGONG PAYLOAD na may Name
+}
 
   function handleSaveAllError(error) {
        console.error("SAVE ALL ERROR:", error);
