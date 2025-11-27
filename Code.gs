@@ -686,7 +686,7 @@ function getHistoricalReferenceMap(ss, sfcRef, year, month, shift) {
                 const cleanId = cleanPersonnelId(idWithPrefix);
                 
                 // Only consider unlocked (non-prefixed) IDs
-                if (cleanId.length >= 3 && !idWithPrefix.startsWith('UNLOCKED:')) { 
+                if (cleanId.length >= 3) { 
                      if (!historicalRefMap[cleanId]) { 
                   
                         
@@ -1196,6 +1196,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
                     newRow[dayColIndex] = newStatus; 
                     
                     const lockedRefNum = historicalRefMap[personnelId] || ''; 
+                    Logger.log(`DEBUG: ID ${personnelId} - Found lockedRefNum: ${lockedRefNum}, Old Status: ${oldStatus}`);
                     
                     // START OF NEW LOGIC: Only log the historical reference if the old status was not blank or 'NA'.
                     const refToLog = (oldStatus && oldStatus !== 'NA') ? lockedRefNum : '';
@@ -1434,6 +1435,7 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
     const empSheet = getOrCreateConsolidatedEmployeeMasterSheet(ss); // Gagamitin ang Consolidated Sheet
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     const userEmail = Session.getActiveUser().getEmail();
+    const historicalRefMapForAudit = getHistoricalReferenceMap(ss, sfcRef, year, month, shift);
     if (!empSheet) throw new Error(`Employee Consolidated Sheet not found.`);
     empSheet.setFrozenRows(0);
     const numRows = empSheet.getLastRow() > 0 ? empSheet.getLastRow() : 1;
@@ -1512,11 +1514,11 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
         const logMonth = date.getMonth(); 
         
         // **CHANGED LOGIC:** Get current lock reference from the passed map
-        const currentLockRef = lockedIdRefMap[item.id] || '';
+        const historicalRef = historicalRefMapForAudit[item.id] || '';
         
    
         // **UPDATED CALL:** Pass the current lock reference
-        logScheduleDeletion(sfcRef, planSheet, shift, item.id, userEmail, logYear, logMonth, currentLockRef);
+        logScheduleDeletion(sfcRef, planSheet, shift, item.id, userEmail, logYear, logMonth, historicalRef);
     });
     // 2. Append new rows (Employee Sheet)
     if (rowsToAppend.length > 0) {
