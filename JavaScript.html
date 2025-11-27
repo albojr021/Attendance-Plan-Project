@@ -2166,7 +2166,7 @@ function continueSaveProcess(groupNumber) {
     document.querySelectorAll('#attendance-table-container tbody tr').forEach(row => {
         const stableKey = row.dataset.stableKey;
         
-        if (lockedIdRefMap[stableKey] || row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
+        if (lockedIdRefMap[stableKey] || row.classList.contains('line-through')) return;
         
         const employeeId = row.querySelector('[data-field="id"]')?.value; 
         const displayName = row.querySelector('[data-field="name"]')?.value.trim();
