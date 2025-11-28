@@ -2,367 +2,223 @@
 <style>
     /* Custom Styles */
     body { 
-        /* NEW: Explicitly reset the counter here */
         counter-reset: page 0; 
         font-family: 'Inter', sans-serif; 
         background-color: #f7f9fc;
     }
-    .card { background-color: white; border-radius: 1rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); padding: 1.5rem;
-    margin-bottom: 1.5rem; }
+    .card {
+      background-color: white; 
+      border-radius: 1rem; 
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); 
+      padding: 1.5rem;
+      margin-bottom: 1.5rem; 
+    }
     
     /* Status Colors */
-    .status-work { 
-        background-color: #d1fae5;
-        color: #065f46; 
-    } 
-    .status-rd { background-color: #fee2e2;
-    color: #991b1b; } 
-    .status-rh { background-color: #dbeafe;
-    color: #1e40af; } 
-    .status-sh { background-color: #fef3c7;
-    color: #92400e; } 
+    .status-work { background-color: #d1fae5; color: #065f46; } 
+    .status-rd { background-color: #fee2e2; color: #991b1b; } 
+    .status-rh { background-color: #dbeafe; color: #1e40af; } 
+    .status-sh { background-color: #fef3c7; color: #92400e; } 
+    .status-na { background-color: #f3f4f6; color: #6b7280; }
     
     /* Table Cell Structure */
-    .cell-container { 
-        padding: 0; 
-        position: relative; 
+    .cell-container { padding: 0; position: relative; }
+    .cell-selected { 
+      border: 3px solid #3b82f6 !important; 
+      box-shadow: 0 0 0 1px #2563eb; 
+      transition: border 0.1s; 
     }
+    .locked-row { background-color: #e5e7eb !important; }
 
-    /* NEW: Style for Selected Cells */
-    .cell-selected {
-        /* Gumamit ng border para mas obvious ang selection */
-        border: 3px solid #3b82f6 !important; /* blue-500 */
-        box-shadow: 0 0 0 1px #2563eb; /* blue-600 ring */
-        transition: border 0.1s;
-    }
-    
-    /* NEW: Style for Locked Rows */
-    .locked-row {
-        /* I-overwrite ang background color ng row/cells para sa visual cue */
-        background-color: #e5e7eb !important; /* bg-gray-200 */
-    }
-
-
-    /* Styling para sa Attendance Input field (Schedule) */
     .attendance-input {
-        box-sizing: border-box;
-        border: none;
-        outline: none;
-        height: 100%;
+        box-sizing: border-box; 
+        border: none; 
+        outline: none; 
+        height: 100%; 
         min-width: 50px; 
-        text-align: center;
-        background-color: transparent;
+        text-align: center; 
+        background-color: transparent; 
         transition: background-color 0.2s;
     }
     
-    .loading-pulse {
-        animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: .5; }
-    }
+    .loading-pulse { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 
     /* --- TABLE STICKY COLUMNS/HEADERS (SCREEN ONLY) --- */
-    
-    /* General table styling */
-    .attendance-grid table {
-        table-layout: fixed; /* CRITICAL: Fixed layout for screen */
-        width: max-content; 
-        min-width: 100%; 
-    }
+    .attendance-grid table { table-layout: fixed; width: max-content; min-width: 100%; }
 
-    /* Column Widths for Fixed Employee Info Columns (SCREEN ONLY) */
-    /* NOTE: These fixed widths are ONLY for the screen view */
+    /* Column Widths */
     .attendance-grid th:nth-child(1), .attendance-grid td:nth-child(1) { width: 50px; } /* No. */
     .attendance-grid th:nth-child(2), .attendance-grid td:nth-child(2) { width: 120px; } /* Personnel ID */
     .attendance-grid th:nth-child(3), .attendance-grid td:nth-child(3) { width: 200px; } /* Personnel Name */
-    /* UPDATED INDEX: Position is now the 4th column */
     .attendance-grid th:nth-child(4), .attendance-grid td:nth-child(4) { width: 120px; } /* Position */
-    /* UPDATED INDEX: Area Posting is now the 5th column */
     .attendance-grid th:nth-child(5), .attendance-grid td:nth-child(5) { width: 120px; } /* Area Posting */
     
     /* Dynamic Date Cells (Schedule) - STARTS AT N+6 (6TH COLUMN) */
-    .date-col-fix {
-        width: 70px;
-        min-width: 70px; 
-        max-width: 70px;
-        box-sizing: border-box; 
-    }
-
-    /* Applying the fix to all headers and data cells starting from the 6th column (Dynamic Dates) */
     .attendance-grid th:nth-child(n+6), 
     .attendance-grid td:nth-child(n+6) { 
-        width: 70px; 
-        min-width: 70px;
-        max-width: 70px;
-        padding: 0; /* Alisin ang padding sa TD/TH at ilagay sa inner DIV */
+      width: 70px; 
+      min-width: 70px; 
+      max-width: 70px; 
+      padding: 0; 
     }
 
-    /* Apply Sticky Positioning to Headers and Cells (SCREEN ONLY) */
-    .sticky-col, .sticky-col-header {
-        position: sticky;
-        left: 0; 
-    }
-    .sticky-col-header {
-        top: 0; 
-        z-index: 20; 
-    }
-    
-    /* Freeze 1: For 'No.' and 'Personnel ID' (SCREEN ONLY) */
-    .freeze-1 {
-        left: 0;
-        z-index: 10;
-    }
-    .sticky-col-header.freeze-1 {
-        z-index: 30;
-    }
-    
-    /* Freeze 2: For 'Personnel Name' (SCREEN ONLY) */
-    .freeze-2 {
-        /* Total width of Freeze 1 columns: 50px + 120px = 170px */
-        left: 170px; 
-        z-index: 10;
-    }
-    .sticky-col-header.freeze-2 {
-        z-index: 30;
-    }
-    
-    /* Reset z-index for standard sticky cells (SCREEN ONLY) */
-    /* UPDATED: Reset starts at the 6th column (Dates) */
-    .attendance-grid td:nth-child(n+6) {
-        z-index: 5; 
-    }
-    
-    /* Ensure inner header text has padding, as we removed it from TH above */
-    .attendance-grid th {
-        box-sizing: border-box; 
-    }
+    /* Sticky Positioning */
+    .sticky-col, .sticky-col-header { position: sticky; left: 0; }
+    .sticky-col-header { top: 0; z-index: 20; }
+    .freeze-1 { left: 0; z-index: 10; }
+    .sticky-col-header.freeze-1 { z-index: 30; }
+    .freeze-2 { left: 170px; z-index: 10; }
+    .sticky-col-header.freeze-2 { z-index: 30; }
+    .attendance-grid td:nth-child(n+6) { z-index: 5; }
+    .attendance-grid th { box-sizing: border-box; }
 
-    /* Ensure the inner content of the cell takes the color */
-    .attendance-cell-bg {
-        transition: background-color 0.2s, color 0.2s;
-        min-height: 44px; /* Minimum height for touch target */
+    .attendance-cell-bg { 
+      transition: background-color 0.2s, color 0.2s; 
+      min-height: 44px; 
     }
     
-    /* Style for Personnel Info Inputs in the Grid */
     .personnel-info-input {
-        box-sizing: border-box;
-        border: 1px solid transparent;
-        padding: 0.5rem 0.25rem;
-        transition: border-color 0.15s, background-color 0.15s;
-        min-height: 44px;
+        box-sizing: border-box; border: 1px solid transparent; padding: 0.5rem 0.25rem;
+        transition: border-color 0.15s, background-color 0.15s; min-height: 44px;
     }
-    .personnel-info-input:focus {
-        border-color: #60a5fa; 
-        background-color: #eff6ff; 
-        outline: none;
-    }
-    
-    /* NEW: Read-only visual style */
+    .personnel-info-input:focus { border-color: #60a5fa; background-color: #eff6ff; outline: none; }
     .personnel-info-input.read-only {
-        background-color: #f3f4f6; /* bg-gray-100 */
-        color: #6b7280; /* text-gray-500 */
-        border-style: dashed;
-        border-color: #e5e7eb;
+        background-color: #f3f4f6; 
+        color: #6b7280; 
+        border-style: dashed; 
+        border-color: #e5e7eb; 
         cursor: default;
     }
-    /* When read-only, ensure no focus ring */
-    .personnel-info-input.read-only:focus {
-        background-color: #f3f4f6;
-        border-color: #e5e7eb;
-        box-shadow: none;
+    .personnel-info-input.read-only:focus { 
+      background-color: #f3f4f6; 
+      border-color: #e5e7eb; 
+      box-shadow: none; 
     }
     
-    /* UPDATED: Style for the Action Container (Edit/Delete Icons) */
-    /* Gumamit ng fixed width sa container para hindi gumalaw ang icon kapag nag-hover */
-    .sticky-col:first-child .absolute.flex {
-        width: 48px; /* Fixed width: 2 icons (h-4 w-4) + spacing + padding */
-        right: 0;
-    }
+    .sticky-col:first-child .absolute.flex { width: 48px; right: 0; }
+    .sticky-col:first-child > span { padding-right: 50px; }
     
-    /* === FIX: PADDDING PARA SA NO. COLUMN === */
-    /* Target the span inside the first TD (No. column) na may hawak ng numero */
-    .sticky-col:first-child > span {
-        padding-right: 50px; /* Dagdagan ang padding sa kanan para magbigay space sa 48px na icon container */
+    /* Select2 & Datepicker Styles */
+    .select2-container--default .select2-selection--single { 
+      height: 44px; 
+      border-radius: 0.5rem; 
+      border-color: #d1d5db; 
+      padding-top: 0.4rem; 
     }
-    /* === END FIX === */
+    .select2-container--default .select2-selection--single .select2-selection__rendered { 
+      color: #374151; 
+      line-height: 1.5rem; 
+      padding-left: 0.75rem; 
+    }
+    .select2-container--default .select2-search--dropdown .select2-search__field { 
+      border-radius: 0.5rem; 
+      border-color: #d1d5db; 
+    }
+    .select2-container--default.select2-container--focus .select2-selection--single { 
+      border-color: #3b82f6 !important; 
+      box-shadow: 0 0 0 1px #3b82f6; 
+      outline: 0; 
+    }
+    .select2-container--open { z-index: 50; }
     
-    /* --- Select2 Custom Styling (para mas maging Tailwind-like) --- */
-    .select2-container--default .select2-selection--single {
-        height: 44px; /* Para maging tugma sa taas ng p-3 na input/select */
-        border-radius: 0.5rem; /* rounded-lg */
-        border-color: #d1d5db; /* border-gray-300 */
-        padding-top: 0.4rem; 
+    /* jQuery UI Datepicker */
+    .ui-datepicker { 
+      font-family: 'Inter', sans-serif !important; 
+      padding: 1rem !important; 
+      border: none !important; 
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important; 
+      border-radius: 0.75rem !important; 
+      background-color: white !important; 
+      width: 280px !important; 
     }
-
-    .select2-container--default .select2-selection--single .select2-selection__rendered {
-        color: #374151; /* text-gray-700 */
-        line-height: 1.5rem; /* Line height */
-        padding-left: 0.75rem;
+    .ui-datepicker-header { 
+      background-color: transparent !important; 
+      border: none !important; 
+      padding-bottom: 0.5rem !important; 
+      border-radius: 0 !important; 
     }
-    
-    /* Para sa search box */
-    .select2-container--default .select2-search--dropdown .select2-search__field {
-        border-radius: 0.5rem;
-        border-color: #d1d5db;
+    .ui-datepicker-title { 
+      margin: 0 !important; 
+      padding: 0 2.5rem !important; 
+      line-height: 1.5rem !important; 
+      font-size: 1rem !important; 
+      font-weight: 600 !important; 
+      color: #1f2937 !important; 
     }
-
-    /* Focus state */
-    .select2-container--default.select2-container--focus .select2-selection--single {
-        border-color: #3b82f6 !important; /* focus:border-blue-500 */
-        box-shadow: 0 0 0 1px #3b82f6; /* focus:ring-blue-500 */
-        outline: 0;
+    .ui-datepicker .ui-datepicker-prev, .ui-datepicker .ui-datepicker-next { 
+      top: 1rem !important; 
+      width: 1.5rem !important; 
+      height: 1.5rem !important; 
+      border: none !important; 
+      border-radius: 0.25rem !important; 
+      background-color: #f3f4f6 !important; 
+      cursor: pointer !important; 
+      transition: background-color 0.15s !important; 
     }
-    
-    /* Ensure dropdown is above other content */
-    .select2-container--open {
-        z-index: 50; 
+    .ui-datepicker .ui-datepicker-prev { left: 0.5rem !important; }
+    .ui-datepicker .ui-datepicker-next { right: 0.5rem !important; }
+    .ui-datepicker .ui-datepicker-prev:hover, .ui-datepicker .ui-datepicker-next:hover { 
+      background-color: #e5e7eb !important; 
     }
-    
-    /* --- NEW JQUERY UI DATEPICKER MODERN STYLES --- */
-    /* Base Container */
-    .ui-datepicker {
-        font-family: 'Inter', sans-serif !important;
-        padding: 1rem !important;
-        border: none !important;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important; /* shadow-xl */
-        border-radius: 0.75rem !important; /* rounded-xl */
-        background-color: white !important;
-        width: 280px !important; /* Fixed width for better control */
+    .ui-datepicker .ui-datepicker-prev span, .ui-datepicker .ui-datepicker-next span { 
+      background-image: none !important; 
+      text-indent: 0 !important; 
+      display: block !important; 
+      color: #4b5563 !important; 
+      font-weight: bold !important; 
     }
-
-    /* Header (Month/Year display area) */
-    .ui-datepicker-header {
-        background-color: transparent !important;
-        border: none !important;
-        padding-bottom: 0.5rem !important;
-        border-radius: 0 !important;
-    }
-
-    /* FIX: Add padding to the title to prevent overlap with buttons */
-    .ui-datepicker-title {
-        margin: 0 !important;
-        padding: 0 2.5rem !important; /* ADDED HORIZONTAL PADDING */
-        line-height: 1.5rem !important;
-        font-size: 1rem !important;
-        font-weight: 600 !important;
-        color: #1f2937 !important; /* text-gray-800 */
-    }
-
-    /* Prev/Next Buttons */
-    .ui-datepicker .ui-datepicker-prev,
-    .ui-datepicker .ui-datepicker-next {
-        top: 1rem !important;
-        width: 1.5rem !important;
-        height: 1.5rem !important;
-        border: none !important;
-        border-radius: 0.25rem !important;
-        background-color: #f3f4f6 !important; /* bg-gray-100 */
-        cursor: pointer !important;
-        transition: background-color 0.15s !important;
-    }
-    
-    /* FIX: Adjust absolute positioning to use the header's padding */
-    .ui-datepicker .ui-datepicker-prev {
-        left: 0.5rem !important; /* Adjusted from 1rem to 0.5rem */
-    }
-    .ui-datepicker .ui-datepicker-next {
-        right: 0.5rem !important; /* Adjusted from 1rem to 0.5rem */
-    }
-
-    .ui-datepicker .ui-datepicker-prev:hover,
-    .ui-datepicker .ui-datepicker-next:hover {
-        background-color: #e5e7eb !important; /* bg-gray-200 */
-    }
-
-    .ui-datepicker .ui-datepicker-prev span,
-    .ui-datepicker .ui-datepicker-next span {
-        background-image: none !important; /* Remove default jQuery UI icon sprite */
-        text-indent: 0 !important;
-        display: block !important;
-        color: #4b5563 !important; /* text-gray-600 */
-        font-weight: bold !important;
-    }
-
-    /* Customizing the < and > symbols */
     .ui-datepicker .ui-icon-circle-triangle-w:before { content: '‹'; font-size: 1.25rem; }
     .ui-datepicker .ui-icon-circle-triangle-e:before { content: '›'; font-size: 1.25rem; }
-
-
-    /* Month/Year Dropdowns */
-    .ui-datepicker-month, .ui-datepicker-year {
-        font-size: 1rem !important;
-        font-weight: 600 !important;
-        color: #1f2937 !important; /* text-gray-800 */
-        padding: 0.25rem 0.5rem !important;
-        border: 1px solid #d1d5db !important; /* border-gray-300 */
-        border-radius: 0.375rem !important; /* rounded-md */
-        margin: 0 0.25rem !important;
-        background-color: white !important;
-        appearance: none !important; /* Remove default select styling */
+    .ui-datepicker-month, .ui-datepicker-year { 
+      font-size: 1rem !important; 
+      font-weight: 600 !important; 
+      color: #1f2937 !important; 
+      padding: 0.25rem 0.5rem !important; 
+      border: 1px solid #d1d5db !important; 
+      border-radius: 0.375rem !important; 
+      margin: 0 0.25rem !important; 
+      background-color: white !important; 
+      appearance: none !important; 
     }
-
-    /* Button Panel (Today/Close/Select Period) */
-    .ui-datepicker-buttonpane {
-        padding-top: 1rem !important;
-        border-top: 1px solid #e5e7eb !important; /* border-gray-200 */
-        margin-top: 1rem !important;
+    .ui-datepicker-buttonpane { 
+      padding-top: 1rem !important; 
+      border-top: 1px solid #e5e7eb !important; 
+      margin-top: 1rem !important; 
     }
-
-    /* Close Button (Select Period) */
-    .ui-datepicker-buttonpane button {
-        cursor: pointer !important;
-        font-weight: 600 !important;
-        padding: 0.5rem 1rem !important;
-        border-radius: 0.375rem !important; /* rounded-md */
-        transition: background-color 0.15s !important;
-        border: 1px solid transparent !important;
-        background-image: none !important;
-        color: white !important; /* Default to white text for primary buttons */
+    .ui-datepicker-buttonpane button { 
+      cursor: pointer !important; 
+      font-weight: 600 !important; 
+      padding: 0.5rem 1rem !important; 
+      border-radius: 0.375rem !important; 
+      transition: background-color 0.15s !important; 
+      border: 1px solid transparent !important; 
+      background-image: none !important; 
+      color: white !important; 
     }
-
-    /* Close Button (Select Period) */
-    .ui-datepicker-close {
-        background-color: #2563eb !important; /* bg-blue-700 */
-        color: white !important;
-        border-color: #2563eb !important;
+    .ui-datepicker-close { 
+      background-color: #2563eb !important; 
+      color: white !important; 
+      border-color: #2563eb !important; 
     }
-    .ui-datepicker-close:hover {
-        background-color: #1d4ed8 !important; /* bg-blue-800 */
+    .ui-datepicker-close:hover { background-color: #1d4ed8 !important; }
+    .ui-datepicker .ui-state-highlight { 
+      background-color: #e0f2fe !important; 
+      color: #1d4ed8 !important; 
     }
-
-    /* Today Button (If enabled) */
-    .ui-datepicker .ui-state-highlight {
-         /* This targets the 'Today' link if it exists and is selected/highlighted */
-         background-color: #e0f2fe !important; /* bg-blue-50 */
-         color: #1d4ed8 !important; /* text-blue-800 */
+    .ui-state-default { 
+      background-image: none !important; 
+      border: none !important; 
+      text-align: center; 
     }
-
-    .ui-state-default {
-        background-image: none !important;
-        border: none !important;
-        text-align: center;
-    }
-
-    /* Ensure the custom CSS to hide the calendar is still present */
     .ui-month-year-only .ui-datepicker-calendar { display: none !important; }
     .ui-month-year-only .ui-datepicker-buttonpane { text-align: center; }
-    
-    /* NEW: Hide Ref # container by default */
-    .print-only-container {
-        display: none; 
-    }
+    .print-only-container { display: none; }
 
     /* --- PRINT STYLES --- */
-
-    /* CRITICAL FIX 1: Add pagination to @page margin boxes */
     @page {
-        size: 13in 8.5in landscape; /* Gawing Landscape ang page orientation */
-        margin: 10mm; /* Liitan ang margin para may space */
-        
-        /* NEW: Reliable pagination in the bottom right margin box */
+        size: 13in 8.5in landscape; 
+        margin: 10mm; 
         @bottom-right {
              content: "Page " counter(page) " of " counter(pages);
              font-size: 7pt;
@@ -371,77 +227,46 @@
     }
     
     @media print {
-        /* 1. Itago ang lahat ng hindi kailangan (including headers) */
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
-        #legend-area, .action-icon, .new-label-no-col, #floating-bulk-modal,
-        .print-header
-        {
-            display: none !important;
-        }
+        #legend-area, .action-icon, .new-label-no-col, #floating-bulk-modal, .print-header
+        { display: none !important; }
         
-        /* NEW: Tiyakin na ipapakita ang container kapag nagpi-print */
-        #print-sub-property-container, 
-        #print-signatories-container {
-            display: block !important;
-        }
+        #print-sub-property-container, #print-signatories-container { display: block !important; }
         
-        /* NEW: I-overwrite ang locked row style sa print, gawing normal */
-        .locked-row {
-            background-color: white !important;
-            opacity: 1 !important;
-        }
+        .locked-row { background-color: white !important; opacity: 1 !important; }
 
-        /* 2. I-reset ang body at margin */
-        body {
-            background-color: white !important;
-            margin: 0;
-            padding: 0 !important;
-            font-size: 10pt; /* Default print font size */
+        body { background-color: white !important; margin: 0; padding: 0 !important; font-size: 10pt; }
+        
+        #contract-details-area, #planning-area { 
+          display: block !important; 
+          margin-top: 0.1rem; 
+          padding: 0; 
+          break-after: avoid; 
+        }
+        .card { 
+          box-shadow: none !important; 
+          border-radius: 0 !important; 
+          padding: 0 !important; 
+          background-color: transparent !important; 
         }
         
-        /* 3. I-ayos ang Contract Details: Maging mas compact */
-        #contract-details-area, #planning-area {
-            display: block !important;
-            margin-top: 0.1rem; /* Liitan pa lalo ang top margin */
-            padding: 0;
-            break-after: avoid; 
+        #contract-details-grid { display: block; margin-bottom: 0.1rem; padding: 0; }
+        #contract-details-grid > div { 
+          display: flex; 
+          border: none !important; 
+          padding: 0 0 !important; 
+          margin-bottom: 0; 
+          background-color: transparent !important; 
+          break-inside: avoid; 
         }
         
-        /* Alisin ang box shadow at padding ng card para maging malinis */
-        .card {
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            padding: 0 !important;
-            background-color: transparent !important; /* Ensure no background color */
-        }
-        
-        /* CONTRACT DETAILS: REMOVE GRID AND CARD STYLE */
-        #contract-details-grid {
-            display: block; /* Remove the grid display */
-            margin-bottom: 0.1rem; /* Liitan pa lalo ang bottom margin */
-            padding: 0;
-        }
-        
-        #contract-details-grid > div {
-            /* Gawing standard text line ang bawat detalye */
-            display: flex; /* Para magkatabi ang label at value */
-            border: none !important; 
-            padding: 0 0 !important; /* CRITICAL: Tanggalin ang vertical padding */
-            margin-bottom: 0; /* Alisin ang space between items */
-            background-color: transparent !important;
-            break-inside: avoid;
-        }
-        
-        /* ********** NEW SIGNATORIES AND SUB PROPERTY PRINT STYLES (UPDATED) ********** */
-        
-        /* NEW: Sub Property Container - Mag-appear pagkatapos ng contract grid */
-        #print-sub-property-container {
-            display: flex !important; 
-            border: none !important;
-            padding: 0 0 !important;
-            margin-bottom: 5px !important;
-            background-color: transparent !important;
-            break-inside: avoid;
+        #print-sub-property-container { 
+          display: flex !important; 
+          border: none !important; 
+          padding: 0 0 !important; 
+          margin-bottom: 5px !important; 
+          background-color: transparent !important; 
+          break-inside: avoid; 
         }
 
         #print-signatories-container {
@@ -450,257 +275,198 @@
           left: auto !important; 
           right: auto !important; 
           width: 100% !important; 
-          padding: 0 !important;
-          
-          /* BINAGO: Gumamit ng malinis na margin top para sa spacing */
-          margin-top: 15mm !important; /* Magbibigay ng malaking clearance mula sa table */
-          
+          padding: 0 !important; 
+          margin-top: 15mm !important; 
           break-before: auto !important; 
-          break-inside: avoid !important;
+          break-inside: avoid !important; 
           z-index: auto !important;
-      }
+        }
 
-        /* NEW: Signatories Grid Layout */
+        //* --- UPDATED SIGNATORY LAYOUT (FLEXBOX) --- */
         .print-signatories {
-            display: grid !important;
-            grid-template-columns: 1fr 1.5fr 1fr !important; /* Prepared | Checked(wider) | Approved */
-            gap: 10px; /* Space between columns */
+            display: flex !important; /* Flexbox para dynamic */
+            justify-content: space-evenly !important; /* Pantay na spacing at centering */
+            align-items: flex-start !important; /* Pantay ang alignment sa taas */
+            flex-wrap: nowrap !important; /* Huwag ibaba sa next line */
+            width: 100% !important;
             margin-top: 10px;
         }
 
-        /* Styling for each signatory column */
-        .print-signatories > div {
+        /* Siguraduhin na may tamang spacing ang bawat signatory block */
+        .print-signatories > div, 
+        .print-signatories .checked-by-col {
+            flex: 0 1 auto; /* Hayaan ang content na mag-dictate ng width */
+            min-width: 120px; /* Minimum width para hindi magdikit-dikit masyado */
             padding: 0 5px;
             text-align: center;
         }
         
-        /* Font size for ALL Signatory Text */
-        .print-signatories p {
-            line-height: 1.1 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: black !important; /* Force black */
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
+        /* Show only filled columns */
+        .print-signatories .checked-by-col { display: none; }
+        .print-signatories .prepared-by, .print-signatories .approved-by, 
+        .print-signatories .checked-by-col[data-filled="true"] { display: block !important; }
 
-        /* --- UPDATED SIGNATORY STYLING FOR NAME, DESIGNATION, AND TITLE --- */
-        
-        /* 1. NAME Line (text-sm, border-t) - REMOVING THE BORDER LINE HERE */
-        .print-signatories p.text-sm {
-            /* ************ BINAGO START ************ */
-            border-top: none !important; /* Alisin ang linya */
-            padding-top: 0 !important;  /* Alisin ang padding sa taas */
-            margin-top: 0 !important; /* Alisin ang margin sa taas */
-            /* ************ BINAGO END ************ */
-            
-            font-weight: bold !important;
-            font-size: 7pt !important;
-            line-height: 1.1 !important;
+        .print-signatories p { 
+          line-height: 1.1 !important; 
+          margin: 0 !important; 
+          padding: 0 !important; 
+          color: black !important; 
+          -webkit-print-color-adjust: exact; 
+          print-color-adjust: exact; 
         }
-
-        /* 2. DESIGNATION Line (text-xs, font-normal) */
-        .print-signatories p.text-xs.font-normal {
-            font-weight: normal !important;
-            font-size: 6pt !important; /* Make designation smaller */
-            padding-bottom: 2px !important;
-            line-height: 1.1 !important;
+        .print-signatories p.text-sm { 
+          border-top: none !important; 
+          padding-top: 0 !important; 
+          margin-top: 0 !important; 
+          font-weight: bold !important; 
+          font-size: 7pt !important; 
+          line-height: 1.1 !important; 
+        }
+        .print-signatories p.text-xs.font-normal { 
+          font-weight: normal !important; 
+          font-size: 6pt !important; 
+          padding-bottom: 2px !important; 
+          line-height: 1.1 !important; 
         }
         
-        /* 3. TITLE Line (Prepared By, Checked By, Approved By - which are p:last-child and text-xs font-bold) */
+        /* Titles */
         .print-signatories .prepared-by p:last-child,
-        .print-signatories .checked-by p:last-child,
+        .print-signatories .checked-by-col p:last-child,
         .print-signatories .approved-by p:last-child {
-             font-size: 7pt !important;
-             font-weight: bold !important;
-             color: black !important;
-             /* ************ BINAGO START ************ */
-             padding-top: 0 !important; /* Alisin ang padding sa taas */
-             border-top: none !important; /* Alisin ang linya */
-             /* ************ BINAGO END ************ */
-             margin-top: 5px !important; /* Keep space above the title/block */
+             font-size: 7pt !important; font-weight: bold !important; color: black !important;
+             padding-top: 0 !important; border-top: none !important; margin-top: 5px !important;
         }
-        /* --- END UPDATED SIGNATORY STYLING --- */
 
-        
-        /* CRITICAL: Gawing mas maliit at i-compact ang label at value */
-        #contract-details-grid p,
-        #print-sub-property-container p, /* ADDED: Include injected container's p tags */
-        #contract-details-grid .text-xl,
-        .text-gray-700{ 
+        #contract-details-grid p, #print-sub-property-container p, 
+        #contract-details-grid .text-xl, .text-gray-700 { 
             font-size: 0.55rem !important; 
             line-height: 1.1 !important; 
-            font-weight: normal !important;
-            margin: 0;
-            padding: 0;
-            color: black !important; /* Force black */
+            font-weight: normal !important; 
+            margin: 0; 
+            padding: 0; 
+            color: black !important;
+        }
+        #contract-details-grid > div p:first-child, #print-sub-property-container p:first-child { 
+          font-weight: bold !important; 
+          color: black !important; 
+          min-width: 80px; 
+          margin-right: 5px; 
         }
         
-        /* Apply BOLD to the label (first p tag) and make it occupy fixed space */
-        #contract-details-grid > div p:first-child,
-        #print-sub-property-container p:first-child /* ADDED: Include injected container's label */
-        {
-            font-weight: bold !important; /* Label */
-            color: black !important; /* Force black */
-            min-width: 80px;
-            margin-right: 5px; 
-        }
-        /* ********** END NEW STYLES ********** */
-        
-        /* 4. I-ayos ang Table (Print Grid) - Excel-like appearance */
-        
-        /* CRITICAL FIX 2: Magdagdag ng padding sa ilalim ng table container para mag-reserve ng espasyo para sa fixed footer (signatories) */
-        .print-grid {
-          /* CRITICAL FIX: Tanggalin ang lahat ng malaking padding/margin hacks */
+        .print-grid { 
           padding-bottom: 0 !important; 
           margin-bottom: 0 !important; 
           overflow-x: visible !important; 
-      }
-        
-        /* I-alis ang sticky positioning */
-        .sticky-col, .sticky-col-header, .freeze-1, .freeze-2 {
-            position: static !important;
-            left: auto !important;
-            z-index: auto !important;
+        }
+        .sticky-col, .sticky-col-header, .freeze-1, .freeze-2 { 
+          position: static !important; 
+          left: auto !important; 
+          z-index: auto !important; 
         }
         
-        /* CRITICAL: Standard font size para sa table (0.5rem) */
-        .attendance-grid table {
-            width: 100% !important; 
-            table-layout: auto !important; /* Allow auto layout for content-based width */
-            font-size: 0.5rem; /* Standard font size para sa table (~8px) */
-            border-collapse: collapse;
+        .attendance-grid table { 
+          width: 100% !important; 
+          table-layout: auto !important; 
+          font-size: 0.5rem; 
+          border-collapse: collapse; 
         }
-        
-        /* Header styling */
-        .attendance-grid th {
-            background-color: #e5e7eb !important; 
-            color: #374151 !important;
-            padding: 1px 1px !important; /* UPADATED: Minimal padding for header */
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            vertical-align: middle;
-            text-align: center;
-            line-height: 1 !important; /* CRITICAL: Minimize header line height */
+        .attendance-grid th { 
+          background-color: #e5e7eb !important; 
+          color: #374151 !important; 
+          padding: 1px 1px !important; 
+          -webkit-print-color-adjust: exact; 
+          print-color-adjust: exact; 
+          vertical-align: middle; 
+          text-align: center; 
+          line-height: 1 !important; 
         }
-        
-        /* CRITICAL: Gawing pare-pareho ang font size sa header elements (0.5rem) */
-        .attendance-grid th span,
-        .attendance-grid th.text-xs,
-        .attendance-grid th.font-semibold {
-            font-size: 0.5rem !important;
-            font-weight: bold;
+        .attendance-grid th span, 
+        .attendance-grid th.text-xs, 
+        .attendance-grid th.font-semibold { 
+          font-size: 0.5rem !important; 
+          font-weight: bold; 
         }
-        
-        /* NEW: CRITICAL FIX - REMOVE FIXED WIDTHS from Personnel Info Columns (1st to 5th TH/TD) */
-        /* UPDATED: Target 1st to 5th columns (No., ID, Name, Position, Area) */
         .attendance-grid th:nth-child(-n+5), 
-        .attendance-grid td:nth-child(-n+5) {
-             width: auto !important; /* Auto size based on content (minimal width) */
-             min-width: 0 !important;
-             max-width: none !important;
+        .attendance-grid td:nth-child(-n+5) { 
+          width: auto !important; 
+          min-width: 0 !important; 
+          max-width: none !important; 
         }
-        
-        /* Date/Schedule Columns (6th column onwards) - Let them take up the remaining space */
         .attendance-grid th:nth-child(n+6), 
         .attendance-grid td:nth-child(n+6) { 
-             width: auto !important; /* Auto size to fill remaining space */
-             min-width: 0.5rem !important; /* Allow minimal compression */
-             max-width: none !important;
-             /* NEW: Added nowrap for print fix */
-             white-space: nowrap !important; 
+          width: auto !important; 
+          min-width: 0.5rem !important; 
+          max-width: none !important; 
+          white-space: nowrap !important; 
         }
 
-        /* Cell styling - Ensure visible border for Excel look */
-        .attendance-grid td {
-            padding: 0 !important;
-            border: 1px solid #444 !important; /* Darker border for Excel look */
-            vertical-align: middle;
-            height: auto !important; /* CRITICAL: Override any screen height */
-            min-height: 0 !important; /* CRITICAL: Override any screen min-height */
+        .attendance-grid td { 
+          padding: 0 !important; 
+          border: 1px solid #444 !important; 
+          vertical-align: middle; 
+          height: auto !important; 
+          min-height: 0 !important; 
         }
         
-        /* --- CRITICAL FIX: I-reset ang lahat ng kulay sa puti at itim --- */
-        .attendance-cell-bg,
-        .attendance-grid .status-work,
-        .attendance-grid .status-rd,
-        .attendance-grid .status-rh,
-        .attendance-grid .status-sh,
+        .attendance-cell-bg, .attendance-grid .status-work, 
+        .attendance-grid .status-rd, .attendance-grid .status-rh, 
+        .attendance-grid .status-sh, .attendance-grid .status-na, 
         .attendance-grid .locked-row .attendance-cell-bg { 
-            background-color: white !important; /* Force White Background */
-            color: black !important;             /* Force Black Text */
-            /* Mahalaga: Huwag pilitin ang browser na i-print ang color, bagkus i-reset ang lahat */
-            -webkit-print-color-adjust: exact;
+            background-color: white !important; 
+            color: black !important; 
+            -webkit-print-color-adjust: exact; 
             print-color-adjust: exact;
         }
 
-        /* Inner cell content (status/schedule) - pareho ang size (0.5rem) */
-        .attendance-cell-bg {
-            padding: 1px 1px !important; 
-            font-size: 0.5rem !important; 
-            font-weight: bold; /* Keep bold for visibility */
-            line-height: 1 !important; /* CRITICAL FIX: Minimal line height */
-            min-height: 0 !important; /* CRITICAL FIX: Override screen min-height */
-            height: auto;
-            /* **** FINAL FIX FOR WRAPPING **** */
-            white-space: nowrap !important; /* Force text onto a single line */
-            /* ***************************** */
+        .attendance-cell-bg { 
+          padding: 1px 1px !important; 
+          font-size: 0.5rem !important; 
+          font-weight: bold; 
+          line-height: 1 !important; 
+          min-height: 0 !important; 
+          height: auto; 
+          white-space: nowrap !important; 
         }
 
-        /* Personnel Info Inputs: Remove borders, padding, and make transparent/text-like */
-        .personnel-info-input {
-            border: none !important;
-            background-color: transparent !important;
-            padding: 1px 2px !important;
-            color: black !important;
-            font-size: 0.5rem !important; /* Pareho ang size */
-            font-weight: normal !important;
-            text-align: left !important;
-            line-height: 1 !important; /* CRITICAL FIX: Minimal line height */
-            min-height: 0 !important; /* CRITICAL FIX: Override screen min-height */
+        .personnel-info-input { 
+          border: none !important; 
+          background-color: transparent !important; 
+          padding: 1px 2px !important; 
+          color: black !important; 
+          font-size: 0.5rem !important; 
+          font-weight: normal !important; 
+          text-align: left !important; 
+          line-height: 1 !important; 
+          min-height: 0 !important; 
+        }
+        .personnel-info-input.read-only { 
+          background-color: transparent !important; 
+          border-style: none !important; 
+          color: black !important; 
         }
         
-        /* Override read-only styling in print */
-        .personnel-info-input.read-only {
-            background-color: transparent !important;
-            border-style: none !important;
-            color: black !important;
+        .attendance-grid td:nth-child(1) { 
+          text-align: center !important; 
+          padding: 1px 1px !important; 
+          width: 0.5rem !important; 
+        }
+        .attendance-grid td:nth-child(1) > span { 
+          padding-right: 0 !important; 
         }
         
-        /* Ensure the content of the No. column is centered (just the number) */
-        .attendance-grid td:nth-child(1) {
-            text-align: center !important;
-            padding: 1px 1px !important; /* UPADATED: Minimal vertical padding */
-            /* --- NEW FIXES FOR COMPACT NO. COLUMN --- */
-            width: 0.5rem !important; /* Force a very small width */
+        #print-ref-display { 
+          position: fixed !important; 
+          top: 5mm !important; 
+          right: 10mm !important; 
+          font-size: 8pt !important; 
+          font-weight: bold !important; 
+          color: black !important; 
+          z-index: 1000; 
+          display: block !important; 
         }
-        
-        /* NEW FIX: Reset padding for the No. column number span to remove screen-only offset */
-        .attendance-grid td:nth-child(1) > span {
-            padding-right: 0 !important; 
+        #print-ref-display::before { 
+          content: "Reference # "; 
         }
-        /* --- END NEW FIXES --- */
-        
-        /* Reference # in Upper Right Corner (Fixed Position) */
-        #print-ref-display {
-            position: fixed !important;
-            top: 5mm !important; /* Margin mula sa taas */
-            right: 10mm !important; /* Margin mula sa kanan */
-            font-size: 8pt !important;
-            font-weight: bold !important;
-            color: black !important;
-            z-index: 1000;
-            display: block !important;
-        }
-
-        /* I-inject ang label sa unahan ng Ref # */
-        #print-ref-display::before {
-            content: "Reference # ";
-        }
-
-        /* NEW: Alisin ang body::after para maiwasan ang conflict sa @page rule */
-        body::after {
-            content: none !important;
-        }
+        body::after { content: none !important; }
     }
 </style>
