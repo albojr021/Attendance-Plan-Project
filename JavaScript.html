@@ -2937,7 +2937,37 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
     
     // DESTUCTURE SIGNATORIES FOR EASIER USE
     const { preparedBy, approvedBy } = signatories;
-    const checkedByNames = signatories.checkedBy.filter(item => item.name.trim() !== '');
+    
+    // --- NEW LOGIC: GENERATE 5 SEPARATE CHECKED BY COLUMNS ---
+    const checkedByNames = signatories.checkedBy; // Kunin ang raw array (kahit may empty)
+    let checkedByColumnsHtml = '';
+    const maxChecked = 5; // Maximum Checked By signatories
+
+    // Loop 5 times para gumawa ng fixed columns
+    for (let i = 0; i < maxChecked; i++) {
+        const signatory = checkedByNames[i];
+        
+        // Default: Blank content at data-filled="false"
+        let nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">&nbsp;</p>`;
+        let designationHtml = `<p class="text-xs font-normal text-black pb-1">&nbsp;</p>`;
+        let isFilled = false;
+        
+        // Kung may laman ang signatory sa index na ito
+        if (signatory && signatory.name.trim() !== '') {
+            nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">${signatory.name.trim()}</p>`;
+            designationHtml = `<p class="text-xs font-normal text-black pb-1">${signatory.designation.trim()}</p>`;
+            isFilled = true;
+        }
+        
+        checkedByColumnsHtml += `
+            <div class="checked-by-col checked-by-col-${i}" data-filled="${isFilled}">
+                ${nameHtml}
+                ${designationHtml}
+                <p class="text-xs font-bold text-black pt-1">Checked By ${i + 1}</p>
+            </div>
+        `;
+    }
+    // --- END NEW LOGIC ---
 
     let printRefElement = document.getElementById('print-ref-display');
     if (!printRefElement) {
@@ -2948,14 +2978,6 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
     }
     printRefElement.textContent = refNum; 
     
-    const checkedByHtml = checkedByNames.map(item => {
-        return `
-            <p class="text-sm font-bold text-black line-break border-t pt-1">${item.name.trim()}</p>
-            <p class="text-xs font-normal text-black pb-1">${item.designation.trim()}</p>
-        `;
-    }).join('');
-
-
     // --- 2a. Sub Property Container ---
     const subPropertyHtml = `
         <div id="print-sub-property-container" class="print-only-container">
@@ -2964,20 +2986,17 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
         </div>
     `;
 
-    // --- 2b. Signatories Container ---
+    // --- 2b. Signatories Container (UPDATED LAYOUT) ---
     const signatoriesOnlyHtml = `
         <div id="print-signatories-container" class="print-only-container">
-            <div class="grid grid-cols-3 gap-x-4 gap-y-2 text-center print-signatories">
+            <div class="grid gap-x-4 gap-y-2 text-center print-signatories">
                 <div class="prepared-by">
                     <p class="text-sm font-bold text-black line-break border-t pt-1">${preparedBy.name.trim()}</p>
                     <p class="text-xs font-normal text-black pb-1">${preparedBy.designation.trim()}</p>
                     <p class="text-xs font-bold text-black pt-1">Prepared By</p>
                 </div>
 
-                <div class="checked-by col-span-1">
-                    ${checkedByHtml}
-                    <p class="text-xs font-bold text-black pt-1">Checked By</p>
-                </div>
+                ${checkedByColumnsHtml}
 
                 <div class="approved-by">
                     <p class="text-sm font-bold text-black line-break border-t pt-1">${approvedBy.name.trim()}</p>
