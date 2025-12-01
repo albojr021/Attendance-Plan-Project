@@ -1244,26 +1244,7 @@ function handleAttendanceData(data) {
         
         // --- UNLOCK BUTTON IN PERSONNEL ID COLUMN (for locked rows) ---
         if (isPrintLocked) {
-            const unlockButton = document.createElement('button');
-            unlockButton.type = 'button';
-            unlockButton.title = `Request Admin Unlock for Ref #${lockedRefNum} (ID ${employee.id})`;
-            unlockButton.className = `action-icon p-1 text-purple-600 hover:bg-purple-200 transition duration-150 rounded-full unlock-row-btn print-hidden`;
-            unlockButton.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
-                </svg>
-            `;
-            // CRITICAL CHANGE: Only pass the single Ref# to unlock
-            unlockButton.addEventListener('click', () => {
-                bulkUnlockSelected = [lockedRefNum];
-                handleBulkUnlockRequest(); 
-            });
-            
-            const unlockContainer = document.createElement('div');
-            unlockContainer.className = 'absolute top-1/2 right-1 transform -translate-y-1/2 print-hidden flex space-x-0.5 pr-1 z-30';
-            unlockContainer.appendChild(unlockButton);
-            td.appendChild(unlockContainer);
-            
+            // Keep the Lock Tag (REF XXXX)
             const lockTag = document.createElement('span');
             lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 left-1 print-hidden';
             lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
@@ -2175,9 +2156,9 @@ function showPersonnelWarning(rowElement, message) {
              // magsisimula ang blacklist check bago ang final save.
              validateBlacklistAndContinueSave(groupNumber); 
         })
-        .withFailureHandler(handleSaveAllError)
+        .withFailureHandler(handleSaveAllError) // Use the save handler for errors here
         .getNextGroupNumber(sfcRefToSave, currentYear, currentMonth, currentShift);
-}
+  }
 
 // *** NEW FUNCTION: Continues the saving process after the batch number is determined ***
 function continueSaveProcess(groupNumber) {
