@@ -27,9 +27,9 @@
   // UPDATED: Now stores objects {name: string, designation: string}
   let signatoryMasterList = [];
   
-  // *** NEW: Global state for Group Number (Read-only input value) ***
-  // NOTE: This global variable is no longer tied to the UI input, but used as a fallback/temp store.
-  let currentGroup = 'G1'; 
+  // *** NEW: Global state for Save Group Number (Read-only input value) ***
+  // UPDATED: Default is S1
+  let currentGroup = 'S1'; 
   // -----------------------------------------------------------
 
   // *** DATE NAVIGATION VARIABLE ***
@@ -631,8 +631,8 @@ function handleBulkUnlockRequest() {
     
     google.script.run
         .withSuccessHandler((nextGroup) => {
-            currentGroup = nextGroup; // Update internal variable for debugging/state
-            // Proceed to save with the determined Group Number
+            currentGroup = nextGroup; // Update internal variable for debugging/state (e.g. S1, S2)
+            // Proceed to save with the determined Save Group Number
             continueSaveProcess(nextGroup);
         })
         .withFailureHandler(handleSaveAllError) // Use the save handler for errors here
@@ -732,13 +732,9 @@ function handleBulkUnlockRequest() {
     document.getElementById('bulk-save-btn').addEventListener('click', (event) => saveBulkSchedule(event, null));
     
     // ** NEW: Group Number Input initialization **
-    // Reference to 'group-number-input' remains, but its value is managed by fetchNextGroupNumberAndSetUI/handleSaveAllChanges now.
-    const groupInput = document.getElementById('group-number-input');
-    if (groupInput) {
-        currentGroup = groupInput.value.trim().toUpperCase();
-        // Set group input to G1 by default on load, but it's now editable/managed by logic.
-        groupInput.value = 'G1'; 
-    }
+    // The previous 'group-number-input' has been removed from index.html (in next step's plan)
+    // The internal variable currentGroup is set to S1 by default above.
+    currentGroup = 'S1'; 
   }
 
   // NEW: I-create ang handler para sa Select2 change
@@ -758,14 +754,8 @@ function handleBulkUnlockRequest() {
           isPlanSheetFullyLocked = false;
           updatePrintButtonState();
           
-          // Set Group input back to G1 default if available
-          const groupInput = document.getElementById('group-number-input');
-          if (groupInput) {
-              groupInput.value = 'G1';
-              groupInput.setAttribute('readonly', 'readonly');
-              groupInput.classList.add('bg-gray-100', 'focus:ring-0', 'focus:border-gray-300');
-              groupInput.classList.remove('bg-white', 'focus:ring-blue-500', 'focus:border-blue-500');
-          }
+          // Reset Save Group to S1 default
+          currentGroup = 'S1';
           return;
       }
       
@@ -856,9 +846,8 @@ function handlePlanExistence(exists) {
     document.getElementById('plan-status-text').textContent = 'Attendance Plan Status: Loading Consolidated Plan Data...';
     fetchAttendanceData(sfcRef); 
     
-    // NEW: Always set the Group input to G1 by default when loading data (if it exists)
-    const groupInput = document.getElementById('group-number-input');
-    if (groupInput) groupInput.value = 'G1'; 
+    // NEW: Always set the Save Group to S1 by default when loading data
+    currentGroup = 'S1'; 
 }
 
 // NEW WORKFLOW: Show blank Plan (No server call) - Now triggered after failed fetchAttendanceData
@@ -881,7 +870,7 @@ function showBlankPlan() {
     pendingEmployeeInfoChanges = {}; 
     
     document.getElementById('planning-area').classList.remove('hidden'); 
-    showNotification('Ready to plan. No existing data found for this period. Changes will be saved as V1.0.', true);
+    showNotification('Ready to plan. No existing data found for this period. Changes will be saved as S1-1.0.', true); // UPDATED MESSAGE: S1-1.0
 
     renderAttendancePlan(); 
     toggleLoading(false);
@@ -2096,14 +2085,14 @@ function showPersonnelWarning(rowElement, message) {
         return;
     }
     
-    toggleLoading(true, 'Preparing save batch. Checking for next available Group ID...');
+    toggleLoading(true, 'Preparing save batch. Checking for next available Save Group ID...'); // UPDATED MESSAGE
 
-    // 1. Get the next available Group Number from the server
+    // 1. Get the next available Save Group Number from the server (e.g. S1, S2)
     google.script.run
         .withSuccessHandler(function(groupNumber) {
-             // 2. Once the batch number is determined (e.g., G1 or G2), 
+             // 2. Once the batch number is determined (e.g., S1 or S2), 
              // magsisimula ang blacklist check bago ang final save.
-             validateBlacklistAndContinueSave(groupNumber); // BAGONG CALL
+             validateBlacklistAndContinueSave(groupNumber); 
         })
         .withFailureHandler(handleSaveAllError)
         .getNextGroupNumber(sfcRefToSave, currentYear, currentMonth, currentShift);
@@ -2122,7 +2111,10 @@ function continueSaveProcess(groupNumber) {
     const empChanges = Object.keys(pendingEmployeeInfoChanges)
     .filter(stableKey => { 
         const change = pendingEmployeeInfoChanges[stableKey];
-        const isNewAndEmpty = change.originalEmployeeId === '' && 
+        const isUnsavedNewRow = change.originalEmployeeId === '';
+        
+        // Skip entirely empty new rows that were never filled
+        const isNewAndEmpty = isUnsavedNewRow && 
                               !change.isDeleted && 
                               !change.id.trim() && !change.name.trim() && 
                               !change.position.trim() && !change.area.trim();
@@ -2290,68 +2282,12 @@ function continueSaveProcess(groupNumber) {
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        // PASS the determined groupNumber (G1, G2, etc.)
+        // PASS the determined groupNumber (S1, S2, etc.)
         .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, attChanges, currentYear, currentMonth, currentShift, groupNumber);
 }
 // *** END REFRACTORED SAVE FUNCTIONS ***
 
 // --- NEW FUNCTION: BLACKLIST VALIDATION WRAPPER ---
-function validateBlacklistAndContinueSave(groupNumber) {
-    // NEW LOGIC: Kunin ang lahat ng active IDs na nasa grid (at hindi deleted)
-    // Ang getActiveEmployeesInGrid ay existing helper na
-    const activeEmployees = getActiveEmployeesInGrid(); 
-    const idsToCheck = activeEmployees.map(emp => emp.id).filter(id => id); 
-    
-    if (idsToCheck.length === 0) {
-        // Walang IDs na ipi-plan. Ipagpatuloy sa normal save.
-        continueSaveProcess(groupNumber);
-        return;
-    }
-
-    toggleUiLock(true, 'Checking blacklist status for active personnel...');
-
-    google.script.run
-        .withSuccessHandler(function(blacklistedIds) {
-            toggleUiLock(false);
-            
-            if (blacklistedIds && blacklistedIds.length > 0) {
-                const blacklistedNames = [];
-                
-                // Humanap ng corresponding name para sa error message
-                blacklistedIds.forEach(id => {
-                     const emp = activeEmployees.find(e => e.id === id);
-                     // If the employee is still in the grid (active), collect their details
-                     if (emp) blacklistedNames.push(`${emp.name} (ID: ${id})`);
-                });
-                
-                showNotification(`FATAL SAVE ERROR: Cannot save plan. The following employees are BLACKLISTED and must be removed from the plan: ${blacklistedNames.join(', ')}.`, false);
-                toggleLoading(false);
-                return; // BLOCK THE SAVE
-            }
-
-            // Kung walang blacklist hit, magpatuloy sa orihinal na save logic
-            // Ito ang magpapatakbo ng final client-side validation (like empty schedule check)
-            continueSaveProcess(groupNumber);
-        })
-        .withFailureHandler(handleSaveAllError)
-        .checkBulkBlacklist(idsToCheck); // Tatawag sa bagong bulk function sa server
-}
-// --- END NEW BLACKLIST VALIDATION ---
-
-  function handleSaveAllSuccess(response) {
-      showNotification('All changes saved successfully! Refreshing data...', true);
-      pendingAttendanceChanges = {}; 
-      pendingEmployeeInfoChanges = {}; 
-      
-      if (currentContract && currentContract.sfcRef) {
-          fetchEmployeeMasterData(currentContract.sfcRef);
-      }
-      
-      reloadPlanAndCheckExistence(); 
-      toggleUiLock(false); 
-  }
-
-  // --- NEW FUNCTION: BLACKLIST VALIDATION ---
 function validateBlacklistAndContinueSave(groupNumber) {
     const activeEmployees = getActiveEmployeesInGrid(); 
     
@@ -2390,8 +2326,22 @@ function validateBlacklistAndContinueSave(groupNumber) {
             continueSaveProcess(groupNumber);
         })
         .withFailureHandler(handleSaveAllError)
-        .checkBulkBlacklist(employeesToCheck); // BAGONG PAYLOAD na may Name
+        .checkBulkBlacklist(employeesToCheck); 
 }
+// --- END NEW BLACKLIST VALIDATION ---
+
+  function handleSaveAllSuccess(response) {
+      showNotification('All changes saved successfully! Refreshing data...', true);
+      pendingAttendanceChanges = {}; 
+      pendingEmployeeInfoChanges = {}; 
+      
+      if (currentContract && currentContract.sfcRef) {
+          fetchEmployeeMasterData(currentContract.sfcRef);
+      }
+      
+      reloadPlanAndCheckExistence(); 
+      toggleUiLock(false); 
+  }
 
   function handleSaveAllError(error) {
        console.error("SAVE ALL ERROR:", error);
@@ -2920,11 +2870,13 @@ function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selec
 
     toggleLoading(true, 'Generating Print Reference and Locking Schedules...');
 
+    // UPDATED: logPrintAction now returns an object {refNum, printGroup}
     google.script.run
-        .withSuccessHandler((refNum) => {
+        .withSuccessHandler((response) => { 
             toggleLoading(false);
-            // PASS the final list of IDs to the print function
-            triggerPrint(refNum, subProperty, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
+            const { refNum, printGroup } = response; // Destructure new response
+            // PASS the final list of IDs AND printGroup to the print function
+            triggerPrint(refNum, printGroup, subProperty, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
         .withFailureHandler((error) => {
             handleError(error);
@@ -2932,7 +2884,7 @@ function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selec
         .logPrintAction(subProperty, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
 }
 
-function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) {
+function triggerPrint(refNum, printGroup, subProperty, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { // ADDED printGroup
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
     
     // DESTUCTURE SIGNATORIES FOR EASIER USE
@@ -3072,7 +3024,7 @@ function triggerPrint(refNum, subProperty, signatories, dynamicallyHiddenRows = 
                     showNotification(`Warning: Failed to record print log/lock (Ref# ${refNum}). Error: ${error.message}`, false);
                     restoreUI();
                 })
-                .recordPrintLogEntry(refNum, subProperty, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds);
+                .recordPrintLogEntry(refNum, printGroup, subProperty, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds); // ADDED printGroup
         };
 
         const handleCancel = () => {
