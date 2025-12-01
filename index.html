@@ -148,23 +148,23 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
   
   <div id="unlock-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
     <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
-        <h3 class="text-xl font-bold mb-4 text-purple-700">Request Bulk Unlock</h3>
-        <p class="text-sm text-gray-600 mb-4">Select the schedules you need to be unlocked by an Admin:</p>
+        <h3 class="text-xl font-bold mb-4 text-purple-700">Request Bulk Unlock by Reference #</h3>
+        <p class="text-sm text-gray-600 mb-4">Select the Reference Numbers (Print Versions) that contain the schedules you need to be unlocked by an Admin:</p>
         
         <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-gray-200">
             <input type="checkbox" id="select-all-unlock" class="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
-            <label for="select-all-unlock" class="text-sm font-bold text-gray-700">Select All Locked Schedules</label>
+            <label for="select-all-unlock" class="text-sm font-bold text-gray-700">Select All Locked Reference Numbers</label>
         </div>
         <div class="max-h-80 overflow-y-auto border border-gray-300 rounded-lg p-3 mb-4">
-            <ul id="locked-employee-list-container" class="space-y-2">
+            <ul id="locked-ref-list-container" class="space-y-2">
                 </ul>
         </div>
         
-        <p class="text-sm text-gray-700 mb-4 font-semibold">Selected for Unlock: <span id="unlock-selection-count" class="text-red-600">0</span></p>
+        <p class="text-sm text-gray-700 mb-4 font-semibold">Selected Reference Numbers for Unlock: <span id="unlock-selection-count" class="text-red-600">0</span></p>
 
         <div class="flex justify-end space-x-3">
             <button id="unlock-modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-            <button id="unlock-modal-send-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50" disabled>Send Unlock Request</button>
+            <button id="unlock-modal-send-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50" disabled>Send Unlock Request (0)</button>
         </div>
     </div>
 </div>
