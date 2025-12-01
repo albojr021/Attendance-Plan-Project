@@ -70,8 +70,8 @@
   let bulkPrintSelected = [];
   // ---------------------------------------------
   
-  // *** NEW GLOBAL STATE FOR BULK UNLOCK SELECTION ***
-  // Stores {id: 'ID', ref: 'REF#', name: 'NAME'} pairs
+  // *** UPDATED GLOBAL STATE FOR BULK UNLOCK SELECTION ***
+  // STORES UNIQUE REFERENCE NUMBER STRINGS, not employee objects
   let bulkUnlockSelected = []; 
 
   // *** NEW GLOBAL STATE FOR SIGNATORIES ***
@@ -349,81 +349,146 @@ function isDuplicateName(newName, originalSavedId, currentNo) {
   }
   // --- END HELPER FUNCTION ---
 
-// --- NEW FUNCTION: Kumuha ng Listahan ng Locked Employees (FOR MODAL) ---
-function getLockedEmployeesList() {
-    const lockedList = [];
-    const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+// NEW HELPER: Get Employee Details from Master List
+function getEmployeeDetails(id) {
+    // Note: Assuming employeeMasterList is fully populated with {id, name, position, area}
+    return employeeMasterList.find(e => e.id === id);
+}
 
-    gridRows.forEach(row => {
-        if (row.classList.contains('locked-row') && !row.classList.contains('line-through')) {
-            const stableKey = row.dataset.stableKey;
-            
-            const idInput = row.querySelector('[data-field="id"]');
-            const nameInput = row.querySelector('[data-field="name"]');
-            
-            const personnelId = (idInput?.value || '').trim();
-            const personnelName = (nameInput?.value || '').trim();
-            
-            const lockedRefNum = lockedIdRefMap[stableKey]; 
+// --- NEW/UPDATED FUNCTION: Kumuha ng Listahan ng Locked Reference Numbers na may Employee Details ---
+function getLockedRefNumsList() {
+    const lockedRefMap = lockedIdRefMap; // {ID: Ref#}
+    const refMap = {}; // {Ref#: {count: N, isSelected: boolean, employees: []}}
 
-            if (personnelId && lockedRefNum) {
-                const isSelected = bulkUnlockSelected.some(item => item.id === personnelId);
-                
-                lockedList.push({
-                    id: personnelId,
-                    name: personnelName,
-                    ref: lockedRefNum,
-                    stableKey: stableKey, 
-                    isSelected: isSelected
-                });
+    Object.keys(lockedRefMap).forEach(id => {
+        const ref = lockedRefMap[id];
+        const empDetails = getEmployeeDetails(id); // Use helper to get details
+        
+        if (ref) {
+            if (!refMap[ref]) {
+                const isSelected = bulkUnlockSelected.includes(ref);
+                refMap[ref] = { 
+                    ref: ref, 
+                    count: 0, 
+                    isSelected: isSelected,
+                    employees: [] // New array to hold employee objects
+                };
+            }
+            refMap[ref].count++;
+            if (empDetails) {
+                 refMap[ref].employees.push({
+                     id: id,
+                     name: empDetails.name || `ID: ${id}`
+                 });
+            } else {
+                 refMap[ref].employees.push({
+                     id: id,
+                     name: `ID: ${id}` // Fallback name if missing in master list
+                 });
             }
         }
     });
+    
+    // Sort employees alphabetically within each group
+    Object.values(refMap).forEach(item => {
+        item.employees.sort((a, b) => a.name.localeCompare(b.name));
+    });
 
-    return lockedList;
+    // Convert map to sorted array
+    const refList = Object.values(refMap).sort((a, b) => a.ref.localeCompare(b.ref));
+
+    return refList;
 }
 
-// --- NEW FUNCTION: Open Unlock Selection Modal ---
+
+// --- UPDATED FUNCTION: Open Unlock Selection Modal ---
 function openUnlockSelectionModal() {
-    const lockedEmployees = getLockedEmployeesList();
-    const listContainer = document.getElementById('locked-employee-list-container');
+    const lockedRefNums = getLockedRefNumsList();
+    // CRITICAL: Updated Container ID (from index.html)
+    const listContainer = document.getElementById('locked-ref-list-container'); 
     const modal = document.getElementById('unlock-selection-modal');
     const selectAllCheckbox = document.getElementById('select-all-unlock');
+    const sendButton = document.getElementById('unlock-modal-send-btn');
 
-    if (lockedEmployees.length === 0) {
+
+    if (lockedRefNums.length === 0) {
         showNotification('No schedules are currently locked for this period.', false);
         return;
     }
     
     listContainer.innerHTML = '';
     
-    lockedEmployees.forEach(emp => {
+    lockedRefNums.forEach(item => {
+        // Create the main list item container (flex column to hold header and nested list)
         const listItem = document.createElement('li');
-        const itemBgClass = emp.isSelected ? 'bg-yellow-100 border-yellow-400' : 'bg-gray-50 border-gray-200';
+        const itemBgClass = item.isSelected ? 'bg-yellow-100 border-yellow-400' : 'bg-gray-50 border-gray-200';
         
-        listItem.className = `flex items-center space-x-3 p-2 rounded-lg border hover:bg-yellow-50 transition duration-150 cursor-pointer ${itemBgClass}`;
+        listItem.className = `flex flex-col p-2 rounded-lg border hover:bg-yellow-50 transition duration-150 cursor-pointer ${itemBgClass}`;
         
+        // Construct the inner HTML for the header (checkbox + ref# + count + toggle button)
         listItem.innerHTML = `
-            <input type="checkbox" id="unlock-check-${emp.id}" 
-                   data-id="${emp.id}" 
-                   data-ref="${emp.ref}"
-                   data-name="${emp.name}"
-                   class="unlock-checkbox h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500" 
-                   ${emp.isSelected ? 'checked' : ''}>
-            <label for="unlock-check-${emp.id}" class="flex-grow text-sm font-medium text-gray-800">
-                <span class="font-bold">${emp.name || emp.id}</span> 
-                <span class="text-xs text-gray-500">(ID: ${emp.id})</span>
-            </label>
-            <span class="text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full whitespace-nowrap">REF #${emp.ref}</span>
+            <div class="flex items-center space-x-3 w-full ref-header-row" data-ref="${item.ref}">
+                <input type="checkbox" id="unlock-check-${item.ref}" 
+                       data-ref="${item.ref}" 
+                       class="unlock-checkbox h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500" 
+                       ${item.isSelected ? 'checked' : ''}>
+                <label for="unlock-check-${item.ref}" class="flex-grow text-sm font-medium text-gray-800 cursor-pointer">
+                    <span class="font-bold">${item.ref}</span> 
+                </label>
+                <span class="text-xs font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full whitespace-nowrap">(${item.count} employees)</span>
+                <button type="button" class="toggle-employee-list p-1 text-gray-500 hover:text-gray-700 transition duration-150" data-target="#employees-${item.ref.replace(/[^a-zA-Z0-9]/g, '-')}" title="Show Employees">
+                    <svg class="h-4 w-4 transform ${item.isSelected ? 'rotate-180' : 'rotate-0'} transition duration-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            </div>
+            <ul id="employees-${item.ref.replace(/[^a-zA-Z0-9]/g, '-')}" class="space-y-1 mt-2 ${item.isSelected ? '' : 'hidden'} ml-6 text-xs text-gray-600 list-disc list-inside">
+                ${item.employees.map(emp => `<li>${emp.name} (ID: ${emp.id})</li>`).join('')}
+            </ul>
         `;
         
         const checkbox = listItem.querySelector('.unlock-checkbox');
+        const employeeList = listItem.querySelector(`ul#employees-${item.ref.replace(/[^a-zA-Z0-9]/g, '-')}`);
+        const toggleButton = listItem.querySelector('.toggle-employee-list');
+        const toggleSvg = toggleButton ? toggleButton.querySelector('svg') : null;
+        
+        // 1. Checkbox change listener (updates global state, visual style, AND AUTO-EXPANDS LIST)
         checkbox.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
             updateBulkUnlockSelection(e);
-            listItem.classList.toggle('bg-yellow-100', e.target.checked);
-            listItem.classList.toggle('border-yellow-400', e.target.checked);
-            listItem.classList.toggle('bg-gray-50', !e.target.checked);
-            listItem.classList.toggle('border-gray-200', !e.target.checked);
+            listItem.classList.toggle('bg-yellow-100', isChecked);
+            listItem.classList.toggle('border-yellow-400', isChecked);
+            listItem.classList.toggle('bg-gray-50', !isChecked);
+            listItem.classList.toggle('border-gray-200', !isChecked);
+            
+            // *** BAGONG LOGIC: Awtomatikong i-expand/i-collapse ***
+            if (employeeList && toggleSvg) {
+                if (isChecked) {
+                    employeeList.classList.remove('hidden');
+                    toggleSvg.classList.add('rotate-180');
+                } else {
+                    // Auto-collapse if unchecked
+                    employeeList.classList.add('hidden');
+                    toggleSvg.classList.remove('rotate-180');
+                }
+            }
+        });
+
+        // 2. List item click listener (toggles checkbox unless a button/checkbox was clicked)
+        listItem.querySelector('label').addEventListener('click', (e) => {
+            e.preventDefault(); // Prevent default action on label, let checkbox logic handle it
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change'));
+        });
+
+        // 3. Toggle button listener (shows/hides employee list - still allows manual toggle)
+        listItem.querySelector('.toggle-employee-list').addEventListener('click', (e) => {
+             const targetId = e.currentTarget.dataset.target;
+             const list = listItem.querySelector(targetId);
+             const svg = e.currentTarget.querySelector('svg');
+             
+             list.classList.toggle('hidden');
+             svg.classList.toggle('rotate-180');
         });
         
         listContainer.appendChild(listItem);
@@ -434,38 +499,54 @@ function openUnlockSelectionModal() {
     if (selectAllCheckbox) {
         selectAllCheckbox.removeEventListener('change', toggleSelectAll);
         selectAllCheckbox.addEventListener('change', toggleSelectAll);
-        selectAllCheckbox.checked = (lockedEmployees.length > 0 && bulkUnlockSelected.length === lockedEmployees.length);
+        selectAllCheckbox.checked = (lockedRefNums.length > 0 && bulkUnlockSelected.length === lockedRefNums.length);
     }
     
 
     document.getElementById('unlock-modal-cancel-btn').onclick = () => modal.classList.add('hidden');
     document.getElementById('unlock-modal-send-btn').onclick = handleBulkUnlockRequest;
+    
+    // Initial button state update
+    sendButton.textContent = `Send Unlock Request (${bulkUnlockSelected.length})`;
 
     modal.classList.remove('hidden');
 }
 
-// --- NEW FUNCTION: Select All Logic ---
+// --- NEW FUNCTION: Select All Logic (UPDATED FOR REF#) ---
 function toggleSelectAll(event) {
     const isChecked = event.target.checked;
-    const checkboxes = document.querySelectorAll('#locked-employee-list-container .unlock-checkbox');
+    const checkboxes = document.querySelectorAll('#locked-ref-list-container .unlock-checkbox');
     
     bulkUnlockSelected = []; 
 
     checkboxes.forEach(checkbox => {
         checkbox.checked = isChecked;
         
-        const id = checkbox.dataset.id;
         const ref = checkbox.dataset.ref;
-        const name = checkbox.dataset.name;
         const listItem = checkbox.closest('li');
-        
+        const employeeList = listItem.querySelector(`ul#employees-${ref.replace(/[^a-zA-Z0-9]/g, '-')}`);
+        const toggleSvg = listItem.querySelector('.toggle-employee-list svg');
+
         if (isChecked) {
-            bulkUnlockSelected.push({ id, ref, name });
+            bulkUnlockSelected.push(ref);
             listItem.classList.add('bg-yellow-100', 'border-yellow-400');
             listItem.classList.remove('bg-gray-50', 'border-gray-200');
+            
+            // Awtomatikong i-expand
+            if (employeeList && toggleSvg) {
+                employeeList.classList.remove('hidden');
+                toggleSvg.classList.add('rotate-180');
+            }
         } else {
+            bulkUnlockSelected = bulkUnlockSelected.filter(r => r !== ref); // Ensure removal
             listItem.classList.remove('bg-yellow-100', 'border-yellow-400');
             listItem.classList.add('bg-gray-50', 'border-gray-200');
+
+            // Awtomatikong i-collapse
+            if (employeeList && toggleSvg) {
+                employeeList.classList.add('hidden');
+                toggleSvg.classList.remove('rotate-180');
+            }
         }
     });
     
@@ -473,24 +554,22 @@ function toggleSelectAll(event) {
 }
 
 
-// Helper to update global array and modal state on checkbox change
+// Helper to update global array and modal state on checkbox change (UPDATED FOR REF#)
 function updateBulkUnlockSelection(event) {
     const checkbox = event.target;
-    const id = checkbox.dataset.id;
     const ref = checkbox.dataset.ref;
-    const name = checkbox.dataset.name;
     const isChecked = checkbox.checked;
 
-    const existingIndex = bulkUnlockSelected.findIndex(item => item.id === id);
+    const existingIndex = bulkUnlockSelected.indexOf(ref);
 
     if (isChecked && existingIndex === -1) {
-        bulkUnlockSelected.push({ id, ref, name });
+        bulkUnlockSelected.push(ref);
     } else if (!isChecked && existingIndex > -1) {
         bulkUnlockSelected.splice(existingIndex, 1);
     }
     
     const selectAllCheckbox = document.getElementById('select-all-unlock');
-    const totalLocked = getLockedEmployeesList().length;
+    const totalLocked = getLockedRefNumsList().length;
 
     if (selectAllCheckbox) {
         selectAllCheckbox.checked = (bulkUnlockSelected.length === totalLocked);
@@ -499,7 +578,7 @@ function updateBulkUnlockSelection(event) {
     updateUnlockModalState();
 }
 
-// Helper to update count display and button enablement
+// Helper to update count display and button enablement (UPDATED FOR REF#)
 function updateUnlockModalState() {
     const count = bulkUnlockSelected.length;
     document.getElementById('unlock-selection-count').textContent = count;
@@ -507,12 +586,12 @@ function updateUnlockModalState() {
     document.getElementById('unlock-modal-send-btn').textContent = `Send Unlock Request (${count})`;
 }
 
-// Function to call server for bulk request (repurposed from previous logic)
+// Function to call server for bulk request (UPDATED FOR REF#)
 function handleBulkUnlockRequest() {
     document.getElementById('unlock-selection-modal').classList.add('hidden');
 
     if (bulkUnlockSelected.length === 0) {
-        showNotification('No schedules were selected for unlock.', false);
+        showNotification('No Reference Numbers were selected for unlock.', false);
         return;
     }
     
@@ -521,20 +600,21 @@ function handleBulkUnlockRequest() {
     const currentShift = document.getElementById('shift-period-select').value;
     const sfcRef = currentContract?.sfcRef;
 
-    const ids = bulkUnlockSelected.map(item => item.id);
-    const refs = bulkUnlockSelected.map(item => item.ref);
-    const names = bulkUnlockSelected.map(item => item.name); 
+    // CRITICAL: We pass the array of selected Reference Number strings
+    const selectedRefNums = bulkUnlockSelected; 
 
-    if (!sfcRef || ids.length === 0) {
-        showNotification('CRITICAL ERROR: Missing contract or employee IDs.', false);
+    if (!sfcRef || selectedRefNums.length === 0) {
+        showNotification('CRITICAL ERROR: Missing contract or selected Reference Numbers.', false);
         return;
     }
 
     toggleLoading(true);
-    showNotification(`Sending Unlock Request Email for ${ids.length} schedules...`, true);
+    showNotification(`Sending Unlock Request Email for ${selectedRefNums.length} Reference Number(s)...`, true);
     
-    bulkUnlockSelected = []; 
+    bulkUnlockSelected = []; // Clear selection after sending
 
+    // CRITICAL: Update the server call signature
+    // The server (Code.gs) will now handle expanding these Reference Numbers to all associated IDs.
     google.script.run
         .withSuccessHandler((response) => {
             showNotification(response.message, response.success);
@@ -543,7 +623,7 @@ function handleBulkUnlockRequest() {
         .withFailureHandler((error) => {
             handleError(error); 
         })
-        .requestUnlockEmailNotification(sfcRef, currentYear, currentMonth, currentShift, ids, refs, names);
+        .requestUnlockEmailNotification(sfcRef, currentYear, currentMonth, currentShift, selectedRefNums);
 }
 
 
@@ -1166,15 +1246,16 @@ function handleAttendanceData(data) {
         if (isPrintLocked) {
             const unlockButton = document.createElement('button');
             unlockButton.type = 'button';
-            unlockButton.title = `Request Admin Unlock for ID ${employee.id} (Ref #${lockedRefNum})`;
+            unlockButton.title = `Request Admin Unlock for Ref #${lockedRefNum} (ID ${employee.id})`;
             unlockButton.className = `action-icon p-1 text-purple-600 hover:bg-purple-200 transition duration-150 rounded-full unlock-row-btn print-hidden`;
             unlockButton.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
                 </svg>
             `;
+            // CRITICAL CHANGE: Only pass the single Ref# to unlock
             unlockButton.addEventListener('click', () => {
-                bulkUnlockSelected = [{ id: stableLookupKey, ref: lockedRefNum, name: displayName }];
+                bulkUnlockSelected = [lockedRefNum];
                 handleBulkUnlockRequest(); 
             });
             
