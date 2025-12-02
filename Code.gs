@@ -5,7 +5,7 @@ const FILE_201_ID = '19eJ-qC68eazrVMmjPzZjTvfns_N9h03Ha6SDGTvuv0E';
 const FILE_201_SHEET_NAME = 'Basic Information';
 const BLACKLIST_FILE_ID = '1tl6gQ7yDSyixmf1usZUhGU4qwj75fYG8CAzOme9-rVU'; 
 const BLACKLIST_SHEET_NAMES = ['MALL', 'MEG'];
-const BLACKLIST_ID_COL_INDEX = 4;   
+const BLACKLIST_ID_COL_INDEX = 4;
 const BLACKLIST_NAME_COL_INDEX = 3;
 const BLACKLIST_STATUS_COL_INDEX = 9;
 const PLAN_SHEET_NAME = 'AttendancePlan_Consolidated';
@@ -58,7 +58,6 @@ const UNLOCK_LOG_HEADERS = [
     'User Action Type', 
     'User Action Timestamp'
 ];
-
 function doGet(e) {
   if (e.parameter.action) {
     return processAdminUnlockFromUrl(e.parameter);
@@ -101,7 +100,6 @@ function getSheetData(spreadsheetId, sheetName) {
           numRows = sheet.getLastRow() - startRow + 1;
       }
   }
-
 
   if (numRows <= 0 || numColumns === 0) return [];
   const range = sheet.getRange(startRow, 1, numRows, numColumns);
@@ -192,10 +190,8 @@ function createContractSheets(sfcRef, year, month, shift) {
 function ensureContractSheets(sfcRef, year, month, shift) {
     if (!sfcRef) throw new Error("SFC Ref# is required to ensure sheets.");
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID); 
-    
     const empSheet = getOrCreateConsolidatedEmployeeMasterSheet(ss);
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
-    
     if (!planSheet) {
         createContractSheets(sfcRef, year, month, shift);
         Logger.log(`[ensureContractSheets] Ensured Consolidated Plan sheet existence.`);
@@ -209,19 +205,16 @@ function getContracts() {
     
   const allContracts = getSheetData(SPREADSHEET_ID, CONTRACTS_SHEET_NAME);
   const findKey = (c, search) => {
-      const keys = Object.keys(c);
-      return keys.find(key => (key || '').trim().toLowerCase() === search.toLowerCase());
+    const keys = Object.keys(c);
+    return keys.find(key => (key || '').trim().toLowerCase() === search.toLowerCase());
   };
     
   const filteredContracts = allContracts.filter((c) => {
     const statusKey = findKey(c, 'Status of SFC');
     const contractIdKey = findKey(c, 'CONTRACT GRP ID');
-    
     if (!statusKey || !contractIdKey) return false;
-
     const contractIdValue = (c[contractIdKey] || '').toString().trim();
     if (!contractIdValue) return false; 
-    
     const status = (c[statusKey] || '').toString().trim().toLowerCase();
     const isLive = status === 'live' || status === 'on process - live';
 
@@ -229,7 +222,6 @@ function getContracts() {
   });
 
   return filteredContracts.map(c => {
-    
     const contractIdKey = findKey(c, 'CONTRACT GRP ID');
     const statusKey = findKey(c, 'Status of SFC');
     const payorKey = findKey(c, 'PAYOR COMPANY NAME');
@@ -237,10 +229,8 @@ function getContracts() {
     const serviceTypeKey = findKey(c, 'SERVICE TYPE');
     const headCountKey = findKey(c, 'TOTAL HEAD COUNT');
     const sfcRefKey = findKey(c, 'SFC Ref#');
-   
     const propOrGrpCodeKey = findKey(c, 'PROP OR GRP CODE'); 
     const sectorKey = findKey(c, 'SECTOR'); 
-      
     return {
       id: contractIdKey ? (c[contractIdKey] || '').toString() : '',     
       status: statusKey ? (c[statusKey] || '').toString() : '',   
@@ -289,10 +279,8 @@ function get201FileMasterData() {
             const personnelIdRaw = row[0]; 
             const firstName = String(row[4] || '').trim(); 
             const lastName = String(row[7] || '').trim();  
-            
             const cleanId = cleanPersonnelId(personnelIdRaw); 
             const formattedName = lastName ? `${lastName}, ${firstName}` : firstName;
-            
             if (!cleanId || !formattedName) return null; 
 
             return {
@@ -327,17 +315,15 @@ function getBlacklistData() {
       if (!sheet) return;
 
       const lastRow = sheet.getLastRow();
-      
       const START_ROW = 4;
       if (lastRow < START_ROW) return;
 
       const numRows = lastRow - START_ROW + 1;
-
       const range = sheet.getRange(START_ROW, 1, numRows, BLACKLIST_STATUS_COL_INDEX + 1);
       const values = range.getDisplayValues();
 
       values.forEach(row => {
-        const status = String(row[BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase();
+          const status = String(row[BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase();
         
         if (status === 'BLACKLISTED') {
           const rawId = row[BLACKLIST_ID_COL_INDEX];
@@ -350,7 +336,6 @@ function getBlacklistData() {
         }
       });
     });
-
     return blacklistedEmployees;
   } catch (e) {
     Logger.log(`[getBlacklistData] ERROR accessing Blacklist file: ${e.message}`);
@@ -405,7 +390,8 @@ function checkBulkBlacklist(employeeList) {
         }
         
         if (blacklistNameMap[cleanName]) {
-             blacklistedHits.push(cleanId);
+          
+            blacklistedHits.push(cleanId);
              return;
         }
     });
@@ -421,7 +407,6 @@ function checkBulkBlacklist(employeeList) {
 function checkBlacklistByIdOrName(personnelId, personnelName) {
     const cleanId = cleanPersonnelId(personnelId);
     const cleanName = String(personnelName || '').trim().toUpperCase();
-    
     const blacklistedList = getBlacklistData();
     const blacklistIdMap = blacklistedList.reduce((map, emp) => {
         map[emp.id] = emp.name; 
@@ -431,7 +416,6 @@ function checkBlacklistByIdOrName(personnelId, personnelName) {
         map[emp.name] = emp.id; 
         return map;
     }, {});
-    
     if (blacklistIdMap[cleanId]) {
         return { isBlacklisted: true, reason: `Personnel ID ${cleanId} is BLACKLISTED.` };
     }
@@ -482,13 +466,11 @@ function getEmployeeMasterData(sfcRef) {
             area: '' 
         };
     });
-    
     const allMasterData = getSheetData(TARGET_SPREADSHEET_ID, EMPLOYEE_MASTER_SHEET_NAME);
     const filteredMasterData = allMasterData.filter(e => {
         const contractRef = String(e['CONTRACT #'] || '').trim();
         return contractRef === sfcRef;
     });
-    
     const finalEmployeeList = filteredMasterData.map(e => {
         const id = cleanPersonnelId(e['Personnel ID']);
         const name = String(e['Personnel Name'] || '').trim();
@@ -502,13 +484,11 @@ function getEmployeeMasterData(sfcRef) {
 
         return { id, name, position, area };
     }).filter(e => e.id);
-    
     Object.values(clean201DataMap).forEach(emp => {
         if (!finalEmployeeList.some(e => e.id === emp.id)) {
              finalEmployeeList.push(emp);
         }
     });
-
     Logger.log(`[getEmployeeMasterData] Final Employee List Count: ${finalEmployeeList.length} (Merged 201 + SFC Master)`);
     return finalEmployeeList.map((e, index) => ({
         id: e.id,
@@ -537,10 +517,8 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
     if (!sfcRef || !personnelId) return {};
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const cleanId = cleanPersonnelId(personnelId);
-    
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     if (!planSheet || planSheet.getLastRow() < PLAN_HEADER_ROW) return {};
-    
     const lastRow = planSheet.getLastRow();
     const numRowsToRead = lastRow - PLAN_HEADER_ROW;
     const numColumns = planSheet.getLastColumn();
@@ -563,25 +541,19 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
         const currentSfc = String(row[sfcRefIndex] || '').trim();
         
         if (currentId === cleanId && currentSfc === sfcRef) {
-            
             const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
             const versionParts = saveVersionString.split('-');
-            
             const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
-            
             const monthShort = String(row[headers.indexOf('MONTH')] || '').trim();
             const yearNum = parseInt(row[headers.indexOf('YEAR')] || '0', 10);
             
             let planDate = new Date(0);
       
-            
             if (monthShort && yearNum) {
                  planDate = new Date(`${monthShort} 1, ${yearNum}`);
             }
             
             if (version > latestVersion || (version === latestVersion && planDate.getTime() > latestDate.getTime())) {
-        
-      
                 latestVersion = version;
                 latestDate = planDate;
                 targetRow = row;
@@ -604,14 +576,11 @@ function getEmployeeSchedulePattern(sfcRef, personnelId) {
         const dayHeader = `DAY${d}`;
         const dayColIndex = headers.indexOf(dayHeader);
         if (dayColIndex === -1) continue; 
-        
         const status = String(targetRow[dayColIndex] || '').trim();
         const actualDay = startDayOfMonth + d - 1;
         if (actualDay > endDayOfMonth) continue; 
-
         const currentDate = new Date(targetYear, targetMonth, actualDay);
         if (currentDate.getMonth() !== targetMonth) continue; 
-
         const dayOfWeek = currentDate.getDay(); 
         const dayKey = dayOfWeek.toString();
         if (status && status !== 'NA') {
@@ -636,10 +605,7 @@ function getLockedPersonnelIds(ss, sfcRef, year, month, shift) {
     const SFC_REF_COL = 2; 
     const PERIOD_DISPLAY_COL = 4;
     const LOCKED_IDS_COL = LOG_HEADERS.length;
-    
-    const LOG_HEADERS_COUNT = LOG_HEADERS.length; 
-    
-    const values = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS_COUNT).getDisplayValues();
+    const values = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length).getDisplayValues();
     const lockedIdRefMap = {};
     
     const date = new Date(year, month, 1);
@@ -665,18 +631,16 @@ function getLockedPersonnelIds(ss, sfcRef, year, month, shift) {
         const lockedIdsString = String(row[LOCKED_IDS_COL - 1] || '').trim(); 
         
         if (lockedIdsString) {
-            
         const idsList = lockedIdsString.split(',').map(id => id.trim());
             
             idsList.forEach(idWithPrefix => {
                 const cleanId = cleanPersonnelId(idWithPrefix);
                  
                 if (cleanId.length >= 3 && !idWithPrefix.startsWith('UNLOCKED:')) { 
-  
-          if (!lockedIdRefMap[cleanId]) { 
+                    if (!lockedIdRefMap[cleanId]) { 
                          // Map the locked ID to the Reference # (Print Version String)
-                         lockedIdRefMap[cleanId] = refNum;
-          }
+                        lockedIdRefMap[cleanId] = refNum;
+                    }
                 }
             });
         }
@@ -705,14 +669,12 @@ function getAllLockedIdsByRefs(sfcRef, year, month, shift, refNumsToFind) {
     const PERIOD_DISPLAY_COL = 4;
     const LOCKED_IDS_COL = LOG_HEADERS.length;
     
-    const LOG_HEADERS_COUNT = LOG_HEADERS.length; 
-    const values = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS_COUNT).getDisplayValues();
+    const values = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length).getDisplayValues();
     const lockedList = [];
     const empNameMap = getEmployeeMasterData(sfcRef).reduce((map, emp) => {
         map[emp.id] = emp.name;
         return map;
     }, {});
-    
     const date = new Date(year, month, 1);
     const monthName = date.toLocaleString('en-US', { month: 'long' });
     const yearNum = date.getFullYear();
@@ -731,20 +693,19 @@ function getAllLockedIdsByRefs(sfcRef, year, month, shift, refNumsToFind) {
 
         // 1. Filter by current context (SFC, Period) AND if the refNum is in the requested list
         if (currentSfc === sfcRef && currentPeriodDisplay === dateRange && refNumsToFind.includes(refNum)) {
-            
             const lockedIdsString = String(row[LOCKED_IDS_COL - 1] || '').trim(); 
             
             if (lockedIdsString) {
                 const idsList = lockedIdsString.split(',').map(id => id.trim());
-                
+        
                 idsList.forEach(idWithPrefix => {
                     const cleanId = cleanPersonnelId(idWithPrefix);
                      
-                    if (cleanId.length >= 3 && !idWithPrefix.startsWith('UNLOCKED:')) { 
+                    if (cleanId.length >= 3 && !idWithPrefix.startsWith('UNLOCKED:')) {            
                         // Only add if not already in the list (for safety, though it shouldn't happen)
                         if (!lockedList.some(item => item.id === cleanId && item.ref === refNum)) {
                              lockedList.push({
-                                 id: cleanId,
+                                id: cleanId,
                                  name: empNameMap[cleanId] || 'N/A',
                                  ref: refNum
                              });
@@ -765,13 +726,12 @@ function getHistoricalReferenceMap(ss, sfcRef, year, month, shift) {
     const logSheet = ss.getSheetByName('PrintLog');
     if (!logSheet || logSheet.getLastRow() < 2) return {};
 
-    const LOG_HEADERS_COUNT = LOG_HEADERS.length; 
     const REF_NUM_COL = 1;              
     const SFC_REF_COL = 2;
     const PERIOD_DISPLAY_COL = 4;
     const LOCKED_IDS_COL = LOG_HEADERS.length;
     
-    const allValues = logSheet.getRange(2, 1, logSheet.getLastRow() - 1, LOG_HEADERS_COUNT).getDisplayValues();
+    const allValues = logSheet.getRange(2, 1, logSheet.getLastRow() - 1, LOG_HEADERS.length).getDisplayValues();
     const historicalRefMap = {};
     
     const date = new Date(year, month, 1);
@@ -789,7 +749,6 @@ function getHistoricalReferenceMap(ss, sfcRef, year, month, shift) {
         const row = allValues[i];
         const currentSfc = String(row[SFC_REF_COL - 1] || '').trim();
         const currentPeriodDisplay = String(row[PERIOD_DISPLAY_COL - 1] || '').trim();
-
         if (currentSfc !== sfcRef || currentPeriodDisplay !== dateRange) {
              continue;
         }
@@ -803,7 +762,6 @@ function getHistoricalReferenceMap(ss, sfcRef, year, month, shift) {
                 const cleanId = cleanPersonnelId(idWithPrefix);
                 
                 if (cleanId.length >= 3) { 
-                     
                     if (!historicalRefMap[cleanId]) {                   
                        historicalRefMap[cleanId] = refNum;
                      }
@@ -877,12 +835,10 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             
             const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
             const versionParts = saveVersionString.split('-');
-            const version = parseFloat(versionParts[versionParts.length - 1]) 
-            || 0;
-   
+            const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
             const mapKey = id; 
             const existingRow = latestVersionMap[mapKey];
-            
+    
             if (!existingRow || version > (parseFloat(existingRow[saveVersionIndex].split('-').pop()) || 0)) { 
                 latestVersionMap[mapKey] = row;
             }
@@ -891,9 +847,8 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const latestDataRows = Object.values(latestVersionMap).filter(r => r.length > 0); 
     const employeesInPlan = new Set();
     const employeesDetails = [];
-    
     const startDayOfMonth = shift === '1stHalf' ? 1 : 16;
-    const endDayOfMonth = new Date(year, month + 1, 0).getDate(); 
+    const endDayOfMonth = new Date(year, month + 1, 0).getDate();
     const loopLimit = PLAN_MAX_DAYS_IN_HALF;
     
     latestDataRows.forEach((row, index) => {
@@ -901,7 +856,6 @@ function getAttendancePlan(sfcRef, year, month, shift) {
         
         if (id) {
             employeesInPlan.add(id); 
- 
             employeesDetails.push({
                 no: 0, 
                 id: id, 
@@ -915,11 +869,12 @@ function getAttendancePlan(sfcRef, year, month, shift) {
                 if (actualDay > endDayOfMonth) continue; 
                 const dayKey = `${year}-${month + 1}-${actualDay}`; 
                 const dayColIndex = day1Index + d - 1; 
+      
                 if (dayColIndex < numColumns) {
                     const status = String(row[dayColIndex] || '').trim();
                     const key = `${id}_${dayKey}_${shift}`;
                     if (status) {
-                         planMap[key] = status;
+                        planMap[key] = status;
                     }
                 }
             }
@@ -953,7 +908,6 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
         map[emp.id] = true;
         return map;
     }, {});
-    
     const finalEmployeeChanges = employeeChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.id || change.oldPersonnelId);
         
@@ -968,7 +922,6 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
         }
         return true;
      });
-    
     const finalAttendanceChanges = attendanceChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.personnelId);
         
@@ -983,7 +936,6 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
         }
         return true;
     });
-    
     const deletionList = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
     if (finalEmployeeChanges && finalEmployeeChanges.length > 0) {
         saveEmployeeInfoBulk(sfcRef, finalEmployeeChanges, year, month, shift, lockedIdRefMap);
@@ -1072,7 +1024,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
     const yearIndex = headers.indexOf('YEAR');
     const shiftIndex = headers.indexOf('PERIOD / SHIFT');
     const saveGroupIndex = headers.indexOf('SAVE GROUP');
-    const saveVersionIndex = headers.indexOf('SAVE VERSION'); 
+    const saveVersionIndex = headers.indexOf('SAVE VERSION');
     const printGroupIndex = headers.indexOf('PRINT GROUP');
     const referenceIndex = headers.indexOf('Reference #'); 
     const personnelIdIndex = headers.indexOf('Personnel ID');
@@ -1096,8 +1048,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         const currentShift = String(row[shiftIndex] || '').trim();
         const id = cleanPersonnelId(row[personnelIdIndex]);
 
-        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift 
-        && id) {
+        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && id) {
             const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
             const versionParts = saveVersionString.split('-');
             const version = parseFloat(versionParts[versionParts.length - 1]) || 0; 
@@ -1119,6 +1070,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
                     delete latestVersionMap[deletedId]; 
                   }
             }
+       
         });
     }
 
@@ -1165,12 +1117,12 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         let nextGroupToUse = group; 
 
         if (!latestVersionRow) {
+          
             const planHeadersCount = headers.length; 
             
             newRow = Array(planHeadersCount).fill('');            
             newRow[sfcRefIndex] = sfcRef;
             newRow[headcountIndex] = contractInfo.headCount;
-        
             newRow[propOrGrpCodeIndex] = contractInfo.propOrGrpCode;
             newRow[serviceTypeIndex] = contractInfo.serviceType;
             newRow[sectorIndex] = contractInfo.sector;
@@ -1221,12 +1173,13 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             }
             
             if (dayColumnNumber < 1 || dayColumnNumber > PLAN_MAX_DAYS_IN_HALF) {
-                 Logger.log(`[savePlanBulk] WARNING: Day number ${dayNumber} is out of expected range for shift ${shift}. Skipping update.`);
+                Logger.log(`[savePlanBulk] WARNING: Day number ${dayNumber} is out of expected range for shift ${shift}. Skipping update.`);
             return;
             }
             
             const dayColIndex = day1Index + dayColumnNumber - 1;
             if (dayColIndex >= day1Index && dayColIndex < numColumns) {
+   
                 const oldStatus = String((latestVersionRow || newRow)[dayColIndex] || '').trim();
                 if (oldStatus !== newStatus) {
                     isRowChanged = true;
@@ -1254,7 +1207,6 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             rowsToAppend.push(newRow);
         }
     });
-
     if (rowsToAppend.length > 0) {
         const newRowLength = rowsToAppend[0].length;
         const startRow = planSheet.getLastRow() + 1;
@@ -1285,14 +1237,13 @@ function updatePlanSheetReferenceBulk(refNum, printGroup, sfcRef, year, month, s
     const yearIndex = headers.indexOf('YEAR');
     const shiftIndex = headers.indexOf('PERIOD / SHIFT');
     const personnelIdIndex = headers.indexOf('Personnel ID');
-    const saveVersionIndex = headers.indexOf('SAVE VERSION'); 
+    const saveVersionIndex = headers.indexOf('SAVE VERSION');
     const printGroupIndex = headers.indexOf('PRINT GROUP');
     const referenceIndex = headers.indexOf('Reference #');
     const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
     const targetYear = String(year);
     
-    const latestVersionMap = {}; 
-
+    const latestVersionMap = {};
     dataRows.forEach((row, rowIndex) => {
         const currentSfc = String(row[sfcRefIndex] || '').trim();
         const currentMonth = String(row[monthIndex] || '').trim();
@@ -1300,13 +1251,12 @@ function updatePlanSheetReferenceBulk(refNum, printGroup, sfcRef, year, month, s
         const currentShift = String(row[shiftIndex] || '').trim();
         const id = String(row[personnelIdIndex] || '').trim();
       
-        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && printedPersonnelIds.includes(id)) {
-            
+        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && printedPersonnelIds.includes(id)) { 
             const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
             const versionParts = saveVersionString.split('-');
             const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
             const existingEntry = latestVersionMap[id];
-            
+      
             if (!existingEntry || version > existingEntry.version) {
                 latestVersionMap[id] = { 
                     rowArray: row, 
@@ -1325,6 +1275,7 @@ function updatePlanSheetReferenceBulk(refNum, printGroup, sfcRef, year, month, s
                 col: referenceIndex + 1, 
                 value: refNum
             });
+        
         }
         if (printGroupIndex !== -1) {
             rangesToUpdate.push({
@@ -1333,6 +1284,7 @@ function updatePlanSheetReferenceBulk(refNum, printGroup, sfcRef, year, month, s
                 value: printGroup
             });
         }
+  
     });
     if (rangesToUpdate.length > 0) {
         planSheet.setFrozenRows(0);
@@ -1354,7 +1306,6 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
     const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - HEADER_ROW + 1, numColumns).getDisplayValues();
     const headers = planValues[0];
     const dataRows = planValues.slice(1);
-    
     const sfcRefIndex = headers.indexOf('CONTRACT #');
     const monthIndex = headers.indexOf('MONTH');
     const yearIndex = headers.indexOf('YEAR');
@@ -1364,14 +1315,11 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
     const saveVersionIndex = headers.indexOf('SAVE VERSION'); 
     const day1Index = headers.indexOf('DAY1');
     if (sfcRefIndex === -1 || monthIndex === -1 || yearIndex === -1 || shiftIndex === -1 || personnelIdIndex === -1 || day1Index === -1) return;
-    
     let latestVersion = 0;
     let targetRowIndex = -1; 
     let rowToDelete = null;
-    
     const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
     const targetYear = String(year);
-
     dataRows.forEach((row, index) => {
         const currentSfc = String(row[sfcRefIndex] || '').trim();
         const currentMonth = String(row[monthIndex] || '').trim();
@@ -1379,15 +1327,11 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
         const currentShift = String(row[shiftIndex] || '').trim();
         const currentId = cleanPersonnelId(row[personnelIdIndex]);
         
-        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift 
- 
-    === targetShift && currentId === personnelId) {
-            
+        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === targetShift && currentId === personnelId) {
             const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
             const versionParts = saveVersionString.split('-').pop();
             const currentVersion = parseFloat(versionParts) || 0; 
             
-           
             if (currentVersion >= latestVersion) 
             {
                 latestVersion = currentVersion;
@@ -1402,7 +1346,6 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
     
     const lockedRefNum = currentLockRef || ''; 
     const employeeName = getEmployeeNameFromMaster(sfcRef, personnelId);
-    
     const loopLimit = PLAN_MAX_DAYS_IN_HALF;
     const startDayOfMonth = targetShift === '1stHalf' ? 1 : 16;
     const endDayOfMonth = new Date(year, month + 1, 0).getDate();
@@ -1412,16 +1355,14 @@ function logScheduleDeletion(sfcRef, planSheet, targetShift, personnelId, userEm
         if (actualDay > endDayOfMonth) continue; 
 
         const dayKey = `${year}-${month + 1}-${actualDay}`;
-        const dayColIndex = day1Index + d - 1; 
-
+        const dayColIndex = day1Index + d - 1;
         if (dayColIndex < numColumns) {
             const oldStatus = String(rowToDelete[dayColIndex] || '').trim();
             if (oldStatus && oldStatus !== 'NA') {
                  const logEntry = [
                     new Date(), userEmail, sfcRef, personnelId, employeeName, PLAN_SHEET_NAME, 
                     dayKey, targetShift, `'${lockedRefNum}`, oldStatus, 'DELETED_ROW' 
-               
-            ];
+                 ];
                 logEntries.push(logEntry);
             }
         }
@@ -1454,7 +1395,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
     const areaIndex = headers.indexOf('Area Posting');
     const rowsToAppend = [];
     const rowsToDelete = [];
-    
     const personnelIdMap = {};
     for (let i = 1; i < values.length; i++) { 
         const sfc = String(values[i][contractRefIndex] || '').trim();
@@ -1475,7 +1415,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
         if (newId && !data.isDeleted && !personnelIdMap[newId]) {    
             const newRow = [];
             newRow[contractRefIndex] = sfcRef;
- 
             newRow[personnelIdIndex] = data.id;
             newRow[nameIndex] = data.name;
             newRow[positionIndex] = data.position;
@@ -1488,7 +1427,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMa
 
             rowsToAppend.push(finalRow);
             personnelIdMap[newId] = -1;
-            
             Logger.log(`[saveEmployeeInfoBulk] Appending new/existing employee to Consolidated Master: ${newId}`);
         }
     });
@@ -1512,14 +1450,13 @@ function getNextGroupNumber(sfcRef, year, month, shift) {
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
         const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
-
         if (!planSheet || planSheet.getLastRow() < PLAN_HEADER_ROW + 1) return "S1";
         const headers = planSheet.getRange(PLAN_HEADER_ROW, 1, 1, planSheet.getLastColumn()).getValues()[0];
         const sfcRefIndex = headers.indexOf('CONTRACT #');
         const monthIndex = headers.indexOf('MONTH');
         const yearIndex = headers.indexOf('YEAR');
         const shiftIndex = headers.indexOf('PERIOD / SHIFT');
-        const saveGroupIndex = headers.indexOf('SAVE GROUP'); 
+        const saveGroupIndex = headers.indexOf('SAVE GROUP');
         if (sfcRefIndex === -1 || monthIndex === -1 || yearIndex === -1 || shiftIndex === -1 || saveGroupIndex === -1) {
             Logger.log("[getNextGroupNumber] Missing required headers in Consolidated Plan Sheet.");
             return "S1"; 
@@ -1600,6 +1537,7 @@ function updateSignatoryMaster(signatories) {
                 designation: item.designation.trim()
             };
         }
+  
     });
     const existingMasterData = getSignatoryMasterData(); 
     const newSignatoriesToAppend = [];
@@ -1642,67 +1580,128 @@ function getOrCreateLogSheet(ss) {
     }
 }
 
-function getNextReferenceNumber(logSheet) {
-    const lastRow = logSheet.getLastRow();
-    if (lastRow < 2) return 1;
-    const range = logSheet.getRange(2, 1, lastRow - 1, 1);
-    const refNumbers = range.getValues();
+/**
+ * Finds the maximum sequential number used in the base reference 
+ * (SFC-MonthYear-Shift-000X) across ALL TIME for the current SFC and returns the next number.
+ * PADDING IS REMOVED once the number exceeds 9999.
+ */
+function getNextSequentialNumber(logSheet, sfcRef) { 
+    const logValues = logSheet.getLastRow() > 1 ? logSheet.getRange(2, 1, logSheet.getLastRow() - 1, 1).getDisplayValues() : [];
     
-    let maxRef = 0;
-    refNumbers.forEach(row => {
-        const currentRef = parseInt(row[0].toString().replace(/[^\d]/g, '')) || 0;
-        if (currentRef > maxRef) {
-            maxRef = currentRef;
+    let maxSequentialNumber = 0;
+
+    logValues.forEach(row => {
+        const logRefString = String(row[0] || '').trim();
+        const parts = logRefString.split('-');
+        
+        // Filter ONLY by SFC (parts[0]) - Ignores Month, Year, and Shift for continuous numbering
+        if (parts.length === 5 && 
+            parts[0] === sfcRef) { 
+            
+            const sequentialPart = parts[3]; // The sequential part (e.g., '0001', '10000')
+            const numericPart = parseInt(sequentialPart, 10);
+
+            if (!isNaN(numericPart)) {
+                if (numericPart > maxSequentialNumber) {
+                    maxSequentialNumber = numericPart;
+                }
+            }
         }
     });
-    return maxRef + 1;
+
+    const nextNumber = maxSequentialNumber + 1;
+
+    // Apply padding only up to 9999.
+    if (nextNumber <= 9999) {
+        return String(nextNumber).padStart(4, '0');
+    }
+    
+    // Return as a full number string if > 9999
+    return String(nextNumber); 
 }
 
-function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
+function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) { 
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
         const logSheet = getOrCreateLogSheet(ss);
         
         const logSheetLastRow = logSheet.getLastRow();
         const numLogRows = logSheetLastRow > 1 ? logSheetLastRow - 1 : 0;
+        
+        const date = new Date(year, month, 1);
+        const monthYear = date.toLocaleString('en-US', { month: 'short' }) + date.getFullYear();
+        
         let maxGroupNumber = 0;
-        let baseRefParts = [];
+        let finalSequentialNumber = '';
+        let foundUnlockedBaseRefSequential = '';
+        const unlockedSequentialNumbers = new Set(); // Para i-track ang uniqueness ng na-unlock
         
         if (numLogRows > 0) {
             const logValues = logSheet.getRange(2, 1, numLogRows, LOG_HEADERS.length).getDisplayValues();
+            
             logValues.forEach(row => {
                 const logRefString = String(row[0] || '').trim();
-                const currentMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
-                if (logRefString.includes(sfcRef) && 
-                logRefString.includes(shift) && logRefString.includes(currentMonthShort)) {
-                    const parts = logRefString.split('-');
-                    if (parts.length === 5) { 
-                        const groupPart = parts[3]; 
-             
-                        const numericPart = parseInt(groupPart.replace(/[^\d]/g, ''), 10);  
+                const parts = logRefString.split('-');
+                
+                // Check for the NEW format: 5 parts (SFC-MonthYear-Shift-000X-P[Group])
+                // Filter by SFC, MonthYear, and Shift
+                if (parts.length === 5 && parts[0] === sfcRef && parts[1] === monthYear && parts[2] === shift) {
+                    
+                    const sequentialPart = parts[3]; // 4-digit sequential no.
+                    const groupPart = parts[4];   // P[Group]
+                    const lockedIdsString = String(row[LOG_HEADERS.length - 1] || '').trim();
+
+                    // CHECK FOR EXPLICIT UNLOCK MARKER (UNLOCKED:)
+                    const isExplicitlyUnlocked = lockedIdsString.includes('UNLOCKED:'); 
+                    
+                    // Sa bagong logic, ire-reuse lang natin ang Sequential Number kung may UNLOCKED: marker.
+                    if (isExplicitlyUnlocked) {
+                        
+                        unlockedSequentialNumbers.add(sequentialPart); // Track how many unique sequential numbers were unlocked
+                        
+                        const numericPart = parseInt(groupPart.replace(/[^\d]/g, ''), 10);
+                        
+                        // Humanapin ang pinakamalaking P[Group] sa lahat ng unlocked base references
                         if (!isNaN(numericPart) && numericPart > maxGroupNumber) {
                             maxGroupNumber = numericPart;
-                      
-                            baseRefParts = parts.slice(0, 3);
+                            foundUnlockedBaseRefSequential = sequentialPart; // Store the sequential number with the highest P group
                         }
                     }
                 }
             });
         }
         
-        const nextGroupNumeric = maxGroupNumber + 1;
-        const nextPrintGroup = `P${nextGroupNumeric}`; 
-        const nextPrintVersion = '1.0';
+        let nextPrintGroupNumeric = 1;
         
-        if (baseRefParts.length === 0) {
-            const date = new Date(year, month, 1);
-            const monthYear = date.toLocaleString('en-US', { month: 'short' }) + date.getFullYear();
-            baseRefParts = [sfcRef, monthYear, shift];
+        if (unlockedSequentialNumbers.size > 1) {
+            // Case 1: Multiple Unlock Reprint (User's requirement) -> NEW Sequential Number (0003, etc.)
+            nextPrintGroupNumeric = 1; 
+            // Kumuha ng next available global sequential number
+            finalSequentialNumber = getNextSequentialNumber(logSheet, sfcRef); 
+            Logger.log(`[logPrintAction] MULTIPLE UNLOCKS (${unlockedSequentialNumbers.size} sequences). Generating NEW sequential number: ${finalSequentialNumber}.`);
+            
+        } else if (unlockedSequentialNumbers.size === 1) {
+            // Case 2: Single Unlock Reprint -> REUSE the Sequential Number and increment P[Group]
+            nextPrintGroupNumeric = maxGroupNumber + 1;
+            finalSequentialNumber = foundUnlockedBaseRefSequential; // Reuse the single unlocked number (e.g., 0001)
+            Logger.log(`[logPrintAction] SINGLE UNLOCK. Reusing sequential reference ${finalSequentialNumber} and incrementing group to P${nextPrintGroupNumeric}`);
+            
+        } else {
+            // Case 3: Brand new print (0 unlocks found) -> NEW Sequential Number and P1
+            nextPrintGroupNumeric = 1; 
+            finalSequentialNumber = getNextSequentialNumber(logSheet, sfcRef); 
+            Logger.log(`[logPrintAction] No EXPLICITLY UNLOCKED base reference found. Generating new sequential number: ${finalSequentialNumber}.`);
         }
+        
+        const finalPrintGroup = `P${nextPrintGroupNumeric}`;
+        
+        // Assemble the new reference: SFC-MonthYear-Shift-000X-P[Group]
+        const baseRef = [sfcRef, monthYear, shift, finalSequentialNumber];
+        const finalPrintReference = `${baseRef.join('-')}-${finalPrintGroup}`;
 
-        const finalPrintReference = `${baseRefParts.join('-')}-${nextPrintGroup}-${nextPrintVersion}`;
-        Logger.log(`[logPrintAction] Calculated Print Reference String (New Print Group Logic): ${finalPrintReference}.`);
-        return { refNum: finalPrintReference, printGroup: nextPrintGroup };
+        Logger.log(`[logPrintAction] Calculated Print Reference String (New Format): ${finalPrintReference}.`);
+        return { refNum: finalPrintReference, printGroup: finalPrintGroup };
+
     } catch (e) {
         Logger.log(`[logPrintAction] FATAL ERROR: ${e.message}`);
         throw new Error(`Failed to generate print reference string. Error: ${e.message}`);
@@ -1745,6 +1744,7 @@ function recordPrintLogEntry(refNum, printGroup, subProperty, signatories, sfcRe
             planSheetName, 
             dateRange,     
             contractInfo.payor,    
+          
             contractInfo.agency,
             subProperty,         
             contractInfo.serviceType,
@@ -1760,7 +1760,6 @@ function recordPrintLogEntry(refNum, printGroup, subProperty, signatories, sfcRe
         logEntryRange.getCell(1, LOCKED_IDS_COL).setNumberFormat('@');
         logEntryRange.setValues([logEntry]);
         logSheet.getRange(newRow, 1, 1, LOG_HEADERS.length).setHorizontalAlignment('left');
-
         Logger.log(`[recordPrintLogEntry] Logged and Locked ${printedPersonnelIds.length} IDs using Reference String ${refNum}.`);
     } catch (e) {
         Logger.log(`[recordPrintLogEntry] FATAL ERROR: Failed to log print action ${refNum}. Error: ${e.message}`);
@@ -1771,40 +1770,40 @@ function recordPrintLogEntry(refNum, printGroup, subProperty, signatories, sfcRe
 function sendRequesterNotification(status, personnelIds, lockedRefNums, personnelNames, requesterEmail) {
   if (requesterEmail === 'UNKNOWN_REQUESTER' || !requesterEmail) return;
   const totalCount = personnelIds.length;
-  const uniqueRefNums = [...new Set(lockedRefNums)].sort();
+    const uniqueRefNums = [...new Set(lockedRefNums)].sort();
   const subject = `Unlock Request Status: ${status} for ${totalCount} Personnel Schedules (Ref# ${uniqueRefNums.join(', ')})`;
-  const combinedRequests = personnelIds.map((id, index) => ({
+    const combinedRequests = personnelIds.map((id, index) => ({
     id: id,
     ref: lockedRefNums[index],
     name: personnelNames[index] 
   }));
-  combinedRequests.sort((a, b) => a.ref.localeCompare(b.ref)); 
+    combinedRequests.sort((a, b) => a.ref.localeCompare(b.ref)); 
 
   const idList = combinedRequests.map(item => 
     `<li><b>${item.name}</b> (ID ${item.id}) (Ref #: ${item.ref})</li>` 
   ).join('');
-  let body = '';
+    let body = '';
   if (status === 'APPROVED') {
     body = `
       Good news!
-      Your request to unlock the following ${totalCount} schedules has been **APPROVED** by the Admin.
-      <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
+    Your request to unlock the following ${totalCount} schedules has been **APPROVED** by the Admin.
+    <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
       
       You may now return to the Attendance Plan Monitor app and refresh your browser to edit the schedules.
-      ---
+    ---
       This notification confirms the lock is removed.
     `;
-  } else if (status === 'REJECTED') {
+    } else if (status === 'REJECTED') {
     body = `
       Your request to unlock the following ${totalCount} schedules has been **REJECTED** by the Admin.
-      <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
+    <ul style="list-style-type: none; padding-left: 0; font-weight: bold;">${idList}</ul>
       
       The print locks remain active, and the schedules cannot be edited at this time.
-      Please contact your Admin for details.
+    Please contact your Admin for details.
       ---
       This is an automated notification.
     `;
-  } else {
+    } else {
       return; 
   }
   
@@ -1816,7 +1815,7 @@ function sendRequesterNotification(status, personnelIds, lockedRefNums, personne
       name: 'Attendance Plan Monitor (Status Update)'
     });
     Logger.log(`[sendRequesterNotification] Status ${status} email sent to requester: ${requesterEmail} for ${totalCount} IDs.`);
-  } catch (e) {
+    } catch (e) {
     Logger.log(`[sendRequesterNotification] Failed to send status email to ${requesterEmail}: ${e.message}`);
   }
 }
@@ -1846,13 +1845,11 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         targetPeriodDisplay = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
     }
 
-    
     const LOCKED_IDS_COL_INDEX = LOG_HEADERS.length - 1;
     const SFC_REF_COL_INDEX = 1;
     const PERIOD_DISPLAY_COL_INDEX = 3;
     
-    const LOG_HEADERS_COUNT = LOG_HEADERS.length;
-    const values = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS_COUNT).getValues();
+    const values = logSheet.getRange(2, 1, lastRow - 1, LOG_HEADERS.length).getValues();
     const rangeToUpdate = [];
 
     values.forEach((row, rowIndex) => {
@@ -1863,7 +1860,6 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
           return; 
       }
       
-        
       const rowNumInSheet = rowIndex + 2; 
       const lockedIdsString = String(row[LOCKED_IDS_COL_INDEX] || '').trim();
       
@@ -1874,8 +1870,6 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         let changed = false;
 
         personnelIdsToUnlock.forEach(unlockId => {
-       
-          
           const lockedIndex = updatedLockedIds.indexOf(unlockId);
           
           if (lockedIndex > -1) {
@@ -1890,9 +1884,8 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
         });
     
         if (changed) {
-          
           const newLockedIdsString = updatedLockedIds.filter(id => id.length > 0).join(',');
-          rangeToUpdate.push({
+            rangeToUpdate.push({
               row: rowNumInSheet,
               col: LOCKED_IDS_COL_INDEX + 1, 
               value: newLockedIdsString
@@ -1920,23 +1913,22 @@ function unlockPersonnelIds(sfcRef, year, month, shift, personnelIdsToUnlock) {
  */
 function requestUnlockEmailNotification(sfcRef, year, month, shift, lockedRefNums) { 
     if (!lockedRefNums || lockedRefNums.length === 0) {
-        return { success: false, message: 'ERROR: No Reference Numbers selected for unlock.' };
+        return { success: false, message: 'ERROR: No Reference Numbers selected for unlock.'
+};
     }
 
     // 1. Kumuha ng buong listahan ng IDs/Names na nakatali sa mga Reference Number na ito
     const combinedRequests = getAllLockedIdsByRefs(sfcRef, year, month, shift, lockedRefNums);
-
     if (combinedRequests.length === 0) {
-        return { success: false, message: 'ERROR: Could not find any locked schedules associated with the selected Reference Numbers for this period.' };
+        return { success: false, message: 'ERROR: Could not find any locked schedules associated with the selected Reference Numbers for this period.'
+};
     }
 
     const requestingUserEmail = Session.getActiveUser().getEmail();
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const unlockLogSheet = getOrCreateUnlockRequestLogSheet(ss);
-    
     // I-sort ang requests
     combinedRequests.sort((a, b) => a.ref.localeCompare(b.ref));
-    
     // 2. I-log ang PENDING Unlock Request (Bawat ID/Ref ay isang log entry)
     const logEntries = [];
     combinedRequests.forEach(item => {
@@ -1954,7 +1946,6 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, lockedRefNum
             '' // User Action Timestamp (Blank)
         ]);
     });
-    
     if (logEntries.length > 0) {
         unlockLogSheet.getRange(unlockLogSheet.getLastRow() + 1, 1, logEntries.length, UNLOCK_LOG_HEADERS.length).setValues(logEntries);
         Logger.log(`[requestUnlockEmailNotification] Logged ${logEntries.length} PENDING unlock requests.`);
@@ -1969,15 +1960,12 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, lockedRefNum
     const date = new Date(year, month, 1);
     const planPeriod = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
     const shiftDisplay = (shift === '1stHalf' ? '1st to 15th' : '16th to End');
-    
     const requestDetails = combinedRequests.map(item => {
         return `<li style="font-size: 14px;"><b>${item.name}</b> (ID ${item.id}) (Ref #: ${item.ref})</li>`; 
     }).join('');
-    
     const uniqueRefNums = lockedRefNums.sort(); // Gamitin ang orihinal na listahan ng Ref #
     const subjectRefNums = uniqueRefNums.join(', ');
     const subject = `ATTN: Admin Unlock Request - Ref# ${subjectRefNums} for ${sfcRef}`;
-    
     // 4. I-encode ang buong listahan ng IDs at Refs para sa Admin URL
     const idsEncoded = encodeURIComponent(personnelIds.join(','));
     const refsEncoded = encodeURIComponent(expandedRefNums.join(',')); // Expanded list
@@ -1985,7 +1973,6 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, lockedRefNum
     const webAppUrl = ScriptApp.getService().getUrl();
     const unlockUrl = `${webAppUrl}?action=unlock&sfc=${sfcRef}&yr=${year}&mon=${month + 1}&shift=${shift}&id=${idsEncoded}&ref=${refsEncoded}&req_email=${requesterEmailEncoded}`;
     const rejectUrl = `${webAppUrl}?action=reject_info&sfc=${sfcRef}&id=${idsEncoded}&ref=${refsEncoded}&req_email=${requesterEmailEncoded}`;
-
     const htmlBody = `
         <p style="font-size: 14px;">An Attendance Plan Unlock Request has been submitted.</p> 
         <hr style="margin: 10px 0;">
@@ -2005,16 +1992,13 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, lockedRefNum
                ✅ APPROVE & UNLOCK ALL (${personnelIds.length})
             </a>
             <a href="${rejectUrl}" target="_blank" 
-              style="background-color: #f59e0b;
-    color: white; padding: 10px 20px; text-align: center;
-                text-decoration: none; display: inline-block; border-radius: 5px;
-    font-weight: bold;">
+              style="background-color: #f59e0b; color: white; padding: 10px 20px; text-align: center;
+                text-decoration: none; display: inline-block; border-radius: 5px; font-weight: bold;">
                ❌ REJECT (Log Only)
             </a>
         </div>
 
-        <p style="margin-top: 20px;
-    font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
+        <p style="margin-top: 20px; font-size: 12px; color: #6b7280;">Ang pag-Approve ay magre-remove ng print lock. Kailangan naka-login ka bilang Admin user upang gumana ang link.</p>
     `;
     
     try {
@@ -2023,6 +2007,7 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, lockedRefNum
             subject: subject, 
             htmlBody: htmlBody, 
             name: 'Attendance Plan Monitor (Automated Request)'
+  
         });
         Logger.log(`[requestUnlockEmailNotification] Sent request email for ${personnelIds.length} IDs to ${adminEmails}`);
         return { success: true, message: `Unlock request sent to Admin(s): ${adminEmails} for ${personnelIds.length} IDs.` }; 
@@ -2033,11 +2018,11 @@ function requestUnlockEmailNotification(sfcRef, year, month, shift, lockedRefNum
 }
 
 function logAdminUnlockAction(status, sfcRef, personnelIds, lockedRefNums, requesterEmail, adminEmail) {
+   
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const logSheet = getOrCreateUnlockRequestLogSheet(ss);
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return;
-    
     const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
     
     const SFC_INDEX = 0;
@@ -2054,24 +2039,20 @@ function logAdminUnlockAction(status, sfcRef, personnelIds, lockedRefNums, reque
         let rowIndexToUpdate = -1;
         
         // Iterate backward to find the latest PENDING entry for this ID/Ref/Requester
-        for (let i = values.length - 1; i >= 0; i--) {
-         
+        for (let i = values.length - 1; i >= 0; i--) {            
             const row = values[i];
             const currentStatus = String(row[STATUS_INDEX] || '').trim();
             
             if (String(row[SFC_INDEX]).trim() === sfcRef &&
                 String(row[ID_INDEX]).trim() === id &&
                 String(row[REF_INDEX]).trim() === targetRef &&
-
-               
                 String(row[REQUESTER_INDEX]).trim() === requesterEmail &&
                 currentStatus === 'PENDING') {
                 rowIndexToUpdate = i + 2; 
          break;
-       
            }
         }
-
+     
         if (rowIndexToUpdate !== -1) 
         {
             const targetRow = logSheet.getRange(rowIndexToUpdate, 1, 1, UNLOCK_LOG_HEADERS.length);
@@ -2090,7 +2071,7 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
     const lastRow = logSheet.getLastRow();
     if (lastRow < 2) return;
     const targetMonthYear = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' }) + year;
-    const targetPeriodIdentifier = `${targetMonthYear}-${shift}`; 
+    const targetPeriodIdentifier = `${targetMonthYear}-${shift}`;
     Logger.log(`[logUserActionAfterUnlock] Target Plan Period: ${targetPeriodIdentifier}`);
     
     const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
@@ -2109,7 +2090,6 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
         const planEmployees = getEmployeeMasterData(sfcRef);
         const modifiedIDs = new Set(attendanceChanges.map(c => cleanPersonnelId(c.personnelId)));
         const allPlanIDs = new Set(planEmployees.map(e => e.id));
-        
         if (employeeChanges.some(c => c.isNew)) {
              actionType = 'Create AP Plan For an OLD AP';
         } 
@@ -2153,7 +2133,7 @@ function logUserActionAfterUnlock(sfcRef, employeeChanges, attendanceChanges, us
             const rowKey = `${rowId}_${rowSfc}_${rowRequester}`;
             if (processedKeys.has(rowKey)) continue;
 
-            const rowIndexToUpdate = i + 2; 
+            const rowIndexToUpdate = i + 2;
             const targetRow = logSheet.getRange(rowIndexToUpdate, 1, 1, UNLOCK_LOG_HEADERS.length);
             targetRow.getCell(1, USER_ACTION_TYPE_INDEX + 1).setValue(actionType);
             targetRow.getCell(1, USER_ACTION_TIME_INDEX + 1).setValue(new Date());
@@ -2217,7 +2197,7 @@ function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEma
     const ID_INDEX = 1;
     const REF_INDEX = 3;
     const REQUESTER_INDEX = 4;
-    const STATUS_INDEX = 8; 
+    const STATUS_INDEX = 8;
     const values = logSheet.getRange(2, 1, lastRow - 1, UNLOCK_LOG_HEADERS.length).getValues();
     
     const incomingKeys = new Set(personnelIds.map((id, index) => `${id}_${lockedRefNums[index]}`));
@@ -2228,7 +2208,6 @@ function getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEma
         const rowId = String(row[ID_INDEX]).trim();
         const rowRef = String(row[REF_INDEX]).trim();
         const rowKey = `${rowId}_${rowRef}`;
-        
         if (String(row[SFC_INDEX]).trim() === sfcRef &&
             String(row[REQUESTER_INDEX]).trim() === requesterEmail &&
             incomingKeys.has(rowKey) &&
@@ -2266,49 +2245,49 @@ function processAdminUnlockFromUrl(params) {
   }
   
   const currentBatchStatus = getBatchRequestStatus(sfcRef, personnelIds, lockedRefNums, requesterEmail);
-  if (currentBatchStatus !== 'PENDING') {
+    if (currentBatchStatus !== 'PENDING') {
       const template = HtmlService.createTemplateFromFile('UnlockStatus');
       template.status = 'INFO';
-      template.message = `This unlock request has already been processed as **${currentBatchStatus}** by Admin (${userEmail}). No further action will be taken.`;
-      return template.evaluate().setTitle('Request Already Processed');
+    template.message = `This unlock request has already been processed as **${currentBatchStatus}** by Admin (${userEmail}). No further action will be taken.`;
+    return template.evaluate().setTitle('Request Already Processed');
   }
   
   const summary = `${personnelIds.length} schedules (Ref# ${[...new Set(lockedRefNums)].join(', ')})`;
-  if (params.action === 'reject_info') {
+    if (params.action === 'reject_info') {
       sendRequesterNotification('REJECTED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
-      logAdminUnlockAction('REJECTED', sfcRef, personnelIds, lockedRefNums, requesterEmail, userEmail);
+    logAdminUnlockAction('REJECTED', sfcRef, personnelIds, lockedRefNums, requesterEmail, userEmail);
       
       const template = HtmlService.createTemplateFromFile('UnlockStatus');
       template.status = 'INFO';
-      template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}.
+    template.message = `Admin (${userEmail}) acknowledged the REJECT click for ${summary}.
       Notification sent to ${requesterEmail}.
       No data was changed.
-      The locks remain active.`;
+    The locks remain active.`;
       return template.evaluate().setTitle('Reject Status');
   }
   
   if (params.action === 'unlock' && params.yr && params.mon && params.shift) {
       try {
         const year = parseInt(params.yr, 10);
-        const month = parseInt(params.mon, 10) - 1; 
+    const month = parseInt(params.mon, 10) - 1; 
         const shift = params.shift;
 
         unlockPersonnelIds(sfcRef, year, month, shift, personnelIds);
-        sendRequesterNotification('APPROVED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
+    sendRequesterNotification('APPROVED', personnelIds, lockedRefNums, personnelNames, requesterEmail);
         
         logAdminUnlockAction('APPROVED', sfcRef, personnelIds, lockedRefNums, requesterEmail, userEmail);
         
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
         template.status = 'SUCCESS';
-        template.message = `Successfully unlocked ${summary}.
+    template.message = `Successfully unlocked ${summary}.
         The Print Locks have been removed by Admin (${userEmail}). Notification sent to ${requesterEmail}.`;
-        return template.evaluate().setTitle('Unlock Status');
+    return template.evaluate().setTitle('Unlock Status');
       } catch (e) {
         const template = HtmlService.createTemplateFromFile('UnlockStatus');
-        template.status = 'ERROR';
+    template.status = 'ERROR';
         template.message = `Failed to unlock ${summary}. Error: ${e.message}`;
         return template.evaluate().setTitle('Unlock Status');
-      }
+    }
   }
   
   return HtmlService.createHtmlOutput('<h1>Invalid Action</h1><p>The URL provided is incomplete or incorrect.</p>');
