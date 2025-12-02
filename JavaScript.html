@@ -1228,11 +1228,17 @@ function handleAttendanceData(data) {
         
         // --- UNLOCK BUTTON IN PERSONNEL ID COLUMN (for locked rows) ---
         if (isPrintLocked) {
+            
+            // NEW LOGIC: Extract the 4-digit random number (4th part) and group (5th part)
+            const refParts = lockedRefNum.split('-');
+            const randomPart = refParts.length === 5 ? refParts[3] : 'N/A';
+            const groupPart = refParts.length === 5 ? refParts[4] : 'N/A';
+            
             // Keep the Lock Tag (REF XXXX)
             const lockTag = document.createElement('span');
             lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 left-1 print-hidden';
             lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
-            lockTag.textContent = `REF ${lockedRefNum}`;
+            lockTag.textContent = `REF ${randomPart} (${groupPart})`; // Display Random # and P Group
             td.appendChild(lockTag);
         }
         // --- END UNLOCK BUTTON ---
