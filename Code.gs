@@ -892,6 +892,122 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     return { employees, planMap, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap };
 }
 
+/**
+ * Retrieves the latest version of the Attendance Plan data for a specified period (used for Copy Previous Plan feature).
+ * @param {string} sfcRef 
+ * @param {number} year 
+ * @param {number} month 
+ * @param {string} shift 
+ * @returns {object} {employees: [], planMap: {}}
+ */
+function getPlanDataForPeriod(sfcRef, year, month, shift) {
+    if (!sfcRef) throw new Error("SFC Ref# is required.");
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
+
+    if (!planSheet || planSheet.getLastRow() <= PLAN_HEADER_ROW) {
+        return { employees: [], planMap: {} };
+    }
+    
+    const HEADER_ROW = PLAN_HEADER_ROW;
+    const lastRow = planSheet.getLastRow();
+    const numColumns = planSheet.getLastColumn();
+
+    // Read all data including header
+    const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - PLAN_HEADER_ROW + 1, numColumns).getDisplayValues();
+    const headers = planValues[0];
+    const dataRows = planValues.slice(1);
+    
+    const sfcRefIndex = headers.indexOf('CONTRACT #');
+    const monthIndex = headers.indexOf('MONTH');
+    const yearIndex = headers.indexOf('YEAR');
+    const shiftIndex = headers.indexOf('PERIOD / SHIFT');
+    const personnelIdIndex = headers.indexOf('Personnel ID');
+    const nameIndex = headers.indexOf('Personnel Name');
+    const positionIndex = headers.indexOf('POSITION');
+    const areaIndex = headers.indexOf('AREA POSTING');
+    const saveVersionIndex = headers.indexOf('SAVE VERSION'); 
+    const day1Index = headers.indexOf('DAY1');
+    
+    if (sfcRefIndex === -1 || monthIndex === -1 || yearIndex === -1 || shiftIndex === -1 || personnelIdIndex === -1 || day1Index === -1) {
+         throw new Error("Missing critical column in Consolidated Plan sheet.");
+    }
+    
+    const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' }); 
+    const targetYear = String(year);
+    
+    const latestVersionMap = {};
+
+    dataRows.forEach(row => {
+        const currentSfc = String(row[sfcRefIndex] || '').trim();
+        const currentMonth = String(row[monthIndex] || '').trim();
+        const currentYear = String(row[yearIndex] || '').trim();
+        const currentShift = String(row[shiftIndex] || '').trim();
+        const rawId = row[personnelIdIndex];
+        const id = cleanPersonnelId(rawId);
+        
+        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && id) {
+            
+            const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
+            const versionParts = saveVersionString.split('-');
+            const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
+            const mapKey = id; 
+       
+            const existingRow = latestVersionMap[mapKey];
+    
+            if (!existingRow || version > (parseFloat(existingRow[saveVersionIndex].split('-').pop()) || 0)) { 
+                latestVersionMap[mapKey] = row;
+            }
+        }
+    });
+
+    const latestDataRows = Object.values(latestVersionMap).filter(r => r.length > 0); 
+    const employees = [];
+    const planMap = {};
+    
+    const startDayOfMonth = shift === '1stHalf' ? 1 : 16;
+    const endDayOfMonth = new Date(year, month + 1, 0).getDate();
+    const loopLimit = PLAN_MAX_DAYS_IN_HALF; // 16
+    
+    latestDataRows.forEach(row => {
+        const id = cleanPersonnelId(row[personnelIdIndex]);
+        
+        if (id) {
+            
+            // 1. Employee Roster
+            employees.push({
+                id: id, 
+                name: String(row[nameIndex] || '').trim(),
+                position: String(row[positionIndex] || '').trim(),
+                area: String(row[areaIndex] || '').trim(),
+            });
+            
+            // 2. Schedule Data (PlanMap)
+            for (let d = 1; d <= loopLimit; d++) {
+                const actualDay = startDayOfMonth + d - 1;    
+                if (actualDay > endDayOfMonth) continue; 
+                
+                // IMPORTANT: Stop at 15 for 1st Half
+                if (shift === '1stHalf' && actualDay > 15) continue;
+                
+                const dayKey = `${year}-${month + 1}-${actualDay}`; 
+                const dayColIndex = day1Index + d - 1; 
+      
+                if (dayColIndex < numColumns) {
+                    const status = String(row[dayColIndex] || '').trim();
+                    const key = `${id}_${dayKey}_${shift}`;
+                    
+                    if (status) {
+                         planMap[key] = status;
+                    }
+                }
+            }
+        }
+    });
+    
+    Logger.log(`[getPlanDataForPeriod] Retrieved ${employees.length} employee records for source period.`);
+    return { employees, planMap };
+}
 
 function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, year, month, shift, group) { 
     Logger.log(`[saveAllData] Starting save for SFC Ref#: ${sfcRef}, Month/Shift: ${month}/${shift}, SAVE GROUP: ${group}`);
