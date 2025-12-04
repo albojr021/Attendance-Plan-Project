@@ -512,6 +512,168 @@ function getSortedPlanSheets(sfcRef, ss) {
     return [{ name: PLAN_SHEET_NAME, date: new Date(2000, 0, 1) }];
 }
 
+/**
+ * NEW FUNCTION: Retrieves all unique printed Reference Numbers for a given SFC.
+ * @param {string} sfcRef The SFC Reference number to filter by.
+ * @returns {Array<Object>} An array of objects {refNum: string, period: string}.
+ */
+function getAllReferenceNumbers(sfcRef) {
+    if (!sfcRef) return [];
+    
+    try {
+        // Tiyaking tama ang pagbukas ng Target Spreadsheet
+        const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+        // Tiyaking ang Log Sheet ay nage-exist
+        const logSheet = getOrCreateLogSheet(ss);
+        
+        const lastRow = logSheet.getLastRow();
+        if (lastRow < 2) return [];
+
+        // Ang mga column index (1-based sa Sheets API)
+        const REF_NUM_COL = 1;              // 'Reference #'
+        const SFC_REF_COL = 2;              // 'SFC Ref#'
+        const PERIOD_DISPLAY_COL = 4;       // 'Plan Period Display'
+        
+        // Basahin ang range mula row 2 hanggang sa huling row, para sa columns 1 hanggang 4
+        // (Para mas mabilis basahin)
+        const values = logSheet.getRange(2, 1, lastRow - 1, PERIOD_DISPLAY_COL).getDisplayValues();
+        
+        const referenceMap = {}; // Gagamitin para sa uniqueness
+        
+        values.forEach(row => {
+            const refNum = String(row[REF_NUM_COL - 1] || '').trim(); 
+            const currentSfc = String(row[SFC_REF_COL - 1] || '').trim(); 
+            const periodDisplay = String(row[PERIOD_DISPLAY_COL - 1] || '').trim(); 
+
+            // I-filter by SFC at tiyakin na may laman ang RefNum at hindi pa nase-save
+            if (currentSfc === sfcRef && refNum && !referenceMap[refNum]) {
+                referenceMap[refNum] = { 
+                    refNum: refNum, 
+                    period: periodDisplay
+                };
+            }
+        });
+        
+        // I-convert sa array at i-sort (mas bago ang mas mataas na RefNum string)
+        const refList = Object.values(referenceMap).sort((a, b) => b.refNum.localeCompare(a.refNum));
+
+        Logger.log(`[getAllReferenceNumbers] Retrieved ${refList.length} unique Reference Numbers for SFC ${sfcRef}.`);
+        return refList;
+        
+    } catch (e) {
+        Logger.log(`[getAllReferenceNumbers] ERROR: ${e.message}`);
+        // Huwag mag-throw ng error pabalik sa client, magbalik lang ng empty array
+        return []; 
+    }
+}
+
+/**
+ * NEW FUNCTION: Retrieves the Attendance Plan data (roster and schedule) 
+ * associated with a specific printed Reference Number (used for Copy by Reference feature).
+ * @param {string} sfcRef 
+ * @param {string} refNum The specific Reference Number string (e.g., 'SFC-Jan2026-1stHalf-0001-P1').
+ * @returns {object} {employees: [], planMap: {}}
+ */
+function getPlanDataByReferenceNum(sfcRef, refNum) {
+    if (!sfcRef || !refNum) throw new Error("SFC Ref# and Reference # are required.");
+
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
+
+    if (!planSheet || planSheet.getLastRow() <= PLAN_HEADER_ROW) {
+        return { employees: [], planMap: {} };
+    }
+    
+    const HEADER_ROW = PLAN_HEADER_ROW;
+    const lastRow = planSheet.getLastRow();
+    const numColumns = planSheet.getLastColumn();
+    
+    // Read all data including header
+    const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - PLAN_HEADER_ROW + 1, numColumns).getDisplayValues();
+    const headers = planValues[0];
+    const dataRows = planValues.slice(1);
+    
+    // Find column indices
+    const sfcRefIndex = headers.indexOf('CONTRACT #');
+    const refNumIndex = headers.indexOf('Reference #');
+    const personnelIdIndex = headers.indexOf('Personnel ID');
+    const nameIndex = headers.indexOf('Personnel Name');
+    const positionIndex = headers.indexOf('POSITION');
+    const areaIndex = headers.indexOf('AREA POSTING');
+    const shiftIndex = headers.indexOf('PERIOD / SHIFT');
+    const monthIndex = headers.indexOf('MONTH');
+    const yearIndex = headers.indexOf('YEAR');
+    const day1Index = headers.indexOf('DAY1');
+
+    if ([sfcRefIndex, refNumIndex, personnelIdIndex, nameIndex, positionIndex, areaIndex, shiftIndex, monthIndex, yearIndex, day1Index].includes(-1)) {
+         throw new Error("Missing critical column in Consolidated Plan sheet for Reference Copy.");
+    }
+    
+    const employees = [];
+    const planMap = {};
+    const processedIds = new Set();
+    
+    // Filter rows by SFC and the exact Reference Number
+    const targetRows = dataRows.filter(row => {
+        const currentSfc = String(row[sfcRefIndex] || '').trim();
+        const currentRef = String(row[refNumIndex] || '').trim();
+        return currentSfc === sfcRef && currentRef === refNum;
+    });
+    
+    Logger.log(`[getPlanDataByReferenceNum] Found ${targetRows.length} rows matching Ref# ${refNum}.`);
+
+
+    targetRows.forEach(row => {
+        const id = cleanPersonnelId(row[personnelIdIndex]);
+        
+        if (id && !processedIds.has(id)) {
+            
+            // 1. Employee Roster (Only need to collect once per ID)
+            employees.push({
+                id: id, 
+                name: String(row[nameIndex] || '').trim(),
+                position: String(row[positionIndex] || '').trim(),
+                area: String(row[areaIndex] || '').trim(),
+            });
+            processedIds.add(id);
+            
+            // 2. Schedule Data (PlanMap) - Kukunin natin ang day-of-week pattern
+            const rowShift = String(row[shiftIndex] || '').trim();
+            const rowMonthShort = String(row[monthIndex] || '').trim();
+            const rowYear = parseInt(row[yearIndex] || '0', 10);
+            
+            // Determine period details for DayKey construction
+            const date = new Date(`${rowMonthShort} 1, ${rowYear}`);
+            const year = date.getFullYear();
+            const month = date.getMonth();
+            const startDayOfMonth = rowShift === '1stHalf' ? 1 : 16;
+            const endDayOfMonth = new Date(year, month + 1, 0).getDate();
+            const loopLimit = PLAN_MAX_DAYS_IN_HALF; // 16
+            
+            for (let d = 1; d <= loopLimit; d++) {
+                const actualDay = startDayOfMonth + d - 1;    
+                if (actualDay > endDayOfMonth) continue; 
+                // CRITICAL: Tiyaking hindi lalampas sa 15 ang 1st Half
+                if (rowShift === '1stHalf' && actualDay > 15) continue; 
+                
+                const dayKey = `${year}-${month + 1}-${actualDay}`; 
+                const dayColIndex = day1Index + d - 1; 
+      
+                if (dayColIndex < numColumns) {
+                    const status = String(row[dayColIndex] || '').trim();
+                    const key = `${id}_${dayKey}_${rowShift}`;
+                    
+                    if (status) {
+                         // Ang key ay magiging (ID_Date_Shift) - gagamitin ito ng client-side para hanapin ang pattern
+                         planMap[key] = status;
+                    }
+                }
+            }
+        }
+    });
+
+    return { employees, planMap };
+}
 
 function getEmployeeSchedulePattern(sfcRef, personnelId) {
     if (!sfcRef || !personnelId) return {};
