@@ -724,6 +724,196 @@ function handleBulkUnlockRequest() {
         .getNextGroupNumber(sfcRef, currentYear, currentMonth, currentShift);
   }
 
+  function getPreviousPeriodDetails(year, month, shift) {
+    const prevDate = new Date(year, month, 1);
+    let prevShift = '';
+    let prevYear = year;
+    let prevMonth = month; // 0-indexed month
+
+    if (shift === '2ndHalf') {
+        // Source: 1st Half of the same month/year
+        prevShift = '1stHalf';
+        // prevYear and prevMonth remain the same
+    } else if (shift === '1stHalf') {
+        // Source: 2nd Half of the previous month/year
+        prevShift = '2ndHalf';
+        // Move back one month
+        prevDate.setMonth(month - 1);
+        prevYear = prevDate.getFullYear();
+        prevMonth = prevDate.getMonth();
+    } else {
+        return null;
+    }
+
+    return {
+        year: prevYear,
+        month: prevMonth, // Return as 0-indexed month (0=Jan)
+        shift: prevShift
+    };
+}
+// --- END NEW HELPER ---
+
+// --- NEW FUNCTION: Main Handler for Copy Previous Plan ---
+function copyPreviousPlan() {
+    if (!currentContract) {
+        showNotification('Please select a Contract Group ID first.', false);
+        return;
+    }
+    
+    // 1. Check for SAVED Roster Data
+    if ((currentContract?.employees?.length || 0) > 0) {
+        showNotification('Cannot copy: The current period already contains saved employee data. Please use the Bulk Delete feature to clear the roster first, or manually delete rows.', false);
+        return;
+    }
+
+    // 2. Check for UNSAVED Changes (Roster Info or Schedule)
+    if (Object.keys(pendingAttendanceChanges).length > 0 || Object.keys(pendingEmployeeInfoChanges).length > 0) {
+        showNotification('Cannot copy: The current period has unsaved changes (roster or schedule). Please click "Save All Changes to Sheets" or refresh the page to clear pending edits.', false);
+        return;
+    }
+    
+    // --- End Validation ---
+
+    // 1. Determine Source Period
+    const sourcePeriod = getPreviousPeriodDetails(
+        currentPlanningDate.getFullYear(), 
+        currentPlanningDate.getMonth(), 
+        document.getElementById('shift-period-select').value
+    );
+    
+    if (!sourcePeriod || sourcePeriod.year > currentPlanningDate.getFullYear() || (sourcePeriod.year === currentPlanningDate.getFullYear() && sourcePeriod.month > currentPlanningDate.getMonth())) {
+        showNotification('Cannot copy plan: Unable to determine a valid previous period to copy from.', false);
+        return;
+    }
+
+    toggleLoading(true, 'Copying previous plan. Fetching data...');
+    
+    // 2. Call backend function to fetch data for sourcePeriod
+    google.script.run
+        .withSuccessHandler(handlePreviousPlanData)
+        .withFailureHandler(handleError)
+        .getPlanDataForPeriod( 
+            currentContract.sfcRef, 
+            sourcePeriod.year, 
+            sourcePeriod.month, 
+            sourcePeriod.shift
+        );
+}
+
+// --- NEW FUNCTION: Handle Data from Previous Period (Applies changes to current period) ---
+function handlePreviousPlanData(data) {
+    if (data.employees.length === 0) {
+        showNotification('No saved plan found for the previous period to copy.', false);
+        toggleLoading(false);
+        return;
+    }
+    
+    // 1. Clear existing pending changes
+    pendingAttendanceChanges = {}; 
+    pendingEmployeeInfoChanges = {}; 
+    
+    // 2. Target Period Details (Current Plan being edited)
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+    const daysInCurrentMonth = getDaysInMonth(currentYear, currentMonth);
+
+    const startDayOfMonth = currentShift === '1stHalf' ? 1 : 16;
+    const endDayOfMonth = currentShift === '1stHalf' ? 15 : daysInCurrentMonth;
+    
+    // 3. Process Employee Roster (Apply all as pending changes)
+    data.employees.forEach(emp => {
+        const existingEmp = currentContract.employees.find(e => e.id === emp.id);
+        const stableKey = emp.id; 
+        
+        // This part remains the same: ensure roster is carried over as pending changes
+        let pendingChange = pendingEmployeeInfoChanges[stableKey] || {
+            id: existingEmp?.id || emp.id, 
+            name: existingEmp?.name || emp.name, 
+            position: existingEmp?.position || emp.position, 
+            area: existingEmp?.area || emp.area,
+            isNew: !existingEmp?.id,
+            originalEmployeeId: existingEmp?.id || '',
+            isDeleted: false 
+        };
+        
+        pendingChange.id = emp.id;
+        pendingChange.name = emp.name; 
+        pendingChange.position = emp.position; 
+        pendingChange.area = emp.area;
+        
+        pendingEmployeeInfoChanges[stableKey] = pendingChange;
+    });
+
+    // 4. Determine the Day-of-Week Pattern from the Source Data
+    // Kukuha ng pattern mula sa lahat ng schedule sa nakaraang shift
+    const dowPatternMap = getDOWPatternMap(data.planMap); 
+
+    // 5. Apply the DOW Pattern to the current (target) period
+    let changesAppliedCount = 0;
+    
+    data.employees.forEach(emp => {
+        const personnelId = emp.id;
+        
+        for (let dayNum = startDayOfMonth; dayNum <= endDayOfMonth; dayNum++) {
+            
+            if (dayNum > daysInCurrentMonth) continue; // Safety check
+            
+            // B. Determine the Day of Week (0-6) for the target day
+            const targetDate = new Date(currentYear, currentMonth, dayNum); 
+            const dayOfWeek = targetDate.getDay().toString(); // 0=Sun, 1=Mon, ..., 6=Sat
+            
+            const newStatus = dowPatternMap[dayOfWeek] || ''; // Get status from pattern
+            
+            if (newStatus) {
+                const currentDayKey = `${currentYear}-${currentMonth + 1}-${dayNum}`;
+                const currentPlanKey = `${personnelId}_${currentDayKey}_${currentShift}`;
+                
+                // C. Check against current saved status (if any) before applying as pending change
+                const originalPlanKey = `${personnelId}_${currentDayKey}_${currentShift}`;
+                const originalStatus = currentContract.planMap[originalPlanKey] || '';
+                
+                // Only create a pending change if the new status is different from the saved status
+                if (originalStatus !== newStatus) {
+                     pendingAttendanceChanges[currentPlanKey] = newStatus;
+                     changesAppliedCount++;
+                }
+            }
+        }
+    });
+
+    // 6. Re-render the grid
+    renderAttendancePlan();
+    checkPlanSheetLockState(); 
+    showNotification(`Successfully copied ${data.employees.length} employees and applied Day-of-Week schedule pattern to ${changesAppliedCount} cells. Click "Save All Changes" to save this new plan.`, true);
+    toggleLoading(false);
+}
+
+function getDOWPatternMap(planMap) {
+    const patternMap = {};
+    
+    // I-iterate ang schedule data na nakuha mula sa backend (prev period)
+    Object.keys(planMap).forEach(key => {
+        const status = planMap[key];
+        // prevDayKey: 'YYYY-M-D' (1-indexed month)
+        const [, dayKey] = key.split('_'); 
+        
+        // Exclude NA/DELETED status from the pattern
+        if (status && status !== 'NA' && status !== 'DELETED') { 
+            // Kuhanin ang Date object para malaman ang Day of Week (0=Sun, 1=Mon, ..., 6=Sat)
+            const [y, m, d] = dayKey.split('-').map(Number);
+            const date = new Date(y, m - 1, d); 
+            const dayOfWeek = date.getDay().toString(); // Day of Week as string key (0-6)
+
+            // Simplification: Prioritize the last schedule found for this Day of Week.
+            // This assumes the pattern is mostly consistent in the source.
+            patternMap[dayOfWeek] = status; 
+        }
+    });
+
+    return patternMap;
+}
+// --- END DOW Helper ---
 
   // --- CONTRACT SELECTION & DATA FETCHING ---
 
@@ -804,6 +994,9 @@ function handleBulkUnlockRequest() {
     document.getElementById('shift-period-select').addEventListener('change', reloadPlanAndCheckExistence);
     // *** NEW: Listener for Save All Button ***
     document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
+
+    // *** NEW: Listener for Copy Previous Plan Button ***
+    document.getElementById('copy-previous-plan-btn').addEventListener('click', copyPreviousPlan);
     
     // *** NEW: Listener for Print Button (Calls new modal function) ***
     document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
