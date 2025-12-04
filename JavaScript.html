@@ -800,6 +800,120 @@ function copyPreviousPlan() {
         );
 }
 
+function openCopySelectionModal() {
+    if (!currentContract) {
+        showNotification('Please select a Contract Group ID first.', false);
+        return;
+    }
+    
+    // I-check ang pre-requisites bago magbukas ng modal
+    if ((currentContract?.employees?.length || 0) > 0) {
+        showNotification('Cannot copy: The current period already contains saved employee data. Please use the Bulk Delete feature to clear the roster first, or manually delete rows.', false);
+        return;
+    }
+    
+    if (Object.keys(pendingAttendanceChanges).length > 0 || Object.keys(pendingEmployeeInfoChanges).length > 0) {
+        showNotification('Cannot copy: The current period has unsaved changes. Please click "Save All Changes to Sheets" or refresh the page to clear pending edits.', false);
+        return;
+    }
+
+    const modal = document.getElementById('copy-selection-modal');
+    modal.classList.remove('hidden');
+    
+    // 1. I-attach ang listeners sa modal buttons
+    document.getElementById('copy-selection-cancel-btn').onclick = () => modal.classList.add('hidden');
+    document.getElementById('copy-ref-confirm-btn').onclick = () => handleCopySelection('reference');
+    document.getElementById('reference-select').onchange = updateCopyRefButtonState;
+
+    // 2. I-load ang Reference Numbers (Async call)
+    loadReferenceNumbersForCopy();
+}
+
+// --- NEW FUNCTION: Load Reference Numbers mula sa server ---
+function loadReferenceNumbersForCopy() {
+    const sfcRef = currentContract?.sfcRef;
+    if (!sfcRef) return;
+    
+    const refSelect = document.getElementById('reference-select');
+    refSelect.innerHTML = '<option value="">-- Loading Reference Numbers --</option>';
+    refSelect.disabled = true;
+
+    // Kukunin ang listahan ng Reference # mula sa PrintLog
+    google.script.run
+        .withSuccessHandler(populateReferenceSelect)
+        .withFailureHandler(handleError)
+        .getAllReferenceNumbers(sfcRef); // NEW SERVER FUNCTION
+}
+
+// --- NEW FUNCTION: Populate ang Reference # Dropdown ---
+function populateReferenceSelect(refList) {
+    const refSelect = document.getElementById('reference-select');
+    const copyBtn = document.getElementById('copy-ref-confirm-btn');
+
+    refSelect.innerHTML = '';
+    
+    if (refList.length === 0) {
+        refSelect.innerHTML = '<option value="">-- No Printed Schedules Found --</option>';
+        refSelect.disabled = true;
+        copyBtn.disabled = true;
+        return;
+    }
+
+    refSelect.innerHTML = '<option value="">-- Select a Reference Number --</option>';
+    refList.forEach(ref => {
+        const option = document.createElement('option');
+        option.value = ref.refNum;
+        option.textContent = `${ref.refNum} (Printed: ${ref.period})`; 
+        refSelect.appendChild(option);
+    });
+
+    refSelect.disabled = false;
+    updateCopyRefButtonState();
+}
+
+// --- NEW HELPER: Update Copy Reference Button State ---
+function updateCopyRefButtonState() {
+    const refSelect = document.getElementById('reference-select');
+    const copyBtn = document.getElementById('copy-ref-confirm-btn');
+    
+    copyBtn.disabled = !refSelect.value;
+}
+
+// --- NEW FUNCTION: Main Handler for Copy Selection ---
+function handleCopySelection(type) {
+    const modal = document.getElementById('copy-selection-modal');
+    modal.classList.add('hidden');
+
+    // Tiyakin na ang `copyPreviousPlan()` ay nandiyan pa rin (malapit sa line 680)
+    if (type === 'previous') {
+        copyPreviousPlan();
+    } else if (type === 'reference') {
+        const refNum = document.getElementById('reference-select').value;
+        if (refNum) {
+            copyFromReference(refNum); // NEW FUNCTION FOR REFERENCE COPY
+        } else {
+            showNotification('Please select a Reference Number.', false);
+        }
+    }
+}
+
+// --- NEW FUNCTION: Copy from Specific Reference # ---
+function copyFromReference(refNum) {
+    // 1. I-validate ang pre-requisites (Ginawa na sa openCopySelectionModal)
+    
+    toggleLoading(true, `Copying plan from Reference #${refNum}. Fetching data...`);
+    
+    // 2. Call backend function to fetch data based on Reference #
+    // Magpapadala tayo ng Reference #, at hahanapin nito ang Roster at Schedule na na-lock sa ilalim ng Reference # na ito.
+    google.script.run
+        .withSuccessHandler(handlePreviousPlanData) // Re-use the handler since the structure is the same
+        .withFailureHandler(handleError)
+        .getPlanDataByReferenceNum( 
+            currentContract.sfcRef,
+            refNum
+        ); // NEW SERVER FUNCTION
+}
+
 // --- NEW FUNCTION: Handle Data from Previous Period (Applies changes to current period) ---
 function handlePreviousPlanData(data) {
     if (data.employees.length === 0) {
@@ -995,8 +1109,6 @@ function getDOWPatternMap(planMap) {
     // *** NEW: Listener for Save All Button ***
     document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
 
-    // *** NEW: Listener for Copy Previous Plan Button ***
-    document.getElementById('copy-previous-plan-btn').addEventListener('click', copyPreviousPlan);
     
     // *** NEW: Listener for Print Button (Calls new modal function) ***
     document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
@@ -1645,6 +1757,7 @@ function showPersonnelWarning(rowElement, message) {
     const oldPersonnelKey = input.dataset.oldPersonnelId; 
     let newValue = input.value;
     
+    // Tiyakin na ang pendingChange ay laging nababasa/nalilikha nang tama
     let pendingChange = pendingEmployeeInfoChanges[oldPersonnelKey] || {
         id: employee.id, 
         name: employee.name, 
@@ -1657,15 +1770,20 @@ function showPersonnelWarning(rowElement, message) {
     
     const previousIdValue = pendingChange.id; 
     
-    // NEW: I-check kung ito ay bagong row na hindi pa nase-save
-    const isNewUnsaved = pendingChange.isNew && !pendingChange.isDeleted; 
-
-    // UPDATED LOCK CHECK: I-block lang kung Saved Row na at HINDI ito bagong entry (galing Copy Plan)
-    if ((employee.id && !isNewUnsaved) || pendingChange.isDeleted || lockedIdRefMap[employee.id]) {
-         showNotification('Cannot edit: Saved row is locked. You must delete and re-add to change info.', false);
+    // Ang lock check na ito ay umaasa sa 'readOnly' attribute na nanggagaling sa renderAttendancePlan.
+    // Kung hindi readOnly ang input, papayagan natin ang edit.
+    if (input.readOnly) {
+         if (lockedIdRefMap[employee.id]) {
+             showNotification('Cannot edit: Saved row is locked by a printed reference number.', false);
+         } else if (pendingChange.isDeleted) {
+             showNotification('Cannot edit: Row is marked for deletion. Please remove the deletion mark if you wish to edit.', false);
+         } else {
+             showNotification('Cannot edit: Saved row is locked.', false);
+         }
          input.value = employee[field];
          return;
     }
+
 
     const row = input.closest('tr');
     let masterRecordFound = null; 
@@ -1673,7 +1791,7 @@ function showPersonnelWarning(rowElement, message) {
     
     const upperNewValue = newValue.trim().toUpperCase(); 
     
-    // --- Blacklist Check Trigger (Integrated Proactive Validation) ---
+    // --- Blacklist Check Trigger ---
     const idInput = row.querySelector('[data-field="id"]');
     const nameInput = row.querySelector('[data-field="name"]');
     const currentId = idInput?.value.trim() || '';
@@ -1683,7 +1801,6 @@ function showPersonnelWarning(rowElement, message) {
          // Asynchronous call sa server para i-check ang ID at NAME
          google.script.run
               .withSuccessHandler((result) => {
-                  // I-verify ulit ang latest value bago i-update ang UI (dahil asynchronous)
                   const latestId = row.querySelector('[data-field="id"]').value.trim();
                   const latestName = row.querySelector('[data-field="name"]').value.trim();
 
@@ -1731,7 +1848,7 @@ function showPersonnelWarning(rowElement, message) {
         showNotification(`Employee details auto-filled for ${masterRecord.name}. Click 'Save All Changes' to save this new entry.`, true);
 
     } else {
-       // --- UPDATED LOGIC: Force UPPERCASE for Name, Position, Area ---
+       // --- Force UPPERCASE for Name, Position, Area ---
        if (field === 'name' || field === 'position' || field === 'area') {
            
            newValue = newValue.toUpperCase(); 
@@ -1801,65 +1918,70 @@ function showPersonnelWarning(rowElement, message) {
         }
 
         
+        // --- CRITICAL FIX: REPLACEMENT SLOT LOGIC (Name Clear) ---
         if (field === 'name' && pendingChange.name === '') {
-            const idInput = row.querySelector('[data-field="id"]');
-            const positionInput = row.querySelector('[data-field="position"]');
-            const areaInput = row.querySelector('[data-field="area"]');
+             const idInput = row.querySelector('[data-field="id"]');
+             const positionInput = row.querySelector('[data-field="position"]');
+             const areaInput = row.querySelector('[data-field="area"]');
+             
+             const originalEmployeeId = employee.id.trim(); // JR's ID
 
-            // --- CRITICAL DELETION REGISTER FIX (Replacement Slot Management) ---
-            if (employee.id.trim() !== '') {
-                 // 1. Register the deletion request for the old employee ID (JR)
-                 // This ensures JR's schedule and plan data are removed on save.
-                 pendingEmployeeInfoChanges[employee.id] = {
-                    id: employee.id, 
+             if (originalEmployeeId !== '') {
+                 // 1. REGISTER DELETION: Create a separate pending change for the old ID (JR)
+                 pendingEmployeeInfoChanges[originalEmployeeId] = {
+                    id: originalEmployeeId, 
                     name: employee.name, 
                     position: employee.position, 
                     area: employee.area,
                     isNew: false, 
-                    originalEmployeeId: employee.id,
+                    originalEmployeeId: originalEmployeeId,
                     isDeleted: true 
                  };
-                 showNotification(`Employee ${employee.name} (ID: ${employee.id}) marked for DELETION on save. Slot cleared for replacement.`, true);
+                 showNotification(`Employee ${employee.name} (ID: ${originalEmployeeId}) marked for DELETION on save. Slot cleared for replacement.`, true);
 
-                 // 2. Reset the employee object reference and pendingChange for the current row
-                 // to treat it as a new, editable slot.
-                 employee.id = ''; // I-reset ang original reference
+                 // 2. CONVERT CURRENT ROW TO 'NEW' SLOT:
+                 // Mutate the *original* employee object (passed by reference) to make the next input/render treat it as a new row.
+                 employee.id = ''; 
                  
-                 // Alisin ang pending change sa old key.
+                 // Update the row's stable key to a temporary one (e.g., TEMP_3)
+                 row.dataset.stableKey = `TEMP_${employee.no}`;
+                 
+                 // Remove the current pending change (as the deletion is split into a new entry)
                  delete pendingEmployeeInfoChanges[oldPersonnelKey];
-            }
-            // --- END CRITICAL FIX ---
+             }
+             // --- END CRITICAL FIX ---
 
 
-            if (idInput) idInput.value = '';
-            if (positionInput) positionInput.value = '';
-            if (areaInput) areaInput.value = '';
+             if (idInput) idInput.value = '';
+             if (positionInput) positionInput.value = '';
+             if (areaInput) areaInput.value = '';
 
-            // Update pendingChange for the current row (now a blank placeholder)
-            pendingChange.id = '';
-            pendingChange.position = '';
-            pendingChange.area = '';
-            pendingChange.isDeleted = false; // Tiyaking hindi ito marked for deletion.
-            
-            // Note: After this block, the function will return early if employee.id is reset to ''
-            // which is fine, as the user will then type JENELYN's ID and trigger a new change event.
+             // Clear all pending changes for the row now treated as a new slot
+             pendingChange.id = '';
+             pendingChange.name = ''; 
+             pendingChange.position = '';
+             pendingChange.area = '';
+             pendingChange.isDeleted = false; // Tiyaking hindi ito marked for deletion.
+             pendingChange.isNew = true;
+             pendingChange.originalEmployeeId = '';
 
-            
-            const idToClear = employee.id; 
-            if (idToClear) {
-                Object.keys(pendingAttendanceChanges).forEach(key => {
-                    if (key.startsWith(idToClear + '_')) { 
-                        delete pendingAttendanceChanges[key];
-                    }
-                });
-            }
-            
-            row.querySelectorAll('.cell-container').forEach(cell => {
-                 const dayKey = cell.dataset.dayKey;
-                 updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
-            });
+             // Clear any local schedule changes associated with the old ID
+             const idToClear = originalEmployeeId; 
+             if (idToClear) {
+                 Object.keys(pendingAttendanceChanges).forEach(key => {
+                     if (key.startsWith(idToClear + '_')) { 
+                         delete pendingAttendanceChanges[key];
+                     }
+                 });
+             }
+             
+             row.querySelectorAll('.cell-container').forEach(cell => {
+                  const dayKey = cell.dataset.dayKey;
+                  // Use the original employee.id for the planMap lookup to reset cell visuals
+                  updateCellVisuals(cell, currentContract.planMap[`${originalEmployeeId}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
+             });
 
-            showNotification('Personnel Name cleared. Personnel ID, Position, Area, and local schedule changes were also cleared to prevent accidental override.', false);
+             showNotification('Personnel Name cleared. Personnel ID, Position, Area, and local schedule changes were also cleared to prevent accidental override.', false);
         }
         
         if (field === 'name' && pendingChange.name) {
@@ -1888,7 +2010,7 @@ function showPersonnelWarning(rowElement, message) {
         }
     }
 
-    // --- Original Logic: Clearing ID/Name for schedule clearing ---
+    // --- Original Logic: Clearing ID/Name for schedule clearing (Updated for Replacement) ---
     if (field === 'id') {
         
         if (pendingChange.id === '' && previousIdValue !== '') {
@@ -1900,13 +2022,39 @@ function showPersonnelWarning(rowElement, message) {
                 const positionInput = row.querySelector('[data-field="position"]');
                 const areaInput = row.querySelector('[data-field="area"]');
                 
+                // --- CRITICAL FIX: Register deletion if the ID being cleared was a SAVED ID ---
+                const originalEmployeeId = employee.id.trim();
+                if (originalEmployeeId !== '') {
+                     pendingEmployeeInfoChanges[originalEmployeeId] = {
+                        id: originalEmployeeId, 
+                        name: employee.name, 
+                        position: employee.position, 
+                        area: employee.area,
+                        isNew: false, 
+                        originalEmployeeId: originalEmployeeId,
+                        isDeleted: true 
+                     };
+                     showNotification(`Employee ${employee.name} (ID: ${originalEmployeeId}) marked for DELETION on save. Slot cleared for replacement.`, true);
+
+                     // Convert current row to new slot
+                     employee.id = '';
+                     row.dataset.stableKey = `TEMP_${employee.no}`;
+                     delete pendingEmployeeInfoChanges[oldPersonnelKey];
+                }
+                // --- END CRITICAL FIX ---
+
+
                 if (nameInput) nameInput.value = '';
                 if (positionInput) positionInput.value = '';
                 if (areaInput) areaInput.value = '';
                 
+                // Clear pendingChange data for the now-new slot
                 pendingChange.name = '';
                 pendingChange.position = '';
                 pendingChange.area = '';
+                pendingChange.isNew = true;
+                pendingChange.originalEmployeeId = '';
+
 
                 Object.keys(pendingAttendanceChanges).forEach(key => {
                     if (key.startsWith(idToClear + '_')) { 
@@ -1916,7 +2064,8 @@ function showPersonnelWarning(rowElement, message) {
                 
                 row.querySelectorAll('.cell-container').forEach(cell => {
                      const dayKey = cell.dataset.dayKey;
-                     updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
+                     // Use the idToClear (original ID) for the planMap lookup
+                     updateCellVisuals(cell, currentContract.planMap[`${idToClear}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
                 });
                 showNotification('Personnel info and schedule cleared locally as Personnel ID was made blank.', false);
                 checkPlanSheetLockState(); 
@@ -1974,14 +2123,13 @@ function showPersonnelWarning(rowElement, message) {
         }
     }
     
-    // --- Final State Update (Simplified as the Deletion is Handled Above) ---
-    // Ngayon, kasama na sa check ang isDeleted
+
+    // --- Final State Update ---
     const isChanged = (pendingChange.id.trim() !== employee.id || 
                        pendingChange.name.trim() !== employee.name || 
                        pendingChange.position.trim() !== employee.position || 
                        pendingChange.area.trim() !== employee.area ||
-                       (pendingChange.originalEmployeeId === '' && pendingChange.id.trim() !== '') ||
-                       pendingChange.isDeleted !== false); // True kung may deletion request
+                       (pendingChange.originalEmployeeId === '' && pendingChange.id.trim() !== '')); 
 
     if (isChanged) {
         pendingEmployeeInfoChanges[oldPersonnelKey] = pendingChange;
