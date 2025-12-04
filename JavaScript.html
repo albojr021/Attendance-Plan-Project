@@ -1359,13 +1359,14 @@ function handleAttendanceData(data) {
         const stableLookupKey = employee.id || `TEMP_${employee.no}`; 
         
         const pendingInfo = pendingEmployeeInfoChanges[stableLookupKey]; 
-        
+        const isNewUnsaved = pendingInfo && pendingInfo.isNew;
+
         const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
         const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         const displayPosition = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
         const displayArea = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
         
-        const isSavedRow = !!(employee.id || (pendingInfo && pendingInfo.originalEmployeeId)); 
+        const isSavedRow = (employee.id || (pendingInfo && pendingInfo.originalEmployeeId)) && !isNewUnsaved; 
         const isMarkedForDeletion = pendingInfo && pendingInfo.isDeleted; 
         
         const lockedRefNum = lockedIdRefMap[employee.id]; 
@@ -1655,8 +1656,12 @@ function showPersonnelWarning(rowElement, message) {
       };
       
       const previousIdValue = pendingChange.id; 
+      
+      // NEW: I-check kung ito ay bagong row na hindi pa nase-save
+      const isNewUnsaved = pendingChange.isNew && !pendingChange.isDeleted; 
 
-      if (employee.id || pendingChange.isDeleted || lockedIdRefMap[employee.id]) {
+      // UPDATED LOCK CHECK: I-block lang kung Saved Row na at HINDI ito bagong entry (galing Copy Plan)
+      if ((employee.id && !isNewUnsaved) || pendingChange.isDeleted || lockedIdRefMap[employee.id]) {
            showNotification('Cannot edit: Saved row is locked. You must delete and re-add to change info.', false);
            input.value = employee[field];
            return;
