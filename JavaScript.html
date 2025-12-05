@@ -760,17 +760,11 @@ function copyPreviousPlan() {
         return;
     }
     
-    // 1. Check for SAVED Roster Data
-    if ((currentContract?.employees?.length || 0) > 0) {
-        showNotification('Cannot copy: The current period already contains saved employee data. Please use the Bulk Delete feature to clear the roster first, or manually delete rows.', false);
-        return;
-    }
-
-    // 2. Check for UNSAVED Changes (Roster Info or Schedule)
-    if (Object.keys(pendingAttendanceChanges).length > 0 || Object.keys(pendingEmployeeInfoChanges).length > 0) {
-        showNotification('Cannot copy: The current period has unsaved changes (roster or schedule). Please click "Save All Changes to Sheets" or refresh the page to clear pending edits.', false);
-        return;
-    }
+    // 1. Check for UNSAVED Changes (Roster Info or Schedule) - Panatilihin lang ang check sa pending edits.
+  if (Object.keys(pendingAttendanceChanges).length > 0 || Object.keys(pendingEmployeeInfoChanges).length > 0) {
+    showNotification('Cannot copy: The current period has unsaved changes (roster or schedule). Please click "Save All Changes to Sheets" or refresh the page to clear pending edits.', false);
+    return;
+}
     
     // --- End Validation ---
 
@@ -806,11 +800,6 @@ function openCopySelectionModal() {
         return;
     }
     
-    // I-check ang pre-requisites bago magbukas ng modal
-    if ((currentContract?.employees?.length || 0) > 0) {
-        showNotification('Cannot copy: The current period already contains saved employee data. Please use the Bulk Delete feature to clear the roster first, or manually delete rows.', false);
-        return;
-    }
     
     if (Object.keys(pendingAttendanceChanges).length > 0 || Object.keys(pendingEmployeeInfoChanges).length > 0) {
         showNotification('Cannot copy: The current period has unsaved changes. Please click "Save All Changes to Sheets" or refresh the page to clear pending edits.', false);
@@ -935,59 +924,70 @@ function handlePreviousPlanData(data) {
     const startDayOfMonth = currentShift === '1stHalf' ? 1 : 16;
     const endDayOfMonth = currentShift === '1stHalf' ? 15 : daysInCurrentMonth;
     
-    // 3. Process Employee Roster (Apply all as pending changes)
+    // NEW: Create a set of existing employee IDs in the current saved roster
+    const existingEmployeeIds = new Set(currentContract.employees.map(emp => emp.id));
+    let newEmployeesAdded = 0;
+    let employeesSkipped = 0;
+
+    // 3. Process Employee Roster (Apply only NON-EXISTING employees as pending changes)
     data.employees.forEach(emp => {
-        const existingEmp = currentContract.employees.find(e => e.id === emp.id);
-        const stableKey = emp.id; 
+        const personnelId = emp.id;
+
+        // **SKIP if employee ID already exists in the current saved roster**
+        if (existingEmployeeIds.has(personnelId)) {
+            employeesSkipped++;
+            return; 
+        }
+
+        // If not existing, add to pendingEmployeeInfoChanges as a NEW entry
+        const stableKey = personnelId; 
         
-        // This part remains the same: ensure roster is carried over as pending changes
-        let pendingChange = pendingEmployeeInfoChanges[stableKey] || {
-            id: existingEmp?.id || emp.id, 
-            name: existingEmp?.name || emp.name, 
-            position: existingEmp?.position || emp.position, 
-            area: existingEmp?.area || emp.area,
-            isNew: !existingEmp?.id,
-            originalEmployeeId: existingEmp?.id || '',
+        let pendingChange = {
+            id: personnelId, 
+            name: emp.name, 
+            position: emp.position, 
+            area: emp.area,
+            isNew: true, 
+            originalEmployeeId: '', // Walang existing ID na papalitan
             isDeleted: false 
         };
         
-        pendingChange.id = emp.id;
-        pendingChange.name = emp.name; 
-        pendingChange.position = emp.position; 
-        pendingChange.area = emp.area;
-        
         pendingEmployeeInfoChanges[stableKey] = pendingChange;
+        newEmployeesAdded++; 
     });
 
     // 4. Determine the Day-of-Week Pattern from the Source Data
-    // Kukuha ng pattern mula sa lahat ng schedule sa nakaraang shift
     const dowPatternMap = getDOWPatternMap(data.planMap); 
 
-    // 5. Apply the DOW Pattern to the current (target) period
+    // 5. Apply the DOW Pattern to the current (target) period - ONLY for NEW employees
     let changesAppliedCount = 0;
     
     data.employees.forEach(emp => {
         const personnelId = emp.id;
         
+        // **SKIP schedule application if the employee was skipped in step 3**
+        if (existingEmployeeIds.has(personnelId)) {
+            return; 
+        }
+
         for (let dayNum = startDayOfMonth; dayNum <= endDayOfMonth; dayNum++) {
             
-            if (dayNum > daysInCurrentMonth) continue; // Safety check
+            if (dayNum > daysInCurrentMonth) continue; 
+            if (currentShift === '1stHalf' && dayNum > 15) continue; 
             
-            // B. Determine the Day of Week (0-6) for the target day
             const targetDate = new Date(currentYear, currentMonth, dayNum); 
-            const dayOfWeek = targetDate.getDay().toString(); // 0=Sun, 1=Mon, ..., 6=Sat
+            const dayOfWeek = targetDate.getDay().toString(); 
             
-            const newStatus = dowPatternMap[dayOfWeek] || ''; // Get status from pattern
+            const newStatus = dowPatternMap[dayOfWeek] || ''; 
             
             if (newStatus) {
                 const currentDayKey = `${currentYear}-${currentMonth + 1}-${dayNum}`;
                 const currentPlanKey = `${personnelId}_${currentDayKey}_${currentShift}`;
                 
-                // C. Check against current saved status (if any) before applying as pending change
+                // Original Status will be '' (empty) since this is a new employee
                 const originalPlanKey = `${personnelId}_${currentDayKey}_${currentShift}`;
-                const originalStatus = currentContract.planMap[originalPlanKey] || '';
+                const originalStatus = currentContract.planMap[originalPlanKey] || ''; 
                 
-                // Only create a pending change if the new status is different from the saved status
                 if (originalStatus !== newStatus) {
                      pendingAttendanceChanges[currentPlanKey] = newStatus;
                      changesAppliedCount++;
@@ -999,7 +999,7 @@ function handlePreviousPlanData(data) {
     // 6. Re-render the grid
     renderAttendancePlan();
     checkPlanSheetLockState(); 
-    showNotification(`Successfully copied ${data.employees.length} employees and applied Day-of-Week schedule pattern to ${changesAppliedCount} cells. Click "Save All Changes" to save this new plan.`, true);
+    showNotification(`Successfully copied ${newEmployeesAdded} new employees and applied Day-of-Week schedule pattern to ${changesAppliedCount} cells. (Skipped ${employeesSkipped} existing employees). Click "Save All Changes" to save this new plan.`, true);
     toggleLoading(false);
 }
 
