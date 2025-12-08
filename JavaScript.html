@@ -780,7 +780,7 @@ function copyPreviousPlan() {
         return;
     }
 
-    toggleLoading(true, 'Copying previous plan. Fetching data...');
+    toggleLoading(true, 'Copying previous plan roster. Fetching data...');
     
     // 2. Call backend function to fetch data for sourcePeriod
     google.script.run
@@ -792,115 +792,6 @@ function copyPreviousPlan() {
             sourcePeriod.month, 
             sourcePeriod.shift
         );
-}
-
-function openCopySelectionModal() {
-    if (!currentContract) {
-        showNotification('Please select a Contract Group ID first.', false);
-        return;
-    }
-    
-    
-    if (Object.keys(pendingAttendanceChanges).length > 0 || Object.keys(pendingEmployeeInfoChanges).length > 0) {
-        showNotification('Cannot copy: The current period has unsaved changes. Please click "Save All Changes to Sheets" or refresh the page to clear pending edits.', false);
-        return;
-    }
-
-    const modal = document.getElementById('copy-selection-modal');
-    modal.classList.remove('hidden');
-    
-    // 1. I-attach ang listeners sa modal buttons
-    document.getElementById('copy-selection-cancel-btn').onclick = () => modal.classList.add('hidden');
-    document.getElementById('copy-ref-confirm-btn').onclick = () => handleCopySelection('reference');
-    document.getElementById('reference-select').onchange = updateCopyRefButtonState;
-
-    // 2. I-load ang Reference Numbers (Async call)
-    loadReferenceNumbersForCopy();
-}
-
-// --- NEW FUNCTION: Load Reference Numbers mula sa server ---
-function loadReferenceNumbersForCopy() {
-    const sfcRef = currentContract?.sfcRef;
-    if (!sfcRef) return;
-    
-    const refSelect = document.getElementById('reference-select');
-    refSelect.innerHTML = '<option value="">-- Loading Reference Numbers --</option>';
-    refSelect.disabled = true;
-
-    // Kukunin ang listahan ng Reference # mula sa PrintLog
-    google.script.run
-        .withSuccessHandler(populateReferenceSelect)
-        .withFailureHandler(handleError)
-        .getAllReferenceNumbers(sfcRef); // NEW SERVER FUNCTION
-}
-
-// --- NEW FUNCTION: Populate ang Reference # Dropdown ---
-function populateReferenceSelect(refList) {
-    const refSelect = document.getElementById('reference-select');
-    const copyBtn = document.getElementById('copy-ref-confirm-btn');
-
-    refSelect.innerHTML = '';
-    
-    if (refList.length === 0) {
-        refSelect.innerHTML = '<option value="">-- No Printed Schedules Found --</option>';
-        refSelect.disabled = true;
-        copyBtn.disabled = true;
-        return;
-    }
-
-    refSelect.innerHTML = '<option value="">-- Select a Reference Number --</option>';
-    refList.forEach(ref => {
-        const option = document.createElement('option');
-        option.value = ref.refNum;
-        option.textContent = `${ref.refNum} (Printed: ${ref.period})`; 
-        refSelect.appendChild(option);
-    });
-
-    refSelect.disabled = false;
-    updateCopyRefButtonState();
-}
-
-// --- NEW HELPER: Update Copy Reference Button State ---
-function updateCopyRefButtonState() {
-    const refSelect = document.getElementById('reference-select');
-    const copyBtn = document.getElementById('copy-ref-confirm-btn');
-    
-    copyBtn.disabled = !refSelect.value;
-}
-
-// --- NEW FUNCTION: Main Handler for Copy Selection ---
-function handleCopySelection(type) {
-    const modal = document.getElementById('copy-selection-modal');
-    modal.classList.add('hidden');
-
-    // Tiyakin na ang `copyPreviousPlan()` ay nandiyan pa rin (malapit sa line 680)
-    if (type === 'previous') {
-        copyPreviousPlan();
-    } else if (type === 'reference') {
-        const refNum = document.getElementById('reference-select').value;
-        if (refNum) {
-            copyFromReference(refNum); // NEW FUNCTION FOR REFERENCE COPY
-        } else {
-            showNotification('Please select a Reference Number.', false);
-        }
-    }
-}
-
-// --- NEW FUNCTION: Copy from Specific Reference # ---
-function copyFromReference(refNum) {
-    // 1. I-validate ang pre-requisites (Ginawa na sa openCopySelectionModal)
-    
-    toggleLoading(true, `Copying plan from Reference #${refNum}. Fetching data...`);
-    
-    // 2. Call backend function to fetch data based on Reference #
-    // Magpapadala tayo ng Reference #, at hahanapin nito ang Roster at Schedule na na-lock sa ilalim ng Reference # na ito.
-    google.script.run
-        .withSuccessHandler(handlePreviousPlanData) // Re-use the handler since the structure is the same
-        .withFailureHandler(handleError)
-        .getPlanDataByReferenceNum( 
-            currentContract.sfcRef,
-            refNum
-        ); // NEW SERVER FUNCTION
 }
 
 // --- NEW FUNCTION: Handle Data from Previous Period (Applies changes to current period) ---
@@ -956,78 +847,18 @@ function handlePreviousPlanData(data) {
         newEmployeesAdded++; 
     });
 
-    // 4. Determine the Day-of-Week Pattern from the Source Data
-    const dowPatternMap = getDOWPatternMap(data.planMap); 
-
-    // 5. Apply the DOW Pattern to the current (target) period - ONLY for NEW employees
-    let changesAppliedCount = 0;
-    
-    data.employees.forEach(emp => {
-        const personnelId = emp.id;
-        
-        // **SKIP schedule application if the employee was skipped in step 3**
-        if (existingEmployeeIds.has(personnelId)) {
-            return; 
-        }
-
-        for (let dayNum = startDayOfMonth; dayNum <= endDayOfMonth; dayNum++) {
-            
-            if (dayNum > daysInCurrentMonth) continue; 
-            if (currentShift === '1stHalf' && dayNum > 15) continue; 
-            
-            const targetDate = new Date(currentYear, currentMonth, dayNum); 
-            const dayOfWeek = targetDate.getDay().toString(); 
-            
-            const newStatus = dowPatternMap[dayOfWeek] || ''; 
-            
-            if (newStatus) {
-                const currentDayKey = `${currentYear}-${currentMonth + 1}-${dayNum}`;
-                const currentPlanKey = `${personnelId}_${currentDayKey}_${currentShift}`;
-                
-                // Original Status will be '' (empty) since this is a new employee
-                const originalPlanKey = `${personnelId}_${currentDayKey}_${currentShift}`;
-                const originalStatus = currentContract.planMap[originalPlanKey] || ''; 
-                
-                if (originalStatus !== newStatus) {
-                     pendingAttendanceChanges[currentPlanKey] = newStatus;
-                     changesAppliedCount++;
-                }
-            }
-        }
-    });
+    // NOTE: Inalis ang Steps 4 at 5 (DOW Pattern logic). Ang schedule ay mananatiling BLANK.
+    // Walang schedule changes na ia-apply sa pendingAttendanceChanges.
 
     // 6. Re-render the grid
     renderAttendancePlan();
     checkPlanSheetLockState(); 
-    showNotification(`Successfully copied ${newEmployeesAdded} new employees and applied Day-of-Week schedule pattern to ${changesAppliedCount} cells. (Skipped ${employeesSkipped} existing employees). Click "Save All Changes" to save this new plan.`, true);
+    showNotification(`Successfully copied ${newEmployeesAdded} new employees into the roster. (Skipped ${employeesSkipped} existing employees). Please input the schedule manually. Click "Save All Changes" to save this new plan.`, true);
     toggleLoading(false);
 }
 
-function getDOWPatternMap(planMap) {
-    const patternMap = {};
-    
-    // I-iterate ang schedule data na nakuha mula sa backend (prev period)
-    Object.keys(planMap).forEach(key => {
-        const status = planMap[key];
-        // prevDayKey: 'YYYY-M-D' (1-indexed month)
-        const [, dayKey] = key.split('_'); 
-        
-        // Exclude NA/DELETED status from the pattern
-        if (status && status !== 'NA' && status !== 'DELETED') { 
-            // Kuhanin ang Date object para malaman ang Day of Week (0=Sun, 1=Mon, ..., 6=Sat)
-            const [y, m, d] = dayKey.split('-').map(Number);
-            const date = new Date(y, m - 1, d); 
-            const dayOfWeek = date.getDay().toString(); // Day of Week as string key (0-6)
-
-            // Simplification: Prioritize the last schedule found for this Day of Week.
-            // This assumes the pattern is mostly consistent in the source.
-            patternMap[dayOfWeek] = status; 
-        }
-    });
-
-    return patternMap;
-}
-// --- END DOW Helper ---
+// --- END DOW Helper (TINANGGAL ANG FUNCTION) ---
+// function getDOWPatternMap(planMap) { ... }
 
   // --- CONTRACT SELECTION & DATA FETCHING ---
 
@@ -2074,6 +1905,9 @@ function showPersonnelWarning(rowElement, message) {
     }
 
     // --- Original Logic: Autofill schedule pattern ---
+    // NOTE: This feature (autofilling DOW pattern for NEW employees from master) is still desirable 
+    // and is separate from the Copy Previous Period feature logic we are removing.
+    // We will keep this block.
     if (masterRecordFound && !isSaved && !pendingChange.isDeleted && !lockedIdRefMap[oldPersonnelKey]) {
         const currentIdInInput = row.querySelector('[data-field="id"]').value.trim();
         if (currentIdInInput === masterRecordFound.id) {
@@ -3631,6 +3465,7 @@ function handleCellSelectionClick(event) {
     
     toggleCellSelection(targetCell);
 }
+
 
 // Function to open the Bulk Modal
 function openBulkScheduleModal() {
