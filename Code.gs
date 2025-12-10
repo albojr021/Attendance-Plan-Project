@@ -3,11 +3,11 @@ const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4';
 const CONTRACTS_SHEET_NAME = 'MASTER';
 const FILE_201_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM';
 const FILE_201_SHEET_NAME = ['MALL'];
-const BLACKLIST_FILE_ID = '1tl6gQ7yDSyixmf1usZUhGU4qwj75fYG8CAzOme9-rVU'; 
-const BLACKLIST_SHEET_NAMES = ['MALL', 'MEG'];
-const BLACKLIST_ID_COL_INDEX = 4;
-const BLACKLIST_NAME_COL_INDEX = 3;
-const BLACKLIST_STATUS_COL_INDEX = 9;
+const BLACKLIST_FILE_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM'; 
+const BLACKLIST_SHEET_NAMES = ['MALL'];
+const FILE_201_ID_COL_INDEX = 0; // Column A (Personnel ID)
+const FILE_201_NAME_COL_INDEX = 1; // Column B (Personnel Name)
+const FILE_201_BLACKLIST_STATUS_COL_INDEX = 9;
 const PLAN_SHEET_NAME = 'AttendancePlan_Consolidated';
 const PLAN_HEADER_ROW = 1;
 const PLAN_FIXED_COLUMNS = 18;
@@ -288,52 +288,66 @@ function get201FileMasterData() {
     }
 }
 
+function getBlacklistedEmployeesFrom201() {
+    if (FILE_201_ID === 'PUNAN_MO_ITO_NG_201_SPREADSHEET_ID' || !FILE_201_ID) {
+        Logger.log('[getBlacklistedEmployeesFrom201] ERROR: FILE_201_ID is not set.');
+        return [];
+    }
+
+    try {
+        const ss = SpreadsheetApp.openById(FILE_201_ID);
+        // Assuming FILE_201_SHEET_NAME is an array like ['MALL']
+        const sheet = ss.getSheetByName(FILE_201_SHEET_NAME[0]); 
+        
+        if (!sheet) {
+            Logger.log(`[getBlacklistedEmployeesFrom201] ERROR: Sheet ${FILE_201_SHEET_NAME[0]} not found.`);
+            return [];
+        }
+
+        const START_ROW = 2; // Data starts at Row 2 (skipping header at Row 1)
+        const lastRow = sheet.getLastRow();
+        const NUM_ROWS = lastRow - START_ROW + 1;
+        // Basahin hanggang Column J (index 9) para makuha ang Blacklist Status
+        const NUM_COLS_TO_READ = FILE_201_BLACKLIST_STATUS_COL_INDEX + 1; 
+        
+        if (NUM_ROWS <= 0) return [];
+
+        // Magbasa mula Row 2, Column 1 (A), hanggang Column J (index 9)
+        const values = sheet.getRange(START_ROW, 1, NUM_ROWS, NUM_COLS_TO_READ).getDisplayValues();
+        const blacklistedEmployees = [];
+
+        values.forEach(row => {
+            // Index 9 corresponds to Column J
+            const status = String(row[FILE_201_BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase();
+            
+            if (status === 'BLACKLISTED') {
+                const personnelIdRaw = row[FILE_201_ID_COL_INDEX];     // Column A (index 0)
+                const personnelNameRaw = row[FILE_201_NAME_COL_INDEX]; // Column B (index 1)
+                
+                const id = cleanPersonnelId(personnelIdRaw); // Use existing helper
+                const name = String(personnelNameRaw || '').trim().toUpperCase(); 
+
+                if (id) {  
+                    blacklistedEmployees.push({ id: id, name: name });
+                }
+            }
+        });
+
+        Logger.log(`[getBlacklistedEmployeesFrom201] Retrieved ${blacklistedEmployees.length} blacklisted records from 201 file.`);
+        return blacklistedEmployees;
+    } catch (e) {
+        Logger.log(`[getBlacklistedEmployeesFrom201] ERROR: ${e.message}`);
+        // Gamitin ang FILE_201_ID para sa error message
+        throw new Error(`Failed to access 201 Master File for blacklist check. Error: ${e.message}`);
+    }
+}
+
 /**
  * Fetches Personnel IDs and Names of all BLACKLISTED employees from the dedicated sheet(s).
  * @returns {Array<Object>} An array of objects {id: string, name: string}.
  */
-function getBlacklistData() {
-  if (BLACKLIST_FILE_ID === '19eJ-qC68eazvMmjPzZjTvfns_N9h03Ha6SDGTvuv0E') {
-    Logger.log('[getBlacklistData] WARNING: BLACKLIST_FILE_ID is a placeholder. Skipping fetch.');
-    return [];
-  }
-
-  try {
-    const ss = SpreadsheetApp.openById(BLACKLIST_FILE_ID);
-    const blacklistedEmployees = [];
-    BLACKLIST_SHEET_NAMES.forEach(sheetName => {
-      const sheet = ss.getSheetByName(sheetName);
-      if (!sheet) return;
-
-      const lastRow = sheet.getLastRow();
-      const START_ROW = 4;
-      if (lastRow < START_ROW) return;
-
-      const numRows = lastRow - START_ROW + 1;
-      const range = sheet.getRange(START_ROW, 1, numRows, BLACKLIST_STATUS_COL_INDEX + 1);
-      const values = range.getDisplayValues();
-
-      values.forEach(row => {
-         
-        const status = String(row[BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase();
-        
-        if (status === 'BLACKLISTED') {
-          const rawId = row[BLACKLIST_ID_COL_INDEX];
-          const name = String(row[BLACKLIST_NAME_COL_INDEX] || '').trim().toUpperCase(); 
-          const id = cleanPersonnelId(rawId); 
-
-          if (id) {  
-            blacklistedEmployees.push({ id: id, name: name });
-  
-          }
-        }
-      });
-    });
-    return blacklistedEmployees;
-  } catch (e) {
-    Logger.log(`[getBlacklistData] ERROR accessing Blacklist file: ${e.message}`);
-    return [];
-  }
+function getBlacklistData() { 
+    return getBlacklistedEmployeesFrom201();
 }
 
 /**
