@@ -152,64 +152,48 @@
   
   // UPDATED: Logic for Name/ID Datalist Population
   function populateDataLists(masterList) {
-      employeeMasterList = masterList; 
-      const idList = document.getElementById('employee-id-list');
-      const nameList = document.getElementById('employee-name-list');
+    employeeMasterList = masterList; 
+    // Walang pag-populate ng ID at Name datalists dito para maiwasan ang lag.
+    // Dynamic filtering ang gagamitin.
       
-      const positionList = document.getElementById('employee-position-list');
-      const areaList = document.getElementById('employee-area-list');
+    const positionList = document.getElementById('employee-position-list');
+    const areaList = document.getElementById('employee-area-list');
 
-      // Clear existing options
-      idList.innerHTML = '';
-      nameList.innerHTML = '';
-      if (positionList) positionList.innerHTML = '';
-      if (areaList) areaList.innerHTML = '';
+    // Clear existing options
+    if (positionList) positionList.innerHTML = '';
+    if (areaList) areaList.innerHTML = '';
 
-      const uniquePositions = new Set();
-      const uniqueAreas = new Set();
+    const uniquePositions = new Set();
+    const uniqueAreas = new Set();
       
-      employeeMasterList.forEach(emp => {
-          
-          const displayName = emp.name.toUpperCase(); // I-ensure na naka-uppercase (LastName, FirstName)
-          const displayPosition = emp.position.toUpperCase();
-          
-          // ID Datalist: Value is ID, Text shows Name (Formatted: LastName, FirstName)
-          const idOption = document.createElement('option');
-          idOption.value = emp.id;
-          idOption.textContent = `${displayName} (${displayPosition})`; // I-show ang name at position
-          idList.appendChild(idOption);
-          
-          // Name Datalist: Value is Name (Formatted: LastName, FirstName), Text shows ID/Position
-          const nameOption = document.createElement('option');
-          nameOption.value = displayName; // Value to be used for auto-fill/lookup
-          nameOption.textContent = `${emp.id} (${displayPosition})`;
-          nameList.appendChild(nameOption);
-
-          // Collect unique position/area
-          if (emp.position) uniquePositions.add(displayPosition.trim());
-          if (emp.area) uniqueAreas.add(emp.area.trim());
-      });
+    employeeMasterList.forEach(emp => {
+        const displayPosition = emp.position.toUpperCase();
+        
+        // Collect unique position/area
+        if (emp.position) uniquePositions.add(displayPosition.trim());
+        if (emp.area) uniqueAreas.add(emp.area.trim());
+    });
       
-      // Populate Position Datalist
-      if (positionList) {
-          uniquePositions.forEach(pos => {
-              const posOption = document.createElement('option');
-              posOption.value = pos;
-              positionList.appendChild(posOption);
-          });
-      }
+    // Populate Position Datalist
+    if (positionList) {
+        uniquePositions.forEach(pos => {
+            const posOption = document.createElement('option');
+            posOption.value = pos;
+            positionList.appendChild(posOption);
+        });
+    }
 
-      // Populate Area Datalist
-      if (areaList) {
-          uniqueAreas.forEach(area => {
-              const areaOption = document.createElement('option');
-              areaOption.value = area;
-              areaList.appendChild(areaOption);
-          });
-      }
+    // Populate Area Datalist
+    if (areaList) {
+        uniqueAreas.forEach(area => {
+            const areaOption = document.createElement('option');
+            areaOption.value = area;
+            areaList.appendChild(areaOption);
+        });
+    }
       
-      console.log(`Datalists populated with ${masterList.length} employees. (${uniquePositions.size} positions, ${uniqueAreas.size} areas)`);
-  }
+    console.log(`Datalists populated with ${masterList.length} employees. (${uniquePositions.size} positions, ${uniqueAreas.size} areas)`);
+}
   // --- END NEW DATALIST FUNCTIONS ---
   
   // *** NEW FUNCTIONS: Fetch and Populate Signatory Master Data ***
@@ -358,6 +342,58 @@ function isDuplicateName(newName, originalSavedId, currentNo) {
 function getEmployeeDetails(id) {
     // Note: Assuming employeeMasterList is fully populated with {id, name, position, area}
     return employeeMasterList.find(e => e.id === id);
+}
+
+function filterDatalistOptions(event) {
+    const input = event.target;
+    const listId = input.getAttribute('list'); // 'employee-id-list' or 'employee-name-list'
+    const datalist = document.getElementById(listId);
+    
+    // Check if the input value has at least 1 character before filtering
+    const filterValue = input.value.toUpperCase().trim();
+    const isIdList = (listId === 'employee-id-list');
+    const maxResults = 20; // Limitahan sa 20 resulta para sa performance
+
+    // 1. Clear current datalist options immediately
+    if (datalist) {
+        datalist.innerHTML = '';
+    } else {
+        return;
+    }
+    
+    if (filterValue.length === 0) {
+        return; // Walang gagawin kung walang input
+    }
+
+    // 2. Filter the global employeeMasterList
+    const filteredEmployees = employeeMasterList.filter(emp => {
+        if (isIdList) {
+            // Filter by Personnel ID
+            return emp.id.toUpperCase().includes(filterValue);
+        } else {
+            // Filter by Personnel Name
+            return emp.name.toUpperCase().includes(filterValue);
+        }
+    }).slice(0, maxResults); // Kunin lang ang top 20
+
+    // 3. Populate the datalist with filtered results
+    filteredEmployees.forEach(emp => {
+        const option = document.createElement('option');
+        const displayName = emp.name.toUpperCase(); 
+        const displayPosition = emp.position.toUpperCase();
+        
+        if (isIdList) {
+            // ID Datalist: Value is ID, Text shows Name/Position
+            option.value = emp.id;
+            option.textContent = `${displayName} (${displayPosition})`;
+        } else {
+            // Name Datalist: Value is Name, Text shows ID/Position
+            option.value = displayName;
+            option.textContent = `${emp.id} (${displayPosition})`;
+        }
+        
+        datalist.appendChild(option);
+    });
 }
 
 // --- NEW/UPDATED FUNCTION: Kumuha ng Listahan ng Locked Reference Numbers na may Employee Details ---
@@ -1429,6 +1465,16 @@ function handleAttendanceData(data) {
                 infoInput.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
                 infoInput.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
             });
+
+            const idInput = tr.querySelector('[data-field="id"]');
+            const nameInput = tr.querySelector('[data-field="name"]');
+
+              if(idInput) {
+                  idInput.addEventListener('input', filterDatalistOptions);
+              }
+              if(nameInput) {
+                  nameInput.addEventListener('input', filterDatalistOptions);
+              }
         }
 
 
