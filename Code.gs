@@ -1,8 +1,8 @@
 const SPREADSHEET_ID = '1rQnJGqcWcEBjoyAccjYYMOQj7EkIu1ykXTMLGFzzn2I';
 const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; 
 const CONTRACTS_SHEET_NAME = 'MASTER';
-const FILE_201_ID = '19eJ-qC68eazrVMmjPzZjTvfns_N9h03Ha6SDGTvuv0E';
-const FILE_201_SHEET_NAME = 'Basic Information';
+const FILE_201_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM';
+const FILE_201_SHEET_NAME = ['MALL'];
 const BLACKLIST_FILE_ID = '1tl6gQ7yDSyixmf1usZUhGU4qwj75fYG8CAzOme9-rVU'; 
 const BLACKLIST_SHEET_NAMES = ['MALL', 'MEG'];
 const BLACKLIST_ID_COL_INDEX = 4;
@@ -255,26 +255,31 @@ function get201FileMasterData() {
             return [];
         }
 
-        const START_ROW = 6;
+        const START_ROW = 2; // Data starts at Row 2 (skipping header at Row 1)
         const NUM_ROWS = sheet.getLastRow() - START_ROW + 1;
-        const NUM_COLS = 11;
-
+        const NUM_COLS_TO_READ = 2; // Read only Columns A and B
+        
         if (NUM_ROWS <= 0) return [];
-        const values = sheet.getRange(START_ROW, 4, NUM_ROWS, 8).getDisplayValues();
+        
+        // Read from Row 2, Column 1 (A), for NUM_ROWS and 2 columns (A and B)
+        const values = sheet.getRange(START_ROW, 1, NUM_ROWS, NUM_COLS_TO_READ).getDisplayValues();
+        
         const masterData = values.map(row => {
-            const personnelIdRaw = row[0]; 
-            const firstName = String(row[4] || '').trim(); 
-            const lastName = String(row[7] || '').trim();  
-            const cleanId = cleanPersonnelId(personnelIdRaw); 
-            const formattedName = lastName ? `${lastName}, ${firstName}` : firstName;
+            const personnelIdRaw = row[0]; // Column A (index 0)
+            const personnelNameRaw = row[1]; // Column B (index 1)
+            
+            const cleanId = cleanPersonnelId(personnelIdRaw); // Use existing helper
+            const formattedName = String(personnelNameRaw || '').trim().toUpperCase(); 
+            
             if (!cleanId || !formattedName) return null; 
 
             return {
                 id: cleanId,
-                name: formattedName.toUpperCase(),
+                name: formattedName,
             };
         }).filter(item => item !== null);
-        Logger.log(`[get201FileMasterData] Retrieved ${masterData.length} records from 201 file.`);
+
+        Logger.log(`[get201FileMasterData] Retrieved ${masterData.length} records from 201 file (New Format).`);
         return masterData;
 
     } catch (e) {
