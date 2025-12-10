@@ -396,7 +396,46 @@ function filterDatalistOptions(event) {
     });
 }
 
-// --- NEW/UPDATED FUNCTION: Kumuha ng Listahan ng Locked Reference Numbers na may Employee Details ---
+// --- NEW FUNCTION: TRIGGERS ASYNCHRONOUS BLACKLIST CHECK FOR A ROW (NEWLY ADDED) ---
+function triggerBlacklistCheck(rowElement, personnelId, personnelName) {
+    const currentId = (personnelId || '').trim();
+    const currentName = (personnelName || '').trim();
+
+    // Skip check if both ID and Name are empty
+    if (!currentId && !currentName) {
+        showPersonnelWarning(rowElement, null); // Clear existing warning
+        return;
+    }
+
+    // Call server for validation
+    google.script.run
+        .withSuccessHandler((result) => {
+            const latestId = rowElement.querySelector('[data-field="id"]').value.trim();
+            const latestName = rowElement.querySelector('[data-field="name"]').value.trim();
+
+            // Only apply result if the ID/Name combination hasn't changed since the request was sent
+            if (latestId === currentId && latestName === currentName) {
+                if (result.isBlacklisted) {
+                    showPersonnelWarning(rowElement, `BLACKLISTED! (${result.reason.split('(')[0].trim()})`);
+                    showNotification(`BLACKLIST ALERT: ${result.reason} Plan not allowed.`, false);
+                } else {
+                    showPersonnelWarning(rowElement, null); // Clear
+                }
+            } else {
+                // If inputs changed while waiting for response, ignore this outdated result
+                // and trust the warning from the LATEST request.
+                console.warn('Blacklist check result is outdated, ignoring.');
+            }
+        })
+        .withFailureHandler((error) => {
+            handleError(error);
+            showPersonnelWarning(rowElement, null);
+        })
+        .checkBlacklistByIdOrName(currentId, currentName); 
+}
+// --- END NEW FUNCTION ---
+
+// --- NEW FUNCTION: Kumuha ng Listahan ng Locked Reference Numbers na may Employee Details ---
 function getLockedRefNumsList() {
     const lockedRefMap = lockedIdRefMap; // {ID: Ref#}
     const refMap = {}; // {Ref#: {count: N, isSelected: boolean, employees: []}}
@@ -1668,32 +1707,15 @@ function showPersonnelWarning(rowElement, message) {
     
     const upperNewValue = newValue.trim().toUpperCase(); 
     
-    // --- Blacklist Check Trigger ---
+    // --- Blacklist Check Trigger (UPDATED TO USE EXTERNAL FUNCTION) ---
     const idInput = row.querySelector('[data-field="id"]');
     const nameInput = row.querySelector('[data-field="name"]');
     const currentId = idInput?.value.trim() || '';
     const currentName = nameInput?.value.trim() || '';
 
     if (field === 'id' || field === 'name') {
-         // Asynchronous call sa server para i-check ang ID at NAME
-         google.script.run
-              .withSuccessHandler((result) => {
-                  const latestId = row.querySelector('[data-field="id"]').value.trim();
-                  const latestName = row.querySelector('[data-field="name"]').value.trim();
-
-                  if (latestId || latestName) {
-                      if (result.isBlacklisted) {
-                          showPersonnelWarning(row, `BLACKLISTED! (${result.reason.split('(')[0].trim()})`);
-                          showNotification(`BLACKLIST ALERT: ${result.reason} Plan not allowed.`, false);
-                      } else {
-                          showPersonnelWarning(row, null);
-                      }
-                  } else {
-                      showPersonnelWarning(row, null); // Clear if both fields are empty
-                  }
-              })
-              .withFailureHandler(handleError)
-              .checkBlacklistByIdOrName(currentId, currentName); 
+         // Tawagin ang bagong function para i-handle ang asynchronous check
+         triggerBlacklistCheck(row, currentId, currentName);
     }
     // --- End Blacklist Check Trigger ---
 
