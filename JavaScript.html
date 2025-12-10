@@ -2713,7 +2713,7 @@ function validateBlacklistAndContinueSave(groupNumber) {
               return `Checked By name "${item.name}" has invalid characters. Only letters, spaces, commas, periods, or dashes are allowed.`;
           }
           if (!item.designation) {
-              return `Checked By name "${item.name}" is missing a Designation. Please fill in the Designation field.";`;
+              return `Checked By name "${item.name}" is missing a Designation. Please fill in the Designation field.`;
           }
       }
 
@@ -2926,7 +2926,7 @@ function hidePrintSetupModal() {
     document.getElementById('print-setup-modal').classList.add('hidden');
 }
 
-// ⭐ MODIFIED FUNCTION: handlePrintSetupConfirm (Ngayon ay naghahanda ng HTML at tatawag sa server) ⭐
+
 function handlePrintSetupConfirm(event) {
     const subProperty = document.getElementById('sub-property-input').value.trim();
     if (!subProperty) {
@@ -2941,379 +2941,9 @@ function handlePrintSetupConfirm(event) {
     }
     
     hidePrintSetupModal();
-    
-    // 1. Get the list of IDs to print
-    const printedPersonnelIds = getFinalPrintedPersonnelIds(bulkPrintSelected);
-    if (printedPersonnelIds.length === 0) {
-        showNotification('Cannot print: No selected employee data with an **actual schedule** found that is not already locked.', false);
-        return;
-    }
-    
-    // 2. Generate the print-ready HTML
-    const printReadyHtml = getPrintReadyHtml(subProperty, selectedSignatories, printedPersonnelIds);
-
-    // 3. Proceed to PDF generation and logging
-    triggerPdfGenerationAndPrint(subProperty, printReadyHtml, selectedSignatories, printedPersonnelIds);
+    // PASS THE LIST OF SELECTED IDS
+    triggerPrintPreparation(subProperty, bulkPrintSelected);
 }
-
-// ⭐ MODIFIED FUNCTION: triggerPrintPreparation (Pinalitan ang name at inalis ang logPrintAction) ⭐
-function triggerPdfGenerationAndPrint(subProperty, htmlContent, signatories, printedPersonnelIds) {
-    if (!currentContract) {
-        showNotification('Please select a Contract Group ID first.', false);
-        return;
-    }
-    
-    const currentYear = currentPlanningDate.getFullYear();
-    const currentMonth = currentPlanningDate.getMonth();
-    const currentShift = document.getElementById('shift-period-select').value;
-    
-    const contractInfo = {
-        payor: currentContract.payorCompany,
-        agency: currentContract.agency,
-        serviceType: currentContract.serviceType,
-        headCount: currentContract.headCount,
-        sfcRef: currentContract.sfcRef // Idinagdag para sa logging
-    };
-
-    toggleLoading(true, 'Generating PDF Copy, Locking Schedules, and Logging Print Action...');
-
-    // ⭐ CRITICAL: Call the NEW server-side function ⭐
-    google.script.run
-        .withSuccessHandler((response) => { 
-            toggleLoading(false);
-            const { refNum, pdfFileUrl } = response;
-            showNotification(`Success! PDF (Ref# ${refNum}) generated and saved. File: ${pdfFileUrl}`, true);
-            
-            // I-trigger ang browser print
-            triggerPrint(refNum, pdfFileUrl); 
-        })
-        .withFailureHandler((error) => {
-            handleError(error);
-        })
-        .triggerPrintAndGeneratePdf(
-            subProperty, 
-            htmlContent, 
-            signatories, 
-            currentContract.sfcRef, 
-            contractInfo, 
-            currentYear, 
-            currentMonth, 
-            currentShift, 
-            printedPersonnelIds
-        ); 
-}
-
-// ⭐ NEW HELPER FUNCTION: getFinalPrintedPersonnelIds ⭐
-function getFinalPrintedPersonnelIds(bulkPrintSelected) {
-     const printedPersonnelIds = [];
-    const activeRows = document.querySelectorAll('#attendance-table-container tbody tr');
-    const currentShift = document.getElementById('shift-period-select').value;
-    
-    activeRows.forEach(row => {
-        const idInput = row.querySelector('[data-field="id"]');
-        const id = (idInput?.value || '').trim();
-        const stableKey = row.dataset.stableKey;
-
-        if (bulkPrintSelected.includes(id)) {
-            const isLocked = !!lockedIdRefMap[stableKey];
-            const { isPrintable } = getRowScheduleStatus(row, currentShift); 
-
-            if (id && PERSONNEL_ID_REGEX.test(id) && isPrintable && !isLocked) {
-                printedPersonnelIds.push(id);
-            }
-        }
-    });
-    return printedPersonnelIds;
-}
-
-
-// ⭐ NEW FUNCTION: getPrintReadyHtml (Ginagaya ang print output) ⭐
-function getPrintReadyHtml(subProperty, signatories, printedPersonnelIds) {
-    // Kukunin ang CSS na ginagamit sa Stylesheet.html. Ito ay naglalaman ng print styles.
-    const styleSheetContent = document.querySelector('style').textContent;
-    const tableContainer = document.getElementById('attendance-table-container');
-    
-    // 1. Gumawa ng malinis na kopya ng table container
-    const tempContainer = tableContainer.cloneNode(true);
-    
-    // 2. I-filter at i-re-number ang table sa loob ng tempContainer
-    const dynamicallyHiddenRows = []; 
-    const allRows = tempContainer.querySelectorAll('tbody tr');
-
-    let printNumber = 1;
-    allRows.forEach(row => {
-        const idInput = row.querySelector('[data-field="id"]');
-        const id = (idInput?.value || '').trim();
-
-        const noCellSpan = row.querySelector('.sticky-col:first-child > span:first-child');
-        
-        if (printedPersonnelIds.includes(id)) {
-            // I-number ang napiling rows
-            if (noCellSpan) noCellSpan.textContent = printNumber;
-            printNumber++;
-            // Alisin ang print-hidden class (kung meron)
-            row.classList.remove('print-hidden');
-
-            // Alisin ang print-hidden elements (buttons/tags)
-            row.querySelectorAll('.print-hidden').forEach(el => el.remove());
-
-        } else {
-            // Tiyaking tinatanggal ang hindi napiling rows, kasama na ang locked/empty/deleted
-            row.remove();
-        }
-    });
-
-    // 3. Alisin ang mga print-hidden elements sa headers
-    tempContainer.querySelectorAll('.print-hidden').forEach(el => el.remove());
-    
-    // 4. Ihanda ang Signatory HTML
-    const { preparedBy, approvedBy } = signatories;
-    const checkedByNames = signatories.checkedBy;
-    let checkedByColumnsHtml = '';
-    const maxChecked = 5;
-
-    for (let i = 0; i < maxChecked; i++) {
-        const signatory = checkedByNames[i];
-        
-        let nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">&nbsp;</p>`;
-        let designationHtml = `<p class="text-xs font-normal text-black pb-1">&nbsp;</p>`;
-        let isFilled = false;
-        
-        if (signatory && signatory.name.trim() !== '') {
-            nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">${signatory.name.trim()}</p>`;
-            designationHtml = `<p class="text-xs font-normal text-black pb-1">${signatory.designation.trim()}</p>`;
-            isFilled = true;
-        }
-        
-        checkedByColumnsHtml += `
-            <div class="checked-by-col checked-by-col-${i}" data-filled="${isFilled}">
-                ${nameHtml}
-                ${designationHtml}
-                <p class="text-xs font-bold text-black pt-1">Checked By ${i + 1}</p>
-            </div>
-        `;
-    }
-    
-    const signatoriesHtml = `
-        <div id="print-signatories-container" class="print-only-container">
-            <div class="grid gap-x-4 gap-y-2 text-center print-signatories">
-                <div class="prepared-by">
-                    <p class="text-sm font-bold text-black line-break border-t pt-1">${preparedBy.name.trim()}</p>
-                    <p class="text-xs font-normal text-black pb-1">${preparedBy.designation.trim()}</p>
-                    <p class="text-xs font-bold text-black pt-1">Prepared By</p>
-                </div>
-                ${checkedByColumnsHtml}
-                <div class="approved-by">
-                    <p class="text-sm font-bold text-black line-break border-t pt-1">${approvedBy.name.trim()}</p>
-                    <p class="text-xs font-normal text-black pb-1">${approvedBy.designation.trim()}</p>
-                    <p class="text-xs font-bold text-black pt-1">Approved By</p>
-                </div>
-            </div>
-        </div>
-    `;
-
-    // 5. Ihanda ang Contract Info HTML
-    const contractDetailsHtml = `
-        <div id="contract-details-grid" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <div class="card p-3"><p class="text-sm font-medium text-blue-800">SFC Reference #</p><p id="sfc-ref" class="text-lg font-extrabold text-blue-900">${currentContract.sfcRef}</p></div>
-            <div class="card p-3"><p class="text-sm font-medium text-blue-800">Prop. / Grp. Code</p><p id="prop-grp-code" class="text-base font-bold text-blue-900">${currentContract.propOrGrpCode}</p></div>
-            <div class="card p-3"><p class="text-sm font-medium text-blue-800">Sector</p><p id="sector" class="text-base font-bold text-blue-900">${currentContract.sector}</p></div>
-            <div class="card p-3"><p class="text-sm font-medium text-blue-800">Payor Company</p><p id="payor-company" class="text-base font-bold text-blue-900">${currentContract.payorCompany}</p></div>
-            <div class="card p-3"><p class="text-sm font-medium text-blue-800">Agency</p><p id="agency" class="text-base font-bold text-blue-900">${currentContract.agency}</p></div>
-            <div class="card p-3"><p class="text-sm font-medium text-blue-800">Service Type</p><p id="service-type" class="text-base font-bold text-blue-900">${currentContract.serviceType}</p></div>
-            <div class="card p-3"><p class="text-sm font-medium text-blue-800">Total Head Count</p><p id="head-count" class="text-lg font-extrabold text-blue-900">${currentContract.headCount}</p></div>
-            <div class="card p-3"><p class="text-sm font-medium text-blue-800">Plan Period</p><p id="plan-period-display" class="text-base font-bold text-blue-900">${document.getElementById('plan-period-display').textContent}</p></div>
-        </div>
-        <div id="print-sub-property-container" class="print-only-container">
-            <p class="text-sm font-medium text-black font-bold">Sub Property</p>
-            <p id="sub-property-display" class="text-base font-bold text-black">${subProperty}</p>
-        </div>
-    `;
-
-    // 6. I-assemble ang Final HTML structure kasama ang PLACEHOLDERS
-    const finalHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Attendance Plan - ${currentContract.sfcRef} - ${document.getElementById('plan-period-display').textContent}</title>
-          <style>
-             /* CRITICAL: Aggressive landscape and size for PDF renderer */
-             @page { size: 13in 8.5in landscape !important; margin: 10mm !important; }
-             body { 
-                 margin: 10mm; 
-                 padding: 0; 
-                 font-family: 'Inter', sans-serif;
-                 font-size: 10pt; 
-                 width: 13in !important; 
-                 min-width: 13in !important;
-             }
-             
-             /* Inject the rest of the styles, overriding media queries for server */
-             ${styleSheetContent}
-             
-             /* I-ensure na ang print-only elements ay kita sa PDF */
-             .print-hidden { display: none !important; }
-             .print-only-container, .print-signatories { display: block !important; }
-             
-             /* I-enforce ang print fidelity styles (re-declared dito para sa renderer) */
-             .attendance-grid table { table-layout: auto !important; width: 100% !important; }
-             .attendance-grid th, .attendance-grid td { white-space: nowrap !important; }
-             .personnel-info-input { text-align: left !important; }
-             
-             /* Temporary styles to show ref # on PDF */
-             #print-ref-display { 
-                 position: absolute !important; 
-                 top: 5mm !important; 
-                 right: 10mm !important; 
-                 font-size: 8pt !important; 
-                 font-weight: bold !important; 
-                 color: black !important; 
-                 display: block !important;
-             }
-             #print-ref-display::before { content: "Reference # "; }
-             
-             /* Temporary PDF Link for display on the PDF itself (if desired, optional) */
-             #pdf-link-display-pdf {
-                 position: absolute !important; 
-                 bottom: 5mm !important;
-                 left: 10mm !important;
-                 font-size: 7pt !important;
-                 color: #3b82f6 !important;
-                 display: block !important;
-             }
-
-          </style>
-        </head>
-        <body>
-            <div id="print-ref-display" class="print-only-container">__REF_NUM_PLACEHOLDER__</div>
-            
-            <div id="main-content">
-                ${contractDetailsHtml}
-                <div id="attendance-grid" class="attendance-grid">${tempContainer.innerHTML}</div>
-                ${signatoriesHtml}
-                <div id="pdf-link-display-pdf" class="print-only-container">PDF Saved to: __PDF_LINK_PLACEHOLDER__</div>
-            </div>
-        </body>
-        </html>
-    `;
-
-    return finalHtml;
-}
-
-
-// ⭐ MODIFIED FUNCTION: triggerPrint (Simplified) ⭐
-function triggerPrint(refNum, pdfFileUrl) {
-    showNotification(`PDF Generated (Ref# ${refNum}). Triggering browser print...`, true);
-    
-    // 1. Ipakita ang PDF link sa user
-    const pdfLinkDiv = document.getElementById('pdf-link-display');
-    pdfLinkDiv.innerHTML = `
-        <span class="font-bold text-lg text-green-700">Reference # ${refNum}</span> 
-        <a href="${pdfFileUrl}" target="_blank" class="text-blue-600 underline ml-4 hover:text-blue-800">View/Download Generated PDF</a>
-    `;
-    pdfLinkDiv.classList.remove('hidden');
-
-    // 2. I-setup ang Reference # display para sa browser print
-    let printRefElement = document.getElementById('print-ref-display');
-    if (!printRefElement) {
-        printRefElement = document.createElement('div');
-        printRefElement.id = 'print-ref-display';
-        printRefElement.className = 'print-only-container print-hidden'; 
-        document.body.appendChild(printRefElement);
-    }
-    printRefElement.textContent = refNum; 
-    
-    // 3. Mag-inject ng temporary Sub Property container para sa print layout
-    const subPropertyHtml = `
-        <div id="print-sub-property-container" class="print-only-container">
-            <p class="text-sm font-medium text-black font-bold">Sub Property</p>
-            <p id="sub-property-display" class="text-base font-bold text-black">${document.getElementById('sub-property-input').value.trim()}</p>
-        </div>
-    `;
-    const contractDetailsGrid = document.getElementById('contract-details-grid');
-    if (contractDetailsGrid) {
-        contractDetailsGrid.insertAdjacentHTML('afterend', subPropertyHtml);
-    } 
-    
-    // 4. I-inject ang Signatories HTML (kailangan ito para gumana ang print layout)
-    const { preparedBy, approvedBy } = selectedSignatories;
-    const checkedByNames = selectedSignatories.checkedBy;
-    let checkedByColumnsHtml = '';
-    const maxChecked = 5;
-
-    for (let i = 0; i < maxChecked; i++) {
-        const signatory = checkedByNames[i];
-        let nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">&nbsp;</p>`;
-        let designationHtml = `<p class="text-xs font-normal text-black pb-1">&nbsp;</p>`;
-        let isFilled = false;
-        if (signatory && signatory.name.trim() !== '') {
-            nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">${signatory.name.trim()}</p>`;
-            designationHtml = `<p class="text-xs font-normal text-black pb-1">${signatory.designation.trim()}</p>`;
-            isFilled = true;
-        }
-        checkedByColumnsHtml += `
-            <div class="checked-by-col checked-by-col-${i}" data-filled="${isFilled}">
-                ${nameHtml}
-                ${designationHtml}
-                <p class="text-xs font-bold text-black pt-1">Checked By ${i + 1}</p>
-            </div>
-        `;
-    }
-    const signatoriesOnlyHtml = `
-        <div id="print-signatories-container" class="print-only-container">
-            <div class="grid gap-x-4 gap-y-2 text-center print-signatories">
-                <div class="prepared-by">
-                    <p class="text-sm font-bold text-black line-break border-t pt-1">${preparedBy.name.trim()}</p>
-                    <p class="text-xs font-normal text-black pb-1">${preparedBy.designation.trim()}</p>
-                    <p class="text-xs font-bold text-black pt-1">Prepared By</p>
-                </div>
-                ${checkedByColumnsHtml}
-                <div class="approved-by">
-                    <p class="text-sm font-bold text-black line-break border-t pt-1">${approvedBy.name.trim()}</p>
-                    <p class="text-xs font-normal text-black pb-1">${approvedBy.designation.trim()}</p>
-                    <p class="text-xs font-bold text-black pt-1">Approved By</p>
-                </div>
-            </div>
-        </div>
-    `;
-    document.body.insertAdjacentHTML('beforeend', signatoriesOnlyHtml);
-    
-    // 5. Apply numbering/hiding and print-read-only classes
-    const dynamicallyHiddenRows = [];
-    applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows, getFinalPrintedPersonnelIds(bulkPrintSelected));
-    document.querySelectorAll('.print-empty-row').forEach(row => row.classList.add('print-hidden'));
-    
-    const inputs = document.querySelectorAll('#attendance-table-container input');
-    inputs.forEach(input => {
-        input.classList.add('print-read-only');
-    });
-
-    // 6. Tiyaking makukuha ang print dialog
-    setTimeout(() => {
-        window.print();
-    }, 500); 
-
-    // 7. Restoration pagkatapos ng print
-    window.onafterprint = function() {
-        // I-restore ang visibility
-        reloadPlanAndCheckExistence(); 
-
-        // Alisin ang temporary elements
-        if (printRefElement) printRefElement.remove();
-        const injectedSubProperty = document.getElementById('print-sub-property-container');
-        if (injectedSubProperty) injectedSubProperty.remove();
-        const injectedSignatories = document.getElementById('print-signatories-container');
-        if (injectedSignatories) injectedSignatories.remove();
-        
-        // Alisin ang print-read-only class
-        inputs.forEach(input => {
-            input.classList.remove('print-read-only');
-        });
-        
-        window.onafterprint = null; 
-    };
-}
-
 
 // MODIFIED: This function now calls the print selection modal first.
 function handlePrintPlan() {
@@ -3327,8 +2957,248 @@ function handlePrintPlan() {
 }
 
 function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selectedPrintIds parameter
-    // LOGIC IS NOW IN handlePrintSetupConfirm AND triggerPdfGenerationAndPrint
-    // This function is effectively replaced by the flow starting at handlePrintSetupConfirm
+    if (!currentContract) {
+        showNotification('Please select a Contract Group ID first.', false);
+        return;
+    }
+    
+    const activeRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    const printedPersonnelIds = [];
+    let isPlanPrintable = false;
+
+    // Filter printedPersonnelIds based on the selectedPrintIds list
+    activeRows.forEach(row => {
+        const idInput = row.querySelector('[data-field="id"]');
+        const id = (idInput?.value || '').trim();
+        const stableKey = row.dataset.stableKey;
+
+        // Only process IDs that were explicitly selected for print
+        if (selectedPrintIds.includes(id)) {
+            const isLocked = !!lockedIdRefMap[stableKey];
+            
+            // Re-check for schedule and lock state just in case
+            let hasActualSchedule = false;
+            row.querySelectorAll('.cell-container').forEach(cell => {
+                 const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                 if (status !== '' && status !== 'NA' && status !== 'DELETED' && status !== 'LOCKED') {
+                     hasActualSchedule = true;
+                 }
+            });
+
+            if (id && PERSONNEL_ID_REGEX.test(id) && hasActualSchedule && !isLocked) {
+                printedPersonnelIds.push(id);
+                isPlanPrintable = true;
+            } else if (isLocked) {
+                 // Should not happen if modal logic is correct, but good to check
+                 showNotification(`Employee ${id} is locked and will be skipped.`, false);
+            }
+        }
+    });
+    
+    if (printedPersonnelIds.length === 0) {
+         showNotification('Cannot print: No selected employee data with an **actual schedule** found that is not already locked.', false);
+         return;
+    }
+
+
+    const dynamicallyHiddenRows = []; // Will be populated in the final print function
+    
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+    
+    const contractInfo = {
+        payor: currentContract.payorCompany,
+        agency: currentContract.agency,
+        serviceType: currentContract.serviceType,
+        headCount: currentContract.headCount
+    };
+
+    toggleLoading(true, 'Generating Print Reference and Locking Schedules...');
+
+    // UPDATED: logPrintAction now returns an object {refNum, printGroup}
+    google.script.run
+        .withSuccessHandler((response) => { 
+            toggleLoading(false);
+            const { refNum, printGroup } = response; // Destructure new response
+            // PASS the final list of IDs AND printGroup to the print function
+            triggerPrint(refNum, printGroup, subProperty, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
+        })
+        .withFailureHandler((error) => {
+            handleError(error);
+        })
+        .logPrintAction(subProperty, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
+}
+
+function triggerPrint(refNum, printGroup, subProperty, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { // ADDED printGroup
+    showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
+    
+    // DESTUCTURE SIGNATORIES FOR EASIER USE
+    const { preparedBy, approvedBy } = signatories;
+    
+    // --- NEW LOGIC: GENERATE 5 SEPARATE CHECKED BY COLUMNS ---
+    const checkedByNames = signatories.checkedBy; // Kunin ang raw array (kahit may empty)
+    let checkedByColumnsHtml = '';
+    const maxChecked = 5; // Maximum Checked By signatories
+
+    // Loop 5 times para gumawa ng fixed columns
+    for (let i = 0; i < maxChecked; i++) {
+        const signatory = checkedByNames[i];
+        
+        // Default: Blank content at data-filled="false"
+        let nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">&nbsp;</p>`;
+        let designationHtml = `<p class="text-xs font-normal text-black pb-1">&nbsp;</p>`;
+        let isFilled = false;
+        
+        // Kung may laman ang signatory sa index na ito
+        if (signatory && signatory.name.trim() !== '') {
+            nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">${signatory.name.trim()}</p>`;
+            designationHtml = `<p class="text-xs font-normal text-black pb-1">${signatory.designation.trim()}</p>`;
+            isFilled = true;
+        }
+        
+        checkedByColumnsHtml += `
+            <div class="checked-by-col checked-by-col-${i}" data-filled="${isFilled}">
+                ${nameHtml}
+                ${designationHtml}
+                <p class="text-xs font-bold text-black pt-1">Checked By ${i + 1}</p>
+            </div>
+        `;
+    }
+    // --- END NEW LOGIC ---
+
+    let printRefElement = document.getElementById('print-ref-display');
+    if (!printRefElement) {
+        printRefElement = document.createElement('div');
+        printRefElement.id = 'print-ref-display';
+        printRefElement.className = 'print-only-container print-hidden'; 
+        document.body.appendChild(printRefElement);
+    }
+    printRefElement.textContent = refNum; 
+    
+    // --- 2a. Sub Property Container ---
+    const subPropertyHtml = `
+        <div id="print-sub-property-container" class="print-only-container">
+            <p class="text-sm font-medium text-black font-bold">Sub Property</p>
+            <p id="sub-property-display" class="text-base font-bold text-black">${subProperty}</p>
+        </div>
+    `;
+
+    // --- 2b. Signatories Container (UPDATED LAYOUT) ---
+    const signatoriesOnlyHtml = `
+        <div id="print-signatories-container" class="print-only-container">
+            <div class="grid gap-x-4 gap-y-2 text-center print-signatories">
+                <div class="prepared-by">
+                    <p class="text-sm font-bold text-black line-break border-t pt-1">${preparedBy.name.trim()}</p>
+                    <p class="text-xs font-normal text-black pb-1">${preparedBy.designation.trim()}</p>
+                    <p class="text-xs font-bold text-black pt-1">Prepared By</p>
+                </div>
+
+                ${checkedByColumnsHtml}
+
+                <div class="approved-by">
+                    <p class="text-sm font-bold text-black line-break border-t pt-1">${approvedBy.name.trim()}</p>
+                    <p class="text-xs font-normal text-black pb-1">${approvedBy.designation.trim()}</p>
+                    <p class="text-xs font-bold text-black pt-1">Approved By</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 3. Perform Injection
+    const contractDetailsGrid = document.getElementById('contract-details-grid');
+    if (contractDetailsGrid) {
+        contractDetailsGrid.insertAdjacentHTML('afterend', subPropertyHtml);
+    } 
+
+    document.body.insertAdjacentHTML('beforeend', signatoriesOnlyHtml);
+    
+
+    // ********** 3. SETUP PRINT CONFIRMATION MODAL **********
+    const setupModalAndPrint = () => {
+        const modal = document.getElementById('print-confirm-modal');
+        const message = document.getElementById('print-confirm-message');
+        const okBtn = document.getElementById('confirm-print-ok-btn');
+        const cancelBtn = document.getElementById('confirm-print-cancel-btn');
+        
+        message.innerHTML = `We need to verify if the document was successfully printed. Did you proceed with printing the document (Reference #: <span class="font-bold text-blue-600">${refNum}</span>)?`;
+        
+        const restoreUI = () => {
+            modal.classList.add('hidden');
+            
+            // Restore visibility for rows that were hidden specifically for this print job
+            document.querySelectorAll('.print-hidden').forEach(row => {
+                if (dynamicallyHiddenRows.includes(row) || row.classList.contains('print-empty-row')) {
+                    row.classList.remove('print-hidden');
+                }
+            });
+
+            reloadPlanAndCheckExistence(); 
+            
+            if (printRefElement) {
+                 printRefElement.remove();
+            }
+            const injectedSubProperty = document.getElementById('print-sub-property-container');
+            if (injectedSubProperty) {
+                 injectedSubProperty.remove();
+            }
+            const injectedSignatories = document.getElementById('print-signatories-container');
+            if (injectedSignatories) {
+                 injectedSignatories.remove();
+            }
+
+            const inputs = document.querySelectorAll('#attendance-table-container input');
+            inputs.forEach(input => {
+                input.classList.remove('print-read-only');
+            });
+            window.onafterprint = null; 
+            okBtn.removeEventListener('click', handleOk);
+            cancelBtn.removeEventListener('click', handleCancel);
+        };
+
+        const handleOk = () => {
+            
+            toggleUiLock(true, 'Confirming print log and locking schedules...');
+            google.script.run
+                .withSuccessHandler(() => {
+                    console.log(`Successfully recorded print log entry #${refNum} and locked IDs.`);
+                    showNotification(`Print action (Ref# ${refNum}) successfully logged and locked. Refreshing...`, true);
+                    restoreUI();
+                })
+                .withFailureHandler((error) => {
+                    console.error(`Failed to record print log entry #${refNum}:`, error);
+                    showNotification(`Warning: Failed to record print log/lock (Ref# ${refNum}). Error: ${error.message}`, false);
+                    restoreUI();
+                })
+                .recordPrintLogEntry(refNum, printGroup, subProperty, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds); // ADDED printGroup
+        };
+
+        const handleCancel = () => {
+            restoreUI();
+            showNotification(`Print log (Ref# ${refNum}) discarded by user.`, false);
+        };
+        
+        okBtn.addEventListener('click', handleOk);
+        cancelBtn.addEventListener('click', handleCancel);
+
+        window.onafterprint = function() {
+            modal.classList.remove('hidden');
+        };
+    };
+    
+    // Use the new numbering/hiding logic with the selected IDs
+    const rowsToRestore = applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows, printedPersonnelIds); 
+
+    document.querySelectorAll('.print-empty-row').forEach(row => row.classList.add('print-hidden'));
+    
+    const inputs = document.querySelectorAll('#attendance-table-container input');
+    inputs.forEach(input => {
+        input.classList.add('print-read-only');
+    });
+
+    setupModalAndPrint();
+
+    window.print();
 }
 
 
@@ -3996,8 +3866,7 @@ function checkPlanSheetLockState() {
     let totalPrintableAndUnlocked = 0;
 
     gridRows.forEach(row => {
-        const isMarkedForDeletion = row.classList.contains('line-through');
-        if (isMarkedForDeletion) return;
+        if (row.classList.contains('line-through') || row.classList.contains('print-empty-row')) return;
         
         const { id: personnelId, isPrintable } = getRowScheduleStatus(row, currentShift);
         
@@ -4037,14 +3906,9 @@ function updatePrintButtonState() {
       .withFailureHandler(handleError)
       .getContracts();
       
-    // document.getElementById('print-setup-confirm-btn').addEventListener('click', handlePrintSetupConfirm); // ALISIN: Naka-attach na sa openPrintSetupModal
-    // document.getElementById('print-setup-cancel-btn').addEventListener('click', hidePrintSetupModal); // ALISIN: Naka-attach na sa openPrintSetupModal
-    
-    // NEW: Attach Print Setup Modal Listeners
     document.getElementById('print-setup-confirm-btn').addEventListener('click', handlePrintSetupConfirm);
     document.getElementById('print-setup-cancel-btn').addEventListener('click', hidePrintSetupModal);
-
-
+    
     // NEW: Attach Bulk Delete Modal Listeners
     document.getElementById('delete-modal-cancel-btn').addEventListener('click', () => {
          document.getElementById('bulk-delete-selection-modal').classList.add('hidden');
