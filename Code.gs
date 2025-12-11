@@ -1004,7 +1004,7 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
     return { employees, planMap }; // planMap is returned empty.
 }
 
-function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, year, month, shift, group) { 
+function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, attendanceChanges, year, month, shift, group) { // ADDED relieverChanges
     Logger.log(`[saveAllData] Starting save for SFC Ref#: ${sfcRef}, Month/Shift: ${month}/${shift}, SAVE GROUP: ${group}`);
     if (!sfcRef) {
       throw new Error("SFC Ref# is required.");
@@ -1015,23 +1015,29 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     const lockedIds = Object.keys(lockedIdRefMap);
     
-    // BLACKLIST VALIDATION REMOVED (Client-side validation is now the primary check)
-
+    // 1. Filter Regular Employee Info Changes (excluding locked/deleted)
     const finalEmployeeChanges = employeeChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.id || change.oldPersonnelId);
-        
-        // Retain only the check for locked IDs
         if (lockedIds.includes(idToCheck) && !change.isDeleted) {
-             Logger.log(`[saveAllData] Skipping employee info update for locked ID: ${idToCheck}`);
+             Logger.log(`[saveAllData] Skipping regular employee info update for locked ID: ${idToCheck}`);
             return false;
         }
         return true;
      });
-     
+    
+    // 2. Filter Reliever Changes (excluding locked)
+    const finalRelieverChanges = relieverChanges.filter(change => {
+        const idToCheck = cleanPersonnelId(change.id);
+        if (lockedIds.includes(idToCheck)) {
+            Logger.log(`[saveAllData] Skipping reliever entry for locked ID: ${idToCheck}`);
+            return false;
+        }
+        return true;
+    });
+
+    // 3. Filter Attendance Changes (excluding locked)
     const finalAttendanceChanges = attendanceChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.personnelId);
-        
-        // Retain only the check for locked IDs
         if (lockedIds.includes(idToCheck)) {
             Logger.log(`[saveAllData] Skipping attendance plan update for locked ID: ${idToCheck}`);
             return false;
@@ -1040,13 +1046,17 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     });
 
     const deletionList = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
+
+    // CRITICAL: Regular Employee Info Changes MUST be saved to EmployeeMaster_Consolidated
+    const regularEmployeeInfoChanges = finalEmployeeChanges.filter(c => !c.isDeleted);
     
-    if (finalEmployeeChanges && finalEmployeeChanges.length > 0) {
-        saveEmployeeInfoBulk(sfcRef, finalEmployeeChanges, year, month, shift, lockedIdRefMap);
+    if (regularEmployeeInfoChanges && regularEmployeeInfoChanges.length > 0) {
+        saveEmployeeInfoBulk(sfcRef, regularEmployeeInfoChanges, year, month, shift, lockedIdRefMap);
     }
     
-    if (finalAttendanceChanges && finalAttendanceChanges.length > 0 || deletionList.length > 0) {
-        saveAttendancePlanBulk(sfcRef, contractInfo, finalAttendanceChanges, year, month, shift, group, deletionList);
+    // CRITICAL: Pass Reliever Changes to saveAttendancePlanBulk for row versioning
+    if (finalAttendanceChanges.length > 0 || deletionList.length > 0 || finalRelieverChanges.length > 0) {
+        saveAttendancePlanBulk(sfcRef, contractInfo, finalAttendanceChanges, finalRelieverChanges, year, month, shift, group, deletionList); // PASS finalRelieverChanges
     }
     
     logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift);
@@ -1075,7 +1085,7 @@ function getOrCreateUnlockRequestLogSheet(ss) {
     }
 }
 
-function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shift, group, deletionList) { 
+function saveAttendancePlanBulk(sfcRef, contractInfo, changes, relieverChanges, year, month, shift, group, deletionList) { // ADDED relieverChanges
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     if (!planSheet) throw new Error(`AttendancePlan Sheet for ${PLAN_SHEET_NAME} not found.`);
@@ -1143,6 +1153,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             }
         }
     });
+
     const rowsToDeleteMap = {};
     if (deletionList && deletionList.length > 0) {
         deletionList.forEach(deletedId => {
@@ -1175,18 +1186,76 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
     headers.forEach((header, index) => {
         sanitizedHeadersMap[sanitizeHeader(header)] = index;
     });
+    
+    // Convert attendance changes into a map for easier processing
     const changesByRow = changes.reduce((acc, change) => {
         const key = change.personnelId;
         if (!acc[key]) acc[key] = [];
         acc[key].push(change);
         return acc;
     }, {});
+    
     const rowsToAppend = [];
     const userEmail = Session.getActiveUser().getEmail();
     const masterEmployeeMap = getEmployeeMasterData(sfcRef).reduce((map, emp) => { 
         map[emp.id] = { name: emp.name, position: emp.position, area: emp.area };
         return map;
     }, {});
+    
+    // --------------------------------------------------------
+    // NEW LOGIC: 1. Process NEW RELIEVER ENTRIES 
+    // --------------------------------------------------------
+    relieverChanges.forEach(reliever => {
+        const personnelId = reliever.id;
+        
+        // Skip if there's already a saved version OR if there are already attendance changes for this ID
+        // Note: Relievers are typically new entries, so we expect this to run once.
+        if (latestVersionMap[personnelId] || changesByRow[personnelId]) {
+             Logger.log(`[saveAttendancePlanBulk] WARNING: Skipping new reliever entry for existing ID/pending schedule: ${personnelId}`);
+             return;
+        }
+        
+        const planHeadersCount = headers.length; 
+        
+        let newRow = Array(planHeadersCount).fill('');            
+        newRow[sfcRefIndex] = sfcRef;
+        newRow[headcountIndex] = contractInfo.headCount;
+        newRow[propOrGrpCodeIndex] = contractInfo.propOrGrpCode;
+        newRow[serviceTypeIndex] = contractInfo.serviceType;
+        newRow[sectorIndex] = contractInfo.sector;
+        newRow[payorIndex] = contractInfo.payor;
+        newRow[agencyIndex] = contractInfo.agency;
+        newRow[monthIndex] = targetMonthShort;
+        newRow[yearIndex] = targetYear;
+        newRow[shiftIndex] = shift;
+        newRow[saveGroupIndex] = group;
+        newRow[printGroupIndex] = '';
+        newRow[referenceIndex] = '';
+        newRow[personnelIdIndex] = personnelId;
+        newRow[nameIndex] = reliever.name;
+        newRow[positionIndex] = 'RELIEVER'; 
+        newRow[areaIndex] = 'RELIEVER';     
+
+        // Set DAY columns to empty (Walang schedule)
+        for (let d = day1Index; d < numColumns; d++) {
+             newRow[d] = ''; 
+        }
+
+        const nextVersion = '1.0';
+        newRow[saveVersionIndex] = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${group}-${nextVersion}`;
+        
+        rowsToAppend.push(newRow);
+        
+        // Mark as latest version
+        latestVersionMap[personnelId] = newRow; 
+        
+        Logger.log(`[saveAttendancePlanBulk] Appending new RELIEVER row: ${personnelId} with version ${nextVersion}`);
+    });
+    // --------------------------------------------------------
+    // END NEW LOGIC
+    // --------------------------------------------------------
+
+
     changes.sort((a, b) => {
         const dateA = new Date(a.dayKey);
         const dateB = new Date(b.dayKey);
@@ -1195,12 +1264,19 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
         }
         return a.personnelId.localeCompare(b.personnelId);
     });
+    
     Object.keys(changesByRow).forEach(personnelId => {
         const dailyChanges = changesByRow[personnelId];
         const latestVersionRow = latestVersionMap[personnelId];
         let newRow;
         let currentVersion = 0;
-        const empDetails = masterEmployeeMap[personnelId] || { name: 'N/A', position: '', area: '' };    
+        
+        // Use details from Employee Master (Regular) or the saved Plan (Reliever is already in latestVersionMap)
+        const empDetails = masterEmployeeMap[personnelId] || { 
+            name: (latestVersionRow ? latestVersionRow[nameIndex] : 'N/A'), 
+            position: (latestVersionRow ? latestVersionRow[positionIndex] : ''), 
+            area: (latestVersionRow ? latestVersionRow[areaIndex] : '')
+        };    
         let nextGroupToUse = group; 
 
         if (!latestVersionRow) {
@@ -1211,7 +1287,6 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             newRow[sfcRefIndex] = sfcRef;
             newRow[headcountIndex] = contractInfo.headCount;
             newRow[propOrGrpCodeIndex] = contractInfo.propOrGrpCode;
-  
             newRow[serviceTypeIndex] = contractInfo.serviceType;
             newRow[sectorIndex] = contractInfo.sector;
             newRow[payorIndex] = contractInfo.payor;
@@ -1242,9 +1317,12 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             }
 
             newRow[saveGroupIndex] = nextGroupToUse;
-            newRow[nameIndex] = empDetails.name;
-            newRow[positionIndex] = empDetails.position;
-            newRow[areaIndex] = empDetails.area;
+            // Update Name/Position/Area only if it's NOT a Reliever, OR if employee info change was also requested
+            if (empDetails.position !== 'RELIEVER') {
+                newRow[nameIndex] = empDetails.name;
+                newRow[positionIndex] = empDetails.position;
+                newRow[areaIndex] = empDetails.area;
+            }
         }
         
         let isRowChanged = false;
@@ -1269,6 +1347,7 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             
             const dayColIndex = day1Index + dayColumnNumber - 1;
         
+       
             if (dayColIndex >= day1Index && dayColIndex < numColumns) {
  
                 const oldStatus = String((latestVersionRow || newRow)[dayColIndex] || '').trim();
@@ -1289,13 +1368,14 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, year, month, shif
             rowsToAppend.push(newRow);
         }
     });
+
     if (rowsToAppend.length > 0) {
         const newRowLength = rowsToAppend[0].length;
         const startRow = planSheet.getLastRow() + 1;
         
         planSheet.getRange(startRow, 1, rowsToAppend.length, newRowLength).setValues(rowsToAppend);
         planSheet.getRange(startRow, 1, rowsToAppend.length, PLAN_FIXED_COLUMNS).setNumberFormat('@');
-        Logger.log(`[saveAttendancePlanBulk] Appended ${rowsToAppend.length} new version rows for ${PLAN_SHEET_NAME}.`);
+        Logger.log(`[saveAttendancePlanBulk] Appended ${rowsToAppend.length} new version rows (including relievers) for ${PLAN_SHEET_NAME}.`);
     }
 
     planSheet.setFrozenRows(HEADER_ROW); 
