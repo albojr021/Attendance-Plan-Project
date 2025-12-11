@@ -62,8 +62,8 @@
   
   // *** NEW: Global state for tracking ng changes ***
   let pendingAttendanceChanges = {}; 
-  // UPDATED: Ngayon may `isDeleted` property na
   let pendingEmployeeInfoChanges = {}; 
+  let pendingRelieverChanges = {};
   
   // NEW: Global state for locked ID map {ID: Ref#}
   let lockedIdRefMap = {};
@@ -262,59 +262,98 @@ function checkIsBlacklisted(id, name) {
 
 
   // --- NEW FUNCTION: KUNIN ANG ACTIVE IDS SA GRID PARA SA VALIDATION (FIXED LOGIC) ---
-function isDuplicateId(newId, originalSavedId, currentNo) {
+function isDuplicateId(newId, originalStableKey, currentNo) {
     const trimmedNewId = newId.trim();
     if (!trimmedNewId) return false;
 
     let duplicateFound = false;
-    document.querySelectorAll('input[data-field="id"]').forEach(input => {
+    
+    // 1. Check REGULAR Grid (#attendance-table-container)
+    document.querySelectorAll('#attendance-table-container input[data-field="id"]').forEach(input => {
         const row = input.closest('tr');
         const rowKey = row.dataset.stableKey;
         const currentIdInInput = (input.value || '').trim();
         
-        // 1. Skip the row currently being validated/edited.
-        if (rowKey === originalSavedId || rowKey === `TEMP_${currentNo}`) {
+        // Skip the row currently being validated/edited (Regular Row)
+        if (rowKey === originalStableKey || rowKey === `TEMP_${currentNo}`) {
             return;
         }
         
-        // 2. Skip rows marked for deletion (they are inactive for planning).
+        // Skip rows marked for deletion
         if (row.classList.contains('line-through')) {
             return;
         }
         
-        // 3. Check for conflict.
         if (currentIdInInput === trimmedNewId) {
             duplicateFound = true;
         }
     });
+    if (duplicateFound) return true;
+    
+    // 2. Check RELIEVER Grid (#reliever-table-container)
+    document.querySelectorAll('#reliever-table-container input[data-field="id"]').forEach(input => {
+        const row = input.closest('tr');
+        const rowKey = row.dataset.stableKey; // e.g., RELIVER_TEMP_1
+        const currentIdInInput = (input.value || '').trim();
 
+        // Skip the row currently being validated/edited (Reliever Row)
+        if (rowKey === originalStableKey) { 
+            return;
+        }
+        
+        if (currentIdInInput === trimmedNewId) {
+            duplicateFound = true;
+        }
+    });
+    
     return duplicateFound;
 }
 // --- END DUPLICATE ID FUNCTION ---
 
 // *** UPDATED FUNCTION: KUNIN ANG ACTIVE NAMES SA GRID PARA SA VALIDATION (FIXED LOGIC) ***
-function isDuplicateName(newName, originalSavedId, currentNo) {
+function isDuplicateName(newName, originalStableKey, currentNo) {
     const normalizedNewName = normalizeNameForComparison(newName); 
     if (!normalizedNewName) return false;
     
     let duplicateFound = false;
-    document.querySelectorAll('input[data-field="name"]').forEach(input => {
+    
+    // 1. Check REGULAR Grid (#attendance-table-container)
+    document.querySelectorAll('#attendance-table-container input[data-field="name"]').forEach(input => {
         const row = input.closest('tr');
         const rowKey = row.dataset.stableKey;
         const currentNameInInput = (input.value || '').trim();
         const normalizedCurrentName = normalizeNameForComparison(currentNameInInput);
         
-        // 1. Skip the row currently being edited/validated
-        if (rowKey === originalSavedId || rowKey === `TEMP_${currentNo}`) {
+        // Skip the row currently being edited/validated (Regular Row)
+        if (rowKey === originalStableKey || rowKey === `TEMP_${currentNo}`) {
             return;
         }
         
-        // 2. Skip rows marked for deletion
+        // Skip rows marked for deletion
         if (row.classList.contains('line-through')) {
             return;
         }
         
-        // 3. Check for conflict (using normalized names)
+        // Check for conflict (using normalized names)
+        if (normalizedCurrentName === normalizedNewName) {
+            duplicateFound = true;
+        }
+    });
+    if (duplicateFound) return true;
+    
+    // 2. Check RELIEVER Grid (#reliever-table-container)
+    document.querySelectorAll('#reliever-table-container input[data-field="name"]').forEach(input => {
+        const row = input.closest('tr');
+        const rowKey = row.dataset.stableKey;
+        const currentNameInInput = (input.value || '').trim();
+        const normalizedCurrentName = normalizeNameForComparison(currentNameInInput);
+
+        // Skip the row currently being edited/validated (Reliever Row)
+        if (rowKey === originalStableKey) { 
+            return;
+        }
+        
+        // Check for conflict (using normalized names)
         if (normalizedCurrentName === normalizedNewName) {
             duplicateFound = true;
         }
@@ -2399,8 +2438,9 @@ function handleSaveAllChanges() {
     
     const empChangesCount = Object.keys(pendingEmployeeInfoChanges).length;
     const attChangesCount = Object.keys(pendingAttendanceChanges).length;
+    const relieverChangesCount = Object.keys(pendingRelieverChanges).length; // NEW
 
-    if (empChangesCount === 0 && attChangesCount === 0) {
+    if (empChangesCount === 0 && attChangesCount === 0 && relieverChangesCount === 0) {
         showNotification('No changes detected to save.', false);
         return;
     }
@@ -2410,22 +2450,21 @@ function handleSaveAllChanges() {
     // 1. Get the next available Save Group Number from the server (e.g., S1, S2)
     google.script.run
         .withSuccessHandler(function(groupNumber) {
-             // 2. Blacklist validation is skipped/removed. Directly call continueSaveProcess.
-             // UPDATED: Directly call continueSaveProcess
+             // 2. Directly call continueSaveProcess.
              continueSaveProcess(groupNumber); 
         })
         .withFailureHandler(handleSaveAllError)
         .getNextGroupNumber(sfcRefToSave, currentYear, currentMonth, currentShift);
   }
 
-// *** NEW FUNCTION: Continues the saving process after the batch number is determined ***
+// *** NEW FUNCTION: Continues the saving process after the batch number is determined (UPDATED FOR RELIEVERS) ***
 function continueSaveProcess(groupNumber) {
     const sfcRefToSave = currentContract ? currentContract.sfcRef : null;
     const currentYear = currentPlanningDate.getFullYear();
     const currentMonth = currentPlanningDate.getMonth();
     const currentShift = document.getElementById('shift-period-select').value;
     
-    // --- START: Validation and Data Assembly ---
+    // --- START: Validation and Data Assembly for REGULAR EMPLOYEES ---
     
     const finalEmpChanges = [];
     const empChanges = Object.keys(pendingEmployeeInfoChanges)
@@ -2459,22 +2498,51 @@ function continueSaveProcess(groupNumber) {
     });
     
     empChanges.forEach(e => {
+        // Only push if it's a valid change (Deletion, New, or Existing added)
         if (e.isDeleted) {
             finalEmpChanges.push(e); 
-        } else if (e.isExistingEmployeeAdded) {
+        } else if (e.isExistingEmployeeAdded || e.isNew) {
              if (e.id !== '' && e.name !== '' && e.position !== '' && e.area !== '') {
                  finalEmpChanges.push(e);
              }
         }
-        else if (e.isNew) {
-            if (e.id !== '' && e.name !== '' && e.position !== '' && e.area !== '') {
-                 finalEmpChanges.push(e);
-            }
-        }
     });
+
+    // --- START: Validation and Data Assembly for RELIEVER EMPLOYEES (NEW) ---
     
+    const finalRelieverChanges = [];
+    const relieverStableKeys = Object.keys(pendingRelieverChanges);
     
-    // === CRITICAL 3: FINAL CHECK FOR EMPTY ID/NAME ON ACTIVE ROWS ===
+    for (const stableKey of relieverStableKeys) {
+         const change = pendingRelieverChanges[stableKey];
+         
+         // Relievers should be validated as "new" entries
+         // I-check lang kung kumpleto ang ID at Name
+         if (change.id.trim() !== '' && change.name.trim() !== '') {
+             
+             // Check for completeness (Dapat kumpleto na dahil sa auto-fill logic)
+             if (change.position.trim() !== 'RELIEVER' || change.area.trim() !== 'RELIEVER') {
+                  showNotification(`FATAL ERROR: Cannot save reliever (ID: ${change.id}). Position and Area were not set to 'RELIEVER' by the system. Please reload and retry.`, false);
+                  toggleLoading(false);
+                  return; 
+             }
+             
+             finalRelieverChanges.push({
+                 id: change.id.trim(), 
+                 name: change.name.trim(), 
+                 position: 'RELIEVER', // Force value
+                 area: 'RELIEVER',     // Force value
+                 isNew: true,
+                 isDeleted: false,
+                 oldPersonnelId: ''
+             });
+         }
+    }
+
+    // --- END: Validation and Data Assembly for RELIEVERS ---
+
+
+    // === CRITICAL 3: FINAL CHECK FOR EMPTY ID/NAME ON ACTIVE ROWS (REGULAR TABLE ONLY) ===
     const allRows = document.querySelectorAll('#attendance-table-container tbody tr');
     
     const incompleteRow = Array.from(allRows).find(row => {
@@ -2523,16 +2591,12 @@ function continueSaveProcess(groupNumber) {
                            `${displayId || displayName}` : 
                            `Row ${rowNo}`;
                            
-        showNotification(`FATAL ERROR: Cannot save. ${identifier} is missing a required ${missingField}. All active employee rows must have all four info fields (ID, Name, Position, Area Posting).`, false);
+        showNotification(`FATAL ERROR: Cannot save. ${identifier} is missing a required ${missingField} (Regular Employee). All active employee rows must have all four info fields (ID, Name, Position, Area Posting).`, false);
         toggleLoading(false);
         return; 
     }
-    // === END FINAL CHECK FOR EMPTY ID/NAME ===
+    // === END FINAL CHECK FOR EMPTY ID/NAME (REGULAR TABLE) ===
 
-
-    // === CRITICAL 1: FINAL DUPLICATE NAME CHECK BEFORE SAVE ===
-    // (Logic omitted for brevity, assuming existing validation passed)
-    // === END FINAL DUPLICATE NAME CHECK ===
     
     // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (STRICT ALL-OR-NOTHING CHECK) ===
     
@@ -2575,7 +2639,7 @@ function continueSaveProcess(groupNumber) {
         return { personnelId, dayKey, shift, status: pendingAttendanceChanges[key] };
     });
 
-    const finalEmpChangesAfterValidation = finalEmpChanges; // Renamed for clarity
+    const finalEmpChangesAfterValidation = finalEmpChanges; 
 
     if (!sfcRefToSave) {
         showNotification('CRITICAL ERROR: Contract data is not loaded. Please select a Contract Group ID and retry.', false);
@@ -2583,27 +2647,23 @@ function continueSaveProcess(groupNumber) {
         return;
     }
     
-    // 2. I-prepare ang Contract Info (UPDATED WITH NEW METADATA)
+    // 2. I-prepare ang Contract Info 
     const contractInfo = {
         payor: currentContract.payorCompany,
         agency: currentContract.agency,
         serviceType: currentContract.serviceType,
         headCount: currentContract.headCount,
-        // NEW METADATA FIELDS
         propOrGrpCode: currentContract.propOrGrpCode, 
         sector: currentContract.sector
     };
     
-    // --- END: Validation and Data Assembly ---
-
-
     // 3. Final Save Call
     toggleUiLock(true, 'Saving all changes to Google Sheets. Please wait...');
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        // PASS the determined groupNumber (S1, S2, etc.)
-        .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, attChanges, currentYear, currentMonth, currentShift, groupNumber);
+        // CRITICAL: We pass the finalRelieverChanges list
+        .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, finalRelieverChanges, attChanges, currentYear, currentMonth, currentShift, groupNumber);
 }
 // *** END REFRACTORED SAVE FUNCTIONS ***
 
@@ -2611,6 +2671,7 @@ function continueSaveProcess(groupNumber) {
       showNotification('All changes saved successfully! Refreshing data...', true);
       pendingAttendanceChanges = {}; 
       pendingEmployeeInfoChanges = {}; 
+      pendingRelieverChanges = {}; // NEW: Clear reliever changes
       
       if (currentContract && currentContract.sfcRef) {
           fetchEmployeeMasterData(currentContract.sfcRef);
@@ -4062,8 +4123,20 @@ function renderRelieverTable() {
 
     // 2. Use the calculated requiredRows for the loop
     for (let i = 0; i < requiredRows; i++) {
+        // Gumamit ng TEMPORARY key dahil wala pa itong ID sa master list
+        const stableKey = `RELIVER_TEMP_${i + 1}`; 
+        const pendingChange = pendingRelieverChanges[stableKey] || {}; 
+        
+        // Paggamit ng 'RELIEVER' default value
+        const displayId = pendingChange.id || '';
+        const displayName = pendingChange.name || '';
+        const isInputting = displayId.trim() !== '' || displayName.trim() !== '';
+
+        const displayPosition = pendingChange.position || (isInputting ? 'RELIEVER' : ''); // Auto-fill if ID or Name exists
+        const displayArea = pendingChange.area || (isInputting ? 'RELIEVER' : '');       // Auto-fill if ID or Name exists
+
         const tr = tbody.insertRow();
-        tr.dataset.rowNo = i + 1;
+        tr.dataset.stableKey = stableKey; 
         
         // No. Cell (Index 0)
         let td = tr.insertCell();
@@ -4074,11 +4147,13 @@ function renderRelieverTable() {
         td = tr.insertCell();
         let input = document.createElement('input');
         input.type = 'text';
+        input.value = displayId;
         input.setAttribute('list', 'employee-id-list'); 
         input.placeholder = 'ID';
         input.maxLength = 20; 
         input.dataset.field = 'id';
         input.dataset.reliever = 'true'; 
+        input.dataset.rowNo = i + 1; 
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1'; 
@@ -4087,6 +4162,7 @@ function renderRelieverTable() {
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
+        input.value = displayName;
         input.setAttribute('list', 'employee-name-list'); 
         input.placeholder = 'Full Name';
         input.dataset.field = 'name';
@@ -4095,31 +4171,46 @@ function renderRelieverTable() {
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
         
-        // Position Input (Index 3)
+        // Position Input (Index 3) - WALANG DATALIST at READ-ONLY
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
-        input.setAttribute('list', 'employee-position-list'); 
-        input.placeholder = 'Position';
+        input.value = displayPosition;
+        input.placeholder = 'Position (RELIEVER)';
+        input.readOnly = true; 
         input.dataset.field = 'position';
         input.dataset.reliever = 'true';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent read-only'; 
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         
-        // Area Posting Input (Index 4)
+        // Area Posting Input (Index 4) - WALANG DATALIST at READ-ONLY
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
-        input.setAttribute('list', 'employee-area-list'); 
-        input.placeholder = 'Area';
+        input.value = displayArea;
+        input.placeholder = 'Area (RELIEVER)';
+        input.readOnly = true; 
         input.dataset.field = 'area';
         input.dataset.reliever = 'true';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent read-only'; 
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         
-        // TODO: Add listeners for Reliever Personnel info changes here in the next step
+        // 3. Attach Listeners (ONLY to ID and Name)
+        const idInput = tr.querySelector('[data-field="id"]');
+        const nameInput = tr.querySelector('[data-field="name"]');
+        
+        if(idInput) {
+            idInput.addEventListener('input', handleRelieverInfoChange);
+            idInput.addEventListener('change', handleRelieverInfoChange);
+            idInput.addEventListener('input', filterDatalistOptions);
+        }
+        if(nameInput) {
+            nameInput.addEventListener('input', handleRelieverInfoChange);
+            nameInput.addEventListener('change', handleRelieverInfoChange);
+            nameInput.addEventListener('input', filterDatalistOptions);
+        }
     }
     
     tableContainer.appendChild(table);
@@ -4137,6 +4228,174 @@ function calculateRelieverRows(headCount) {
     const maxRows = 10;
     
     return Math.min(maxRows, Math.max(minRows, calculated));
+}
+
+function handleRelieverInfoChange(event) {
+    const input = event.target;
+    const field = input.dataset.field;
+    const row = input.closest('tr');
+    const stableKey = row.dataset.stableKey; // e.g., RELIVER_TEMP_1
+    let newValue = input.value;
+    
+    // Position and Area inputs (Read-only UI elements)
+    const positionInput = row.querySelector('[data-field="position"]');
+    const areaInput = row.querySelector('[data-field="area"]');
+    const idInput = row.querySelector('[data-field="id"]');
+    const nameInput = row.querySelector('[data-field="name"]');
+    
+    // 1. Tiyakin na ang pendingChange ay laging nababasa/nalilikha nang tama
+    let pendingChange = pendingRelieverChanges[stableKey] || {
+        id: '', 
+        name: '',
+        position: '',
+        area: '',
+        isNew: true
+    };
+    
+    let masterRecordFound = null; 
+    let masterRecord = null;
+    
+    const upperNewValue = newValue.trim().toUpperCase(); 
+    
+    // Helper function para sa kumpletong pag-clear
+    const clearRowAndState = () => {
+         idInput.value = '';
+         nameInput.value = '';
+         positionInput.value = '';
+         areaInput.value = '';
+         pendingChange.id = '';
+         pendingChange.name = ''; 
+         pendingChange.position = '';
+         pendingChange.area = '';
+         delete pendingRelieverChanges[stableKey];
+    };
+    
+    // --- SIMULA: REAL-TIME VALIDATION (Change Event Only) ---
+    if (event.type === 'change') {
+        const currentId = idInput?.value.trim() || '';
+        const currentName = nameInput?.value.trim() || '';
+        
+        // 1. **BLACKLIST CHECK**
+        const blacklistCheckResult = checkIsBlacklisted(currentId, currentName);
+
+        if (blacklistCheckResult.isBlacklisted) {
+            showNotification(`FATAL: Cannot use Personnel ID/Name. Employee is BLACKLISTED! ${blacklistCheckResult.reason}`, false);
+            clearRowAndState();
+            showPersonnelWarning(row, null); 
+            return; 
+        }
+        
+        // 2. **201 CHECK**
+        if (upperNewValue.length > 0) { 
+            
+            if (field === 'id' || field === 'name') {
+                const is201Employee = all201PersonnelList.some(e => {
+                    if (field === 'id') {
+                        return e.id === currentId;
+                    } else {
+                        const normalizedInputName = normalizeNameForComparison(currentName.toUpperCase());
+                        return normalizeNameForComparison(e.name) === normalizedInputName;
+                    }
+                });
+
+                if (!is201Employee) { 
+                    showNotification(`FATAL: Personnel ${field.toUpperCase()} "${newValue}" not found in the 201 Master File/Employee Master.`, false);
+                    clearRowAndState();
+                    showPersonnelWarning(row, null); 
+                    return; 
+                }
+            }
+        }
+        
+        if (field === 'id' || field === 'name') {
+             showPersonnelWarning(row, null); 
+        }
+    } 
+    // --- END: REAL-TIME VALIDATION ---
+
+    
+    // --- Master Record lookup (ONLY for ID and Name) ---
+    if (field === 'id') {
+         masterRecord = employeeMasterList.find(e => e.id === upperNewValue);
+         pendingChange.id = upperNewValue; 
+    } else if (field === 'name') {
+         const normalizedInputName = normalizeNameForComparison(upperNewValue);
+         masterRecord = employeeMasterList.find(e => normalizeNameForComparison(e.name) === normalizedInputName);
+         pendingChange.name = upperNewValue.replace(SAFE_NAME_REGEX, ''); 
+         input.value = pendingChange.name;
+    }
+    
+    // Update the pendingChange state for the edited field
+    if (field === 'id') pendingChange.id = upperNewValue;
+    if (field === 'name') pendingChange.name = input.value;
+    
+    // 2. AUTO-FILL LOGIC: Always override Position/Area to 'RELIEVER'
+    const isRowInputting = (pendingChange.id.trim() !== '' || pendingChange.name.trim() !== '');
+
+    if (isRowInputting) {
+        positionInput.value = 'RELIEVER';
+        areaInput.value = 'RELIEVER';
+        pendingChange.position = 'RELIEVER';
+        pendingChange.area = 'RELIEVER';
+    } else {
+        positionInput.value = '';
+        areaInput.value = '';
+        pendingChange.position = '';
+        pendingChange.area = '';
+    }
+
+    if (masterRecord) {
+        masterRecordFound = masterRecord; 
+        
+        // I-fill ang ID at Name mula sa Master Record (HUWAG i-overwrite ang Position/Area)
+        idInput.value = masterRecord.id;
+        nameInput.value = masterRecord.name;
+        
+        pendingChange.id = masterRecord.id;
+        pendingChange.name = masterRecord.name;
+        
+        showNotification(`Employee details auto-filled for ${masterRecord.name}. Position/Area set to RELIEVER.`, true);
+    } 
+
+    // --- ID validation and Duplicate Check (Cross-table check na ito) ---
+    if (field === 'id' && pendingChange.id) {
+        if (!PERSONNEL_ID_REGEX.test(pendingChange.id)) {
+             showNotification('Personnel ID must contain numbers only.', false);
+             clearRowAndState(); // Use helper to clear all fields
+             return; 
+        }
+        
+        if (isDuplicateId(pendingChange.id, stableKey, 0)) { 
+            showNotification(`FATAL: Personnel ID "${pendingChange.id}" is already used in another row (REGULAR or RELIEVER table).`, false);
+            clearRowAndState(); // Use helper to clear all fields
+            return; 
+        }
+    } 
+    
+    // --- Name duplication check (Cross-table check na ito) ---
+    else if (field === 'name' && pendingChange.name) {
+        if (isDuplicateName(pendingChange.name, stableKey, 0)) {
+            showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee (REGULAR or RELIEVER table). Name must be unique.`, false);
+            clearRowAndState(); // Use helper to clear all fields
+            return; 
+        }
+    }
+
+    // --- Final State Update: Only save if ID and Name are filled (since Pos/Area are auto-filled) ---
+    const isRowComplete = pendingChange.id.trim() !== '' && pendingChange.name.trim() !== '';
+
+    if (isRowComplete) {
+        // Tiyakin na Position/Area ay 'RELIEVER' bago i-save sa pending state
+        pendingRelieverChanges[stableKey] = {
+            id: pendingChange.id.trim(),
+            name: pendingChange.name.trim(),
+            position: 'RELIEVER',
+            area: 'RELIEVER',
+            isNew: true
+        };
+    } else {
+        delete pendingRelieverChanges[stableKey];
+    }
 }
 
   // --- INITIALIZATION ---
