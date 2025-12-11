@@ -1726,6 +1726,36 @@ function showPersonnelWarning(rowElement, message) {
     } else if (field === 'name') {
          masterRecord = employeeMasterList.find(e => e.name.toUpperCase() === upperNewValue);
     }
+
+    const isNewUnsaved = pendingChange.isNew; 
+    
+    // --- NEW 201 CHECK (MODIFIED): Block only ID and Name fields for new, non-Master employees ---
+    // Ang blocking ay mangyayari lamang sa 'change' event (pagkatapos mag-type/umalis sa field)
+    if (upperNewValue.length > 0 && isNewUnsaved && event.type === 'change') { 
+        
+        // I-validate LAMANG kung ang field ay Personnel ID o Personnel Name.
+        if (field === 'id' || field === 'name') {
+            if (!masterRecord) { 
+                showNotification(`FATAL: Personnel ${field.toUpperCase()} "${newValue}" not found in the 201 Master File/Employee Master. Only existing Master employees are allowed for NEW slots.`, false);
+            
+                // Revert value to original state (empty for new slots)
+                input.value = employee[field] || ''; 
+    
+                // Revert pending change state for this field
+                pendingChange[field] = employee[field] || ''; 
+                
+                // I-check kung blank na ulit ang buong pending change, at kung oo, i-delete ang entry.
+                const allPendingBlank = !pendingChange.id.trim() && !pendingChange.name.trim() && !pendingChange.position.trim() && !pendingChange.area.trim();
+    
+                if (allPendingBlank) {
+                    delete pendingEmployeeInfoChanges[oldPersonnelKey];
+                }
+                
+                return; 
+            }
+        }
+    }
+    // --- END NEW 201 CHECK ---
     
     const isSaved = employeeMasterList.some(e => e.id === employee.id);
 
