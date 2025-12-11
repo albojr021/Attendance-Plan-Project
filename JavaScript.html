@@ -30,7 +30,7 @@
   let all201PersonnelList = [];  // Full list of employees from 201 (blacklisted or not)
   let blacklistedEmployeeList = []; // Only blacklisted employees for quick lookup
 
-  let relieverPersonnelList = [];
+ let savedRelieverList = [];
   
   // *** NEW: Global state for Save Group Number (Read-only input value) ***
   // UPDATED: Default is S1
@@ -1274,8 +1274,12 @@ function fetchAttendanceData(sfcRef) {
 
 
 function handleAttendanceData(data) {
-    currentContract.employees = data.employees;
+    // UPDATED: employees now holds ONLY regular employees
+    currentContract.employees = data.employees; 
     currentContract.planMap = data.planMap;
+    
+    // NEW: Store the saved relievers list
+    savedRelieverList = data.relieverPersonnelList || []; 
     
     lockedIdRefMap = data.lockedIdRefMap || {}; 
     const lockedIds = Object.keys(lockedIdRefMap);
@@ -4088,7 +4092,39 @@ function updatePrintButtonState() {
 }
 
 function renderRelieverTable() {
-    // 1. Calculate the required rows dynamically
+    
+    // 1. Get saved relievers and merge with pending changes/new entries
+    const savedRelievers = savedRelieverList.slice() || []; 
+    let relieversToRender = [];
+    
+    // 1.a. Start with saved relievers (Use ID as stableKey if saved)
+    savedRelievers.forEach(emp => {
+        // Find existing index in case of edits (though relievers are usually append-only)
+        const pending = pendingRelieverChanges[emp.id];
+        relieversToRender.push({ 
+            id: (pending && pending.id) || emp.id, 
+            name: (pending && pending.name) || emp.name, 
+            position: 'RELIEVER', 
+            area: 'RELIEVER',
+            stableKey: emp.id // Use saved ID as stable key
+        });
+    });
+
+    // 1.b. Add pending NEW relievers (using temporary keys, skip if already in saved list)
+    Object.keys(pendingRelieverChanges).forEach(stableKey => {
+         const change = pendingRelieverChanges[stableKey];
+         if (stableKey.startsWith('RELIVER_TEMP_') && !relieversToRender.some(e => e.stableKey === stableKey)) {
+             relieversToRender.push({
+                 id: change.id, 
+                 name: change.name, 
+                 position: change.position, 
+                 area: change.area, 
+                 stableKey: stableKey 
+             });
+         }
+    });
+
+    // 2. Calculate required rows dynamically
     const requiredRows = calculateRelieverRows(currentContract?.headCount || 0);
 
     const tableContainer = document.getElementById('reliever-table-container');
@@ -4097,6 +4133,8 @@ function renderRelieverTable() {
     if (!tableContainer || !relieverArea) return;
 
     tableContainer.innerHTML = ''; 
+    const relieverTableWrapper = document.createElement('div');
+    relieverTableWrapper.className = 'reliever-print-wrapper';
     
     const table = document.createElement('table');
     table.className = 'w-full text-sm text-left text-gray-700 border-collapse';
@@ -4121,22 +4159,32 @@ function renderRelieverTable() {
     
     const tbody = table.createTBody();
 
-    // 2. Use the calculated requiredRows for the loop
-    for (let i = 0; i < requiredRows; i++) {
-        // Gumamit ng TEMPORARY key dahil wala pa itong ID sa master list
-        const stableKey = `RELIVER_TEMP_${i + 1}`; 
-        const pendingChange = pendingRelieverChanges[stableKey] || {}; 
-        
-        // Paggamit ng 'RELIEVER' default value
-        const displayId = pendingChange.id || '';
-        const displayName = pendingChange.name || '';
-        const isInputting = displayId.trim() !== '' || displayName.trim() !== '';
+    // Loop based on required slots (Max of rendered relievers or required rows)
+    const totalSlots = Math.max(requiredRows, relieversToRender.length);
 
-        const displayPosition = pendingChange.position || (isInputting ? 'RELIEVER' : ''); // Auto-fill if ID or Name exists
-        const displayArea = pendingChange.area || (isInputting ? 'RELIEVER' : '');       // Auto-fill if ID or Name exists
+    for (let i = 0; i < totalSlots; i++) {
+        const reliever = relieversToRender[i] || { 
+            stableKey: `RELIVER_TEMP_${i + 1}`,
+            id: '', 
+            name: '', 
+            position: '', 
+            area: '' 
+        };
+        
+        // Use the saved ID (if it exists) or the TEMP key for the stable key
+        const finalStableKey = reliever.id.trim() ? reliever.id : `RELIVER_TEMP_${i + 1}`; 
+        
+        // Final display values
+        const displayId = reliever.id || '';
+        const displayName = reliever.name || '';
+        const displayPosition = reliever.position || '';
+        const displayArea = reliever.area || '';
+        
+        // [NEW LOGIC] Check if the row represents a SAVED employee
+        const isSavedReliever = displayId.trim() !== '' && !reliever.stableKey.startsWith('RELIVER_TEMP_'); 
 
         const tr = tbody.insertRow();
-        tr.dataset.stableKey = stableKey; 
+        tr.dataset.stableKey = finalStableKey; 
         
         // No. Cell (Index 0)
         let td = tr.insertCell();
@@ -4154,7 +4202,11 @@ function renderRelieverTable() {
         input.dataset.field = 'id';
         input.dataset.reliever = 'true'; 
         input.dataset.rowNo = i + 1; 
-        input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
+        
+        // CRITICAL UPDATE: ID should be read-only if saved
+        input.readOnly = isSavedReliever; 
+
+        input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); 
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1'; 
         
@@ -4167,11 +4219,15 @@ function renderRelieverTable() {
         input.placeholder = 'Full Name';
         input.dataset.field = 'name';
         input.dataset.reliever = 'true';
-        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
+        
+        // CRITICAL UPDATE: Name should be read-only if saved
+        input.readOnly = isSavedReliever; 
+
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); 
         td.appendChild(input);
         td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
         
-        // Position Input (Index 3) - WALANG DATALIST at READ-ONLY
+        // Position Input (Index 3) - Remains Read-Only
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
@@ -4184,7 +4240,7 @@ function renderRelieverTable() {
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         
-        // Area Posting Input (Index 4) - WALANG DATALIST at READ-ONLY
+        // Area Posting Input (Index 4) - Remains Read-Only
         td = tr.insertCell();
         input = document.createElement('input');
         input.type = 'text';
@@ -4197,23 +4253,26 @@ function renderRelieverTable() {
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         
-        // 3. Attach Listeners (ONLY to ID and Name)
+        // 3. Attach Listeners (Attach ONLY if NOT saved)
         const idInput = tr.querySelector('[data-field="id"]');
         const nameInput = tr.querySelector('[data-field="name"]');
         
-        if(idInput) {
-            idInput.addEventListener('input', handleRelieverInfoChange);
-            idInput.addEventListener('change', handleRelieverInfoChange);
-            idInput.addEventListener('input', filterDatalistOptions);
-        }
-        if(nameInput) {
-            nameInput.addEventListener('input', handleRelieverInfoChange);
-            nameInput.addEventListener('change', handleRelieverInfoChange);
-            nameInput.addEventListener('input', filterDatalistOptions);
+        if(!isSavedReliever) { 
+            if(idInput) {
+                idInput.addEventListener('input', handleRelieverInfoChange);
+                idInput.addEventListener('change', handleRelieverInfoChange);
+                idInput.addEventListener('input', filterDatalistOptions);
+            }
+            if(nameInput) {
+                nameInput.addEventListener('input', handleRelieverInfoChange);
+                nameInput.addEventListener('change', handleRelieverInfoChange);
+                nameInput.addEventListener('input', filterDatalistOptions);
+            }
         }
     }
     
-    tableContainer.appendChild(table);
+    relieverTableWrapper.appendChild(table); 
+    tableContainer.appendChild(relieverTableWrapper); // I-append ang wrapper
     relieverArea.classList.remove('hidden'); 
 }
 
