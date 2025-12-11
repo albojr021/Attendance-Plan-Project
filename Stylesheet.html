@@ -230,7 +230,34 @@
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
         #legend-area, .action-icon, .new-label-no-col, #floating-bulk-modal, .print-header
         { display: none !important; }
+
+        .reliever-print-wrapper {
+        display: block !important;
+        width: 500px !important; /* Kabuuang lapad ng 5 personnel columns */
+        overflow: hidden !important; 
+        }
+
+        .reliever-print-wrapper td:nth-child(n+6), 
+        .reliever-print-wrapper th:nth-child(n+6) {
+        display: none !important;
+        }
+
+        .reliever-print-wrapper tr[data-stable-key^="RELIVER_TEMP_"]:not(:has(input[value]:not([value=""]):not([value="RELIEVER"]))) {
+         display: none !important; /* Hides temp rows that are not filled */
+        }
         
+        .reliever-print-wrapper table { 
+        width: 500px !important; 
+        table-layout: fixed !important; 
+        border-collapse: collapse;
+        }
+
+        .reliever-print-wrapper td:nth-child(1), .reliever-print-wrapper th:nth-child(1) { width: 50px !important; } /* No. */
+        .reliever-print-wrapper td:nth-child(2), .reliever-print-wrapper th:nth-child(2) { width: 100px !important; } /* Personnel ID */
+        .reliever-print-wrapper td:nth-child(3), .reliever-print-wrapper th:nth-child(3) { width: 150px !important; } /* Personnel Name */
+        .reliever-print-wrapper td:nth-child(4), .reliever-print-wrapper th:nth-child(4) { width: 100px !important; } /* Position */
+        .reliever-print-wrapper td:nth-child(5), .reliever-print-wrapper th:nth-child(5) { width: 100px !important; } /* Area Posting */
+
         #print-sub-property-container, #print-signatories-container { display: block !important; }
         
         .locked-row { background-color: white !important; opacity: 1 !important; }
