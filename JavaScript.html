@@ -4129,10 +4129,13 @@ function renderRelieverTable() {
 
     const tableContainer = document.getElementById('reliever-table-container');
     const relieverArea = document.getElementById('reliever-personnel-area');
+    const relieverTitle = document.getElementById('reliever-title');
 
     if (!tableContainer || !relieverArea) return;
 
-    tableContainer.innerHTML = ''; 
+    tableContainer.innerHTML = '';
+    relieverArea.classList.remove('hidden');
+    relieverTitle.classList.remove('print-hidden'); 
     const relieverTableWrapper = document.createElement('div');
     relieverTableWrapper.className = 'reliever-print-wrapper';
     
@@ -4273,7 +4276,6 @@ function renderRelieverTable() {
     
     relieverTableWrapper.appendChild(table); 
     tableContainer.appendChild(relieverTableWrapper); // I-append ang wrapper
-    relieverArea.classList.remove('hidden'); 
 }
 
 function calculateRelieverRows(headCount) {
