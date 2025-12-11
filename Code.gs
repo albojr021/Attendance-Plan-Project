@@ -2,9 +2,9 @@ const SPREADSHEET_ID = '1rQnJGqcWcEBjoyAccjYYMOQj7EkIu1ykXTMLGFzzn2I';
 const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; 
 const CONTRACTS_SHEET_NAME = 'MASTER';
 const FILE_201_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM';
-const FILE_201_SHEET_NAME = ['MALL'];
+const FILE_201_SHEET_NAME = ['MEG'];
 const BLACKLIST_FILE_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM'; 
-const BLACKLIST_SHEET_NAMES = ['MALL'];
+const BLACKLIST_SHEET_NAMES = ['MEG'];
 const FILE_201_ID_COL_INDEX = 0; // Column A (Personnel ID)
 const FILE_201_NAME_COL_INDEX = 1; // Column B (Personnel Name)
 const FILE_201_BLACKLIST_STATUS_COL_INDEX = 9;
@@ -296,7 +296,7 @@ function getBlacklistedEmployeesFrom201() {
 
     try {
         const ss = SpreadsheetApp.openById(FILE_201_ID);
-        // Assuming FILE_201_SHEET_NAME is an array like ['MALL']
+        // Assuming FILE_201_SHEET_NAME is an array like ['MEG']
         const sheet = ss.getSheetByName(FILE_201_SHEET_NAME[0]); 
         
         if (!sheet) {
