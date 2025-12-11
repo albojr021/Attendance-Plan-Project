@@ -421,42 +421,6 @@ function checkBlacklistForPersonnel(personnelId) {
 }
 
 /**
- * Checks a bulk list of Personnel IDs and Names against the blacklist data.
- * @param {Array<Object>} employeeList An array of objects {id: string, name: string} to check.
- * @returns {Array<string>} An array containing only the IDs that are blacklisted.
- */
-function checkBulkBlacklist(employeeList) { 
-    if (!employeeList || employeeList.length === 0) return [];
-
-    const blacklistedList = getBlacklistData();
-    const blacklistIdMap = blacklistedList.reduce((map, emp) => {
-        map[emp.id] = emp.name; 
-        return map;
-    }, {});
-    const blacklistNameMap = blacklistedList.reduce((map, emp) => {
-        map[emp.name] = emp.id; 
-        return map;
-    }, {});
-    const blacklistedHits = [];
-    
-    employeeList.forEach(emp => {
-        const cleanId = cleanPersonnelId(emp.id);
-        const cleanName = String(emp.name || '').trim().toUpperCase();
-
-        if (blacklistIdMap[cleanId]) {
-            blacklistedHits.push(cleanId);
-            return;
-        }
-        
-        if (blacklistNameMap[cleanName]) {
-            blacklistedHits.push(cleanId);
-            return;
-        }
-    });
-    return blacklistedHits;
-}
-
-/**
  * Checks if a specific personnel ID OR Name is on the blacklist.
  * @param {string} personnelId The ID provided in the grid.
  * @param {string} personnelName The Name provided in the grid.
@@ -1051,40 +1015,32 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, attendanceChanges, y
     const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     const lockedIds = Object.keys(lockedIdRefMap);
     
-    const blacklistedIdsMap = getBlacklistData().reduce((map, emp) => {
-        map[emp.id] = true;
-        return map;
-    }, {});
+    // BLACKLIST VALIDATION REMOVED (Client-side validation is now the primary check)
+
     const finalEmployeeChanges = employeeChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.id || change.oldPersonnelId);
         
-        if (blacklistedIdsMap[idToCheck]) {
-            Logger.log(`[saveAllData] Skipping employee info update for BLACKLISTED ID: ${idToCheck}`);
-            return false;
-        }
-        
+        // Retain only the check for locked IDs
         if (lockedIds.includes(idToCheck) && !change.isDeleted) {
-   
              Logger.log(`[saveAllData] Skipping employee info update for locked ID: ${idToCheck}`);
             return false;
         }
         return true;
      });
+     
     const finalAttendanceChanges = attendanceChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.personnelId);
         
-        if (blacklistedIdsMap[idToCheck]) {
-             Logger.log(`[saveAllData] Skipping attendance plan update for BLACKLISTED ID: ${idToCheck}`);
-             return false;
-        }
-
+        // Retain only the check for locked IDs
         if (lockedIds.includes(idToCheck)) {
             Logger.log(`[saveAllData] Skipping attendance plan update for locked ID: ${idToCheck}`);
             return false;
         }
         return true;
     });
+
     const deletionList = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
+    
     if (finalEmployeeChanges && finalEmployeeChanges.length > 0) {
         saveEmployeeInfoBulk(sfcRef, finalEmployeeChanges, year, month, shift, lockedIdRefMap);
     }
