@@ -29,6 +29,8 @@
 
   let all201PersonnelList = [];  // Full list of employees from 201 (blacklisted or not)
   let blacklistedEmployeeList = []; // Only blacklisted employees for quick lookup
+
+  let relieverPersonnelList = [];
   
   // *** NEW: Global state for Save Group Number (Read-only input value) ***
   // UPDATED: Default is S1
@@ -1619,6 +1621,7 @@ function handleAttendanceData(data) {
     }
     
     tableContainer.appendChild(table);
+    renderRelieverTable();
   }
 
   // NEW FUNCTION: Apply Schedule Pattern to a specific grid row
@@ -4023,6 +4026,118 @@ function updatePrintButtonState() {
     }
 }
 
+function renderRelieverTable() {
+    // 1. Calculate the required rows dynamically
+    const requiredRows = calculateRelieverRows(currentContract?.headCount || 0);
+
+    const tableContainer = document.getElementById('reliever-table-container');
+    const relieverArea = document.getElementById('reliever-personnel-area');
+
+    if (!tableContainer || !relieverArea) return;
+
+    tableContainer.innerHTML = ''; 
+    
+    const table = document.createElement('table');
+    table.className = 'w-full text-sm text-left text-gray-700 border-collapse';
+    
+    const thead = table.createTHead();
+    const headerRow = thead.insertRow();
+    
+    // Headers: No., Personnel ID, Personnel Name, Position, Area Posting
+    const relieverHeaders = ['No.', 'Personnel ID', 'Personnel Name', 'POSITION', 'AREA POSTING']; 
+    
+    relieverHeaders.forEach((headerText, index) => {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = headerText;
+        th.className = 'sticky-col-header text-xs font-semibold uppercase tracking-wider p-3 bg-gray-100 border-r border-b border-gray-300 z-20'; 
+        
+        if (index <= 1) th.classList.add('freeze-1', 'z-30'); // No. and ID
+        if (index === 2) th.classList.add('freeze-2', 'z-30'); // Name
+        
+        headerRow.appendChild(th);
+    });
+    
+    const tbody = table.createTBody();
+
+    // 2. Use the calculated requiredRows for the loop
+    for (let i = 0; i < requiredRows; i++) {
+        const tr = tbody.insertRow();
+        tr.dataset.rowNo = i + 1;
+        
+        // No. Cell (Index 0)
+        let td = tr.insertCell();
+        td.className = 'sticky-col text-center p-0 bg-gray-50 font-bold border-r border-b z-10 freeze-1'; 
+        td.innerHTML = `<span class="block py-2">${i + 1}</span>`;
+        
+        // Personnel ID Input (Index 1)
+        td = tr.insertCell();
+        let input = document.createElement('input');
+        input.type = 'text';
+        input.setAttribute('list', 'employee-id-list'); 
+        input.placeholder = 'ID';
+        input.maxLength = 20; 
+        input.dataset.field = 'id';
+        input.dataset.reliever = 'true'; 
+        input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
+        td.appendChild(input);
+        td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-1'; 
+        
+        // Personnel Name Input (Index 2)
+        td = tr.insertCell();
+        input = document.createElement('input');
+        input.type = 'text';
+        input.setAttribute('list', 'employee-name-list'); 
+        input.placeholder = 'Full Name';
+        input.dataset.field = 'name';
+        input.dataset.reliever = 'true';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
+        td.appendChild(input);
+        td.className = 'sticky-col p-0 bg-white border-r border-b z-10 freeze-2';
+        
+        // Position Input (Index 3)
+        td = tr.insertCell();
+        input = document.createElement('input');
+        input.type = 'text';
+        input.setAttribute('list', 'employee-position-list'); 
+        input.placeholder = 'Position';
+        input.dataset.field = 'position';
+        input.dataset.reliever = 'true';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
+        td.appendChild(input);
+        td.className = 'p-0 bg-white border-r border-b';
+        
+        // Area Posting Input (Index 4)
+        td = tr.insertCell();
+        input = document.createElement('input');
+        input.type = 'text';
+        input.setAttribute('list', 'employee-area-list'); 
+        input.placeholder = 'Area';
+        input.dataset.field = 'area';
+        input.dataset.reliever = 'true';
+        input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent'; 
+        td.appendChild(input);
+        td.className = 'p-0 bg-white border-r border-b';
+        
+        // TODO: Add listeners for Reliever Personnel info changes here in the next step
+    }
+    
+    tableContainer.appendChild(table);
+    relieverArea.classList.remove('hidden'); 
+}
+
+function calculateRelieverRows(headCount) {
+    if (!headCount || isNaN(headCount) || headCount < 0) return 1;
+    
+    // 1. Calculate 20% and round it
+    const calculated = Math.round(headCount * 0.20);
+    
+    // 2. Apply Min/Max constraints (min 1, max 10)
+    const minRows = 1;
+    const maxRows = 10;
+    
+    return Math.min(maxRows, Math.max(minRows, calculated));
+}
 
   // --- INITIALIZATION ---
 
