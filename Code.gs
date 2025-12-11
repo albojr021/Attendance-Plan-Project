@@ -236,55 +236,88 @@ function cleanPersonnelId(rawId) {
     return idString.replace(/\D/g, '');
 }
 
+function get201FileAllPersonnelDetails() {
+    if (FILE_201_ID === 'PUNAN_MO_ITO_NG_201_SPREADSHEET_ID' || !FILE_201_ID) {
+        Logger.log('[get201FileAllPersonnelDetails] ERROR: FILE_201_ID is not set.');
+        return [];
+    }
+    
+    try {
+        const ss = SpreadsheetApp.openById(FILE_201_ID);
+        // Assuming FILE_201_SHEET_NAME is an array like ['MEG']
+        const sheet = ss.getSheetByName(FILE_201_SHEET_NAME[0]); // Uses index 0 as per logic in source 70
+        if (!sheet) {
+            Logger.log(`[get201FileAllPersonnelDetails] ERROR: Sheet ${FILE_201_SHEET_NAME[0]} not found.`);
+            return [];
+        }
+
+        const START_ROW = 2; 
+        const lastRow = sheet.getLastRow();
+        const NUM_ROWS = lastRow - START_ROW + 1;
+        // Basahin hanggang Column J (index 9) para makuha ang Blacklist Status
+        const NUM_COLS_TO_READ = FILE_201_BLACKLIST_STATUS_COL_INDEX + 1;
+        
+        if (NUM_ROWS <= 0) return [];
+
+        const values = sheet.getRange(START_ROW, 1, NUM_ROWS, NUM_COLS_TO_READ).getDisplayValues();
+        const allData = values.map(row => {
+            const personnelIdRaw = row[FILE_201_ID_COL_INDEX];     // Column A (index 0)
+            const personnelNameRaw = row[FILE_201_NAME_COL_INDEX]; // Column B (index 1)
+            // Column J (index 9)
+            const status = String(row[FILE_201_BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase(); 
+            
+            const cleanId = cleanPersonnelId(personnelIdRaw);
+            const formattedName = String(personnelNameRaw || '').trim().toUpperCase(); 
+            const isBlacklisted = status === 'BLACKLISTED';
+      
+            if (!cleanId || !formattedName) return null; 
+
+            return {
+                id: cleanId,
+                name: formattedName,
+                isBlacklisted: isBlacklisted,
+                position: '', // Placeholder (Position/Area is read from other master sheets)
+                area: ''      // Placeholder
+            };
+        }).filter(item => item !== null);
+
+        Logger.log(`[get201FileAllPersonnelDetails] Retrieved ${allData.length} records from 201 file (Full Details).`);
+        return allData;
+
+    } catch (e) {
+        Logger.log(`[get201FileAllPersonnelDetails] ERROR: ${e.message}`);
+        throw new Error(`Failed to access 201 Master File. Error: ${e.message}`);
+    }
+}
+
 /**
  * Reads Personnel ID (CODE), First Name, and Last Name from the 201 Master File.
+ * Filters out BLACKLISTED employees.
  * Formats the name as "LastName, FirstName" and cleans the ID.
  */
 function get201FileMasterData() {
+    // Check for config error early (as in original function body)
     if (FILE_201_ID === 'PUNAN_MO_ITO_NG_201_SPREADSHEET_ID') {
         Logger.log('[get201FileMasterData] ERROR: FILE_201_ID is not set.');
         return [];
     }
 
     try {
-        const ss = SpreadsheetApp.openById(FILE_201_ID);
-        const sheet = ss.getSheetByName(FILE_201_SHEET_NAME);
+        // Uses the new function to get all details
+        const allPersonnel = get201FileAllPersonnelDetails();
         
-        if (!sheet) {
-            Logger.log(`[get201FileMasterData] ERROR: Sheet ${FILE_201_SHEET_NAME} not found.`);
-            return [];
-        }
-
-        const START_ROW = 2; // Data starts at Row 2 (skipping header at Row 1)
-        const NUM_ROWS = sheet.getLastRow() - START_ROW + 1;
-        const NUM_COLS_TO_READ = 2; // Read only Columns A and B
-        
-        if (NUM_ROWS <= 0) return [];
-        
-        // Read from Row 2, Column 1 (A), for NUM_ROWS and 2 columns (A and B)
-        const values = sheet.getRange(START_ROW, 1, NUM_ROWS, NUM_COLS_TO_READ).getDisplayValues();
-        
-        const masterData = values.map(row => {
-            const personnelIdRaw = row[0]; // Column A (index 0)
-            const personnelNameRaw = row[1]; // Column B (index 1)
-            
-            const cleanId = cleanPersonnelId(personnelIdRaw); // Use existing helper
-            const formattedName = String(personnelNameRaw || '').trim().toUpperCase(); 
-            
-            if (!cleanId || !formattedName) return null; 
-
-            return {
-                id: cleanId,
-                name: formattedName,
-            };
-        }).filter(item => item !== null);
-
-        Logger.log(`[get201FileMasterData] Retrieved ${masterData.length} records from 201 file (New Format).`);
+        // Filter out blacklisted and map to the format expected by getEmployeeMasterData
+        const masterData = allPersonnel
+            .filter(e => !e.isBlacklisted)
+            .map(e => ({ id: e.id, name: e.name })); // Keep only ID and Name
+    
+        Logger.log(`[get201FileMasterData] Retrieved ${masterData.length} NON-BLACKLISTED records from 201 file.`);
         return masterData;
 
     } catch (e) {
+        // Propagate error from get201FileAllPersonnelDetails
         Logger.log(`[get201FileMasterData] ERROR: ${e.message}`);
-        throw new Error(`Failed to access 201 Master File. Please check ID and sheet name in Code.gs. Error: ${e.message}`);
+        throw e;
     }
 }
 
@@ -348,6 +381,25 @@ function getBlacklistedEmployeesFrom201() {
  */
 function getBlacklistData() { 
     return getBlacklistedEmployeesFrom201();
+}
+
+function getEmployeeMasterDataForUI(sfcRef) {
+    if (!sfcRef) throw new Error("SFC Ref# is required.");
+    
+    // 1. Datalist: Non-blacklisted employees merged with EmployeeMaster_Consolidated.
+    const datalistEmployees = getEmployeeMasterData(sfcRef);
+
+    // 2. Blacklisted: Listahan ng mga blacklisted lang.
+    const blacklisted = getBlacklistData();
+    
+    // 3. All 201 Personnel: Para sa client-side check kung ang ID/Name ay galing sa 201.
+    const all201Personnel = get201FileAllPersonnelDetails(); 
+    
+    return {
+        datalist: datalistEmployees,
+        blacklisted: blacklisted,
+        all201Personnel: all201Personnel 
+    };
 }
 
 /**
