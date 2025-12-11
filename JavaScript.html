@@ -2388,7 +2388,7 @@ function showPersonnelWarning(rowElement, message) {
   }
   
   // *** NEW FUNCTION: Handles the first part of the saving process (getting the batch number) ***
-  function handleSaveAllChanges() {
+function handleSaveAllChanges() {
     const sfcRefToSave = currentContract ? currentContract.sfcRef : null;
     const currentYear = currentPlanningDate.getFullYear();
     const currentMonth = currentPlanningDate.getMonth();
@@ -2402,16 +2402,16 @@ function showPersonnelWarning(rowElement, message) {
         return;
     }
     
-    toggleLoading(true, 'Preparing save batch. Checking for next available Save Group ID...'); // UPDATED MESSAGE
+    toggleLoading(true, 'Preparing save batch. Checking for next available Save Group ID...'); 
 
-    // 1. Get the next available Save Group Number from the server (e.g. S1, S2)
+    // 1. Get the next available Save Group Number from the server (e.g., S1, S2)
     google.script.run
         .withSuccessHandler(function(groupNumber) {
-             // 2. Once the batch number is determined (e.g., S1 or S2), 
-             // magsisimula ang blacklist check bago ang final save.
-             validateBlacklistAndContinueSave(groupNumber); 
+             // 2. Blacklist validation is skipped/removed. Directly call continueSaveProcess.
+             // UPDATED: Directly call continueSaveProcess
+             continueSaveProcess(groupNumber); 
         })
-        .withFailureHandler(handleSaveAllError) // Use the save handler for errors here
+        .withFailureHandler(handleSaveAllError)
         .getNextGroupNumber(sfcRefToSave, currentYear, currentMonth, currentShift);
   }
 
@@ -2603,49 +2603,6 @@ function continueSaveProcess(groupNumber) {
         .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, attChanges, currentYear, currentMonth, currentShift, groupNumber);
 }
 // *** END REFRACTORED SAVE FUNCTIONS ***
-
-// --- NEW FUNCTION: BLACKLIST VALIDATION WRAPPER ---
-function validateBlacklistAndContinueSave(groupNumber) {
-    const activeEmployees = getActiveEmployeesInGrid(); 
-    
-    // CRITICAL CHANGE: I-map ang active employees para maging {id, name} objects
-    const employeesToCheck = activeEmployees.map(emp => ({
-        id: emp.id, 
-        name: emp.name // Kasama na ang Name sa payload
-    })).filter(emp => emp.id); 
-    
-    if (employeesToCheck.length === 0) {
-        continueSaveProcess(groupNumber);
-        return;
-    }
-
-    toggleUiLock(true, 'Checking blacklist status for active personnel...');
-
-    google.script.run
-        .withSuccessHandler(function(blacklistedIds) {
-            toggleUiLock(false);
-            
-            if (blacklistedIds && blacklistedIds.length > 0) {
-                const blacklistedNames = [];
-                
-                // Humanap ng corresponding name para sa error message
-                blacklistedIds.forEach(id => {
-                     const emp = activeEmployees.find(e => e.id === id);
-                     if (emp) blacklistedNames.push(`${emp.name} (ID: ${id})`);
-                });
-                
-                showNotification(`FATAL SAVE ERROR: Cannot save plan. The following employees are BLACKLISTED and must be removed from the plan: ${blacklistedNames.join(', ')}.`, false);
-                toggleLoading(false);
-                return; // BLOCK THE SAVE
-            }
-
-            // Kung walang blacklist hit, magpatuloy sa orihinal na save logic
-            continueSaveProcess(groupNumber);
-        })
-        .withFailureHandler(handleSaveAllError)
-        .checkBulkBlacklist(employeesToCheck); 
-}
-// --- END NEW BLACKLIST VALIDATION ---
 
   function handleSaveAllSuccess(response) {
       showNotification('All changes saved successfully! Refreshing data...', true);
