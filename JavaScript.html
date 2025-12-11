@@ -4482,8 +4482,14 @@ function handleRelieverInfoChange(event) {
     // ************************ UPDATED SIGNATORY LISTENERS ************************
     
     // PREPARED BY (Name Input)
-    document.getElementById('signatory-prepared-by').addEventListener('input', (e) => handleSignatoryInputChange(e, 'preparedBy'));
-    document.getElementById('signatory-prepared-by').addEventListener('change', (e) => handleSignatoryInputChange(e, 'preparedBy')); 
+    const preparedByNameInput = document.getElementById('signatory-prepared-by');
+    if (preparedByNameInput) {
+        preparedByNameInput.addEventListener('input', (e) => handleSignatoryInputChange(e, 'preparedBy'));
+        preparedByNameInput.addEventListener('change', (e) => handleSignatoryInputChange(e, 'preparedBy')); 
+        
+        // [BAGONG FIX] Idagdag ang filterDatalistOptions para lumabas ang suggestions
+        preparedByNameInput.addEventListener('input', filterDatalistOptions); 
+    }
     
     // PREPARED BY (Designation Input) - NEW LISTENER
     document.getElementById('signatory-prepared-by-designation').addEventListener('input', (e) => handleSignatoryDesignationChange(e, 'preparedBy'));
@@ -4516,3 +4522,4 @@ function handleRelieverInfoChange(event) {
     // *****************************************************************************
   }
 </script>
+
