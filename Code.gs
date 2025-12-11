@@ -915,9 +915,17 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             area: e.area,
         }
      }).filter(e => e.id);
-    return { employees, planMap, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap };
-}
+    const regularEmployees = employees.filter(e => e.position !== 'RELIEVER' || e.area !== 'RELIEVER');
+    const relieverEmployees = employees.filter(e => e.position === 'RELIEVER' && e.area === 'RELIEVER');
 
+    return { 
+        employees: regularEmployees, // Tanging regular employees
+        relieverPersonnelList: relieverEmployees, // Listahan para sa Reliever table
+        planMap, 
+        lockedIds: Object.keys(lockedIdRefMap), 
+        lockedIdRefMap: lockedIdRefMap 
+    };
+}
 /**
  * Retrieves the latest version of the Attendance Plan data for a specified period (used for Copy Previous Plan feature).
  * @param {string} sfcRef 
