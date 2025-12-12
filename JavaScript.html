@@ -2520,9 +2520,20 @@ function continueSaveProcess(groupNumber) {
     for (const stableKey of relieverStableKeys) {
          const change = pendingRelieverChanges[stableKey];
          
-         // Relievers should be validated as "new" entries
-         // I-check lang kung kumpleto ang ID at Name
-         if (change.id.trim() !== '' && change.name.trim() !== '') {
+         // 1. Handle Deletion: Relievers use their ID as the stableKey when saved
+         if (change.isDeleted) {
+             finalRelieverChanges.push({
+                 id: change.id.trim(), 
+                 name: change.name.trim(), 
+                 position: 'RELIEVER',
+                 area: 'RELIEVER',
+                 isNew: false, // Treat as existing row being deleted
+                 isDeleted: true,
+                 oldPersonnelId: change.id.trim()
+             });
+         }
+         // 2. Handle New Entry
+         else if (change.id.trim() !== '' && change.name.trim() !== '') {
              
              // Check for completeness (Dapat kumpleto na dahil sa auto-fill logic)
              if (change.position.trim() !== 'RELIEVER' || change.area.trim() !== 'RELIEVER') {
@@ -2534,8 +2545,8 @@ function continueSaveProcess(groupNumber) {
              finalRelieverChanges.push({
                  id: change.id.trim(), 
                  name: change.name.trim(), 
-                 position: 'RELIEVER', // Force value
-                 area: 'RELIEVER',     // Force value
+                 position: 'RELIEVER', 
+                 area: 'RELIEVER',     
                  isNew: true,
                  isDeleted: false,
                  oldPersonnelId: ''
@@ -3778,22 +3789,65 @@ function saveBulkSchedule(event, fixedStatusValue) {
 // --- NEW HELPER: Get List of Employees for Deletion Modal ---
 function getDeletableEmployeesForModal() {
     const deletableList = [];
-    const activeEmployees = getActiveEmployeesInGrid(); 
+    
+    // 1. Regular Employees (Iterate over the SAVED roster: currentContract.employees)
+    // Hindi na gagamitin ang getActiveEmployeesInGrid() para maiwasan ang TEMP_ entries.
+    (currentContract?.employees || []).forEach(employee => {
+        const stableKey = employee.id; // Saved ID ang stable key
+        
+        // SKIP if walang saved ID (dahil ito ay isang replacement slot or old placeholder)
+        if (!stableKey) return;
 
-    activeEmployees.forEach(emp => {
-        const isLocked = !!lockedIdRefMap[emp.id];
-        const isMarkedForDeletion = pendingEmployeeInfoChanges[emp.stableKey]?.isDeleted; 
-
+        // Check for pending deletion mark
+        const isMarkedForDeletion = pendingEmployeeInfoChanges[stableKey]?.isDeleted; 
+        
+        // Check for lock status
+        const isLocked = !!lockedIdRefMap[stableKey];
+        
+        // Tanging unlocked at hindi pa marked for deletion ang pwedeng i-delete
         if (!isLocked && !isMarkedForDeletion) {
-            const isSelected = bulkDeleteSelected.includes(emp.stableKey);
+            const isSelected = bulkDeleteSelected.includes(stableKey);
+            
+            // Gumamit ng pending info para sa display name/ID kung merong local edit
+            const pendingInfo = pendingEmployeeInfoChanges[stableKey]; 
+            const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
+            const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
+            
             deletableList.push({
-                stableKey: emp.stableKey,
-                id: emp.id,
-                name: emp.name,
-                isSelected: isSelected
+                stableKey: stableKey,
+                id: displayId,
+                name: displayName,
+                isSelected: isSelected,
+                isReliever: false, // Distinction
             });
         }
     });
+    
+    // 2. Saved Reliever Employees (Iterate over the SAVED reliever list)
+    savedRelieverList.forEach(reliever => {
+        const stableKey = reliever.id; // Saved ID ang stable key
+        
+        // SKIP if walang saved ID
+        if (!stableKey) return; 
+        
+        const isLocked = !!lockedIdRefMap[reliever.id]; 
+        // Note: For saved relievers, we check pendingRelieverChanges
+        const isMarkedForDeletion = pendingRelieverChanges[stableKey]?.isDeleted; 
+        
+        if (!isLocked && !isMarkedForDeletion) {
+             const isSelected = bulkDeleteSelected.includes(stableKey);
+             deletableList.push({
+                stableKey: stableKey, // Saved ID is the stable key for relievers
+                id: reliever.id,
+                name: reliever.name,
+                isSelected: isSelected,
+                isReliever: true, // Distinction
+            });
+        }
+    });
+    
+    // Sort by name
+    deletableList.sort((a, b) => a.name.localeCompare(b.name));
 
     return deletableList;
 }
@@ -3824,16 +3878,23 @@ function openBulkDeleteModal() {
         
         listItem.className = `flex items-center space-x-3 p-2 rounded-lg border hover:bg-red-50 transition duration-150 cursor-pointer ${itemBgClass}`;
         
+        const designationTag = emp.isReliever ? 
+            '<span class="text-xs font-semibold text-purple-700 bg-purple-100 px-1 py-0.5 rounded-full whitespace-nowrap ml-2">RELIEVER</span>' : 
+            '';
+        
         listItem.innerHTML = `
             <input type="checkbox" id="delete-check-${emp.stableKey}" 
                    data-key="${emp.stableKey}" 
+                   data-is-reliever="${emp.isReliever}" // Critical data attribute
                    class="delete-checkbox h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500" 
                    ${emp.isSelected ? 'checked' : ''}>
             <label for="delete-check-${emp.stableKey}" class="flex-grow text-sm font-medium text-gray-800">
                 <span class="font-bold">${emp.name}</span> 
-                <span class="text-xs text-gray-500">(ID: ${emp.id})</span>
+                ${designationTag} 
+                <span class="text-xs text-gray-500 ml-1">(ID: ${emp.id})</span>
             </label>
         `;
+        // --- END: DISTINCTION CHANGE ---
         
         const checkbox = listItem.querySelector('.delete-checkbox');
         checkbox.addEventListener('change', (e) => {
@@ -3845,7 +3906,8 @@ function openBulkDeleteModal() {
         });
         
         listItem.addEventListener('click', (e) => {
-            if (e.target.tagName !== 'INPUT') {
+            // Exclude span clicks (for the tag) para di mag-trigger
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SPAN') { 
                 checkbox.checked = !checkbox.checked;
                 checkbox.dispatchEvent(new Event('change'));
             }
@@ -3938,38 +4000,65 @@ function handleBulkDeleteConfirm() {
     document.getElementById('bulk-delete-selection-modal').classList.add('hidden');
     
     let deletedCount = 0;
+    
     bulkDeleteSelected.forEach(stableKey => {
-        const employee = currentContract.employees.find(e => e.id === stableKey) || { 
-            id: '', 
-            name: 'N/A', 
-            position: '', 
-            area: '' 
-        };
         
-        // 1. Mark for deletion in pendingEmployeeInfoChanges
-        let pendingChange = pendingEmployeeInfoChanges[stableKey] || {
-            id: employee.id, 
-            name: employee.name, 
-            position: employee.position, 
-            area: employee.area,
-            isNew: !employee.id,
-            originalEmployeeId: employee.id,
-            isDeleted: false 
-        };
+        // 1. Determine if it is a REGULAR Employee or a SAVED RELIEVER
+        const isReliever = savedRelieverList.some(r => r.id === stableKey);
         
-        pendingChange.isDeleted = true;
-        pendingEmployeeInfoChanges[stableKey] = pendingChange;
-        
-        // 2. Clear any pending local schedule changes
-        const idToClear = pendingChange.id;
-        if (idToClear) {
-            Object.keys(pendingAttendanceChanges).forEach(key => {
-                if (key.startsWith(idToClear + '_')) { 
-                    delete pendingAttendanceChanges[key];
-                }
-            });
+        if (isReliever) {
+             // --- LOGIC FOR RELIEVER DELETION ---
+             const reliever = savedRelieverList.find(r => r.id === stableKey);
+             if (!reliever) return; 
+
+             let pendingChange = pendingRelieverChanges[stableKey] || {
+                 id: reliever.id, 
+                 name: reliever.name, 
+                 position: 'RELIEVER', 
+                 area: 'RELIEVER',
+                 isNew: false, 
+                 isDeleted: false 
+             };
+             
+             pendingChange.isDeleted = true;
+             pendingRelieverChanges[stableKey] = pendingChange;
+             
+             deletedCount++;
+             
+        } else {
+            // --- LOGIC FOR REGULAR EMPLOYEE DELETION ---
+            const employee = currentContract.employees.find(e => e.id === stableKey) || { 
+                id: stableKey, 
+                name: 'N/A', 
+                position: '', 
+                area: '' 
+            };
+            
+            // 1. Mark for deletion in pendingEmployeeInfoChanges
+            let pendingChange = pendingEmployeeInfoChanges[stableKey] || {
+                id: employee.id, 
+                name: employee.name, 
+                position: employee.position, 
+                area: employee.area,
+                isNew: !employee.id,
+                originalEmployeeId: employee.id,
+                isDeleted: false 
+            };
+            
+            pendingChange.isDeleted = true;
+            pendingEmployeeInfoChanges[stableKey] = pendingChange;
+            
+            // 2. Clear any pending local schedule changes
+            const idToClear = pendingChange.id;
+            if (idToClear) {
+                Object.keys(pendingAttendanceChanges).forEach(key => {
+                    if (key.startsWith(idToClear + '_')) { 
+                        delete pendingAttendanceChanges[key];
+                    }
+                });
+            }
+            deletedCount++;
         }
-        deletedCount++;
     });
     
     // Clear the selection array after action
@@ -3978,6 +4067,7 @@ function handleBulkDeleteConfirm() {
     showNotification(`Successfully marked ${deletedCount} employees for DELETION. Click 'Save All Changes to Sheets' to finalize.`, false);
     
     renderAttendancePlan(); 
+    renderRelieverTable(); // NEW: Trigger render for reliever table visibility
     checkPlanSheetLockState(); 
 }
 // --- END NEW BULK DELETE FUNCTIONS ---
@@ -4099,27 +4189,29 @@ function renderRelieverTable() {
     
     // 1.a. Start with saved relievers (Use ID as stableKey if saved)
     savedRelievers.forEach(emp => {
-        // Find existing index in case of edits (though relievers are usually append-only)
         const pending = pendingRelieverChanges[emp.id];
         relieversToRender.push({ 
             id: (pending && pending.id) || emp.id, 
             name: (pending && pending.name) || emp.name, 
             position: 'RELIEVER', 
             area: 'RELIEVER',
-            stableKey: emp.id // Use saved ID as stable key
+            stableKey: emp.id, // Use saved ID as stable key
+            isMarkedForDeletion: pending?.isDeleted || false // NEW CHECK
         });
     });
 
     // 1.b. Add pending NEW relievers (using temporary keys, skip if already in saved list)
     Object.keys(pendingRelieverChanges).forEach(stableKey => {
          const change = pendingRelieverChanges[stableKey];
-         if (stableKey.startsWith('RELIVER_TEMP_') && !relieversToRender.some(e => e.stableKey === stableKey)) {
+         // Only include NEW and non-deleted pending entries here
+         if (stableKey.startsWith('RELIVER_TEMP_') && !relieversToRender.some(e => e.stableKey === stableKey) && !change.isDeleted) {
              relieversToRender.push({
                  id: change.id, 
                  name: change.name, 
                  position: change.position, 
                  area: change.area, 
-                 stableKey: stableKey 
+                 stableKey: stableKey,
+                 isMarkedForDeletion: false
              });
          }
     });
@@ -4171,11 +4263,11 @@ function renderRelieverTable() {
             id: '', 
             name: '', 
             position: '', 
-            area: '' 
+            area: '',
+            isMarkedForDeletion: false
         };
         
-        // Use the saved ID (if it exists) or the TEMP key for the stable key
-        const finalStableKey = reliever.id.trim() ? reliever.id : `RELIVER_TEMP_${i + 1}`; 
+        const finalStableKey = reliever.stableKey; 
         
         // Final display values
         const displayId = reliever.id || '';
@@ -4183,11 +4275,15 @@ function renderRelieverTable() {
         const displayPosition = reliever.position || '';
         const displayArea = reliever.area || '';
         
-        // [NEW LOGIC] Check if the row represents a SAVED employee
         const isSavedReliever = displayId.trim() !== '' && !reliever.stableKey.startsWith('RELIVER_TEMP_'); 
-
+        const isMarkedForDeletion = reliever.isMarkedForDeletion; // Get the state
+        
         const tr = tbody.insertRow();
         tr.dataset.stableKey = finalStableKey; 
+        
+        if (isMarkedForDeletion) {
+            tr.classList.add('bg-red-200', 'opacity-50', 'line-through');
+        }
         
         // No. Cell (Index 0)
         let td = tr.insertCell();
@@ -4206,8 +4302,8 @@ function renderRelieverTable() {
         input.dataset.reliever = 'true'; 
         input.dataset.rowNo = i + 1; 
         
-        // CRITICAL UPDATE: ID should be read-only if saved
-        input.readOnly = isSavedReliever; 
+        // CRITICAL: ID should be read-only if saved OR marked for deletion
+        input.readOnly = isSavedReliever || isMarkedForDeletion; 
 
         input.className = 'personnel-info-input text-center p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); 
         td.appendChild(input);
@@ -4223,8 +4319,8 @@ function renderRelieverTable() {
         input.dataset.field = 'name';
         input.dataset.reliever = 'true';
         
-        // CRITICAL UPDATE: Name should be read-only if saved
-        input.readOnly = isSavedReliever; 
+        // CRITICAL: Name should be read-only if saved OR marked for deletion
+        input.readOnly = isSavedReliever || isMarkedForDeletion; 
 
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent ' + (input.readOnly ? 'read-only' : ''); 
         td.appendChild(input);
@@ -4236,7 +4332,7 @@ function renderRelieverTable() {
         input.type = 'text';
         input.value = displayPosition;
         input.placeholder = 'Position (RELIEVER)';
-        input.readOnly = true; 
+        input.readOnly = true; // Always read-only, but should reflect deletion if marked
         input.dataset.field = 'position';
         input.dataset.reliever = 'true';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent read-only'; 
@@ -4249,18 +4345,18 @@ function renderRelieverTable() {
         input.type = 'text';
         input.value = displayArea;
         input.placeholder = 'Area (RELIEVER)';
-        input.readOnly = true; 
+        input.readOnly = true; // Always read-only, but should reflect deletion if marked
         input.dataset.field = 'area';
         input.dataset.reliever = 'true';
         input.className = 'personnel-info-input p-1 border-none focus:ring-blue-400 w-full bg-transparent read-only'; 
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         
-        // 3. Attach Listeners (Attach ONLY if NOT saved)
+        // 3. Attach Listeners (Attach ONLY if NOT saved AND NOT marked for deletion)
         const idInput = tr.querySelector('[data-field="id"]');
         const nameInput = tr.querySelector('[data-field="name"]');
         
-        if(!isSavedReliever) { 
+        if(!isSavedReliever && !isMarkedForDeletion) { 
             if(idInput) {
                 idInput.addEventListener('input', handleRelieverInfoChange);
                 idInput.addEventListener('change', handleRelieverInfoChange);
@@ -4271,11 +4367,18 @@ function renderRelieverTable() {
                 nameInput.addEventListener('change', handleRelieverInfoChange);
                 nameInput.addEventListener('input', filterDatalistOptions);
             }
+        } else if (isMarkedForDeletion) {
+             // Add an empty listener just for the notification check if they try to edit a deleted input
+             tr.querySelectorAll('.personnel-info-input').forEach(infoInput => {
+                infoInput.addEventListener('click', (e) => {
+                    showNotification('Cannot edit: Row is marked for deletion. Save changes or refresh to undo.', false);
+                });
+             });
         }
     }
     
     relieverTableWrapper.appendChild(table); 
-    tableContainer.appendChild(relieverTableWrapper); // I-append ang wrapper
+    tableContainer.appendChild(relieverTableWrapper); 
 }
 
 function calculateRelieverRows(headCount) {
@@ -4295,8 +4398,16 @@ function handleRelieverInfoChange(event) {
     const input = event.target;
     const field = input.dataset.field;
     const row = input.closest('tr');
-    const stableKey = row.dataset.stableKey; // e.g., RELIVER_TEMP_1
+    const stableKey = row.dataset.stableKey; 
     let newValue = input.value;
+    
+    // Check if the input is read-only (which includes checking for isMarkedForDeletion)
+    if (input.readOnly) {
+         showNotification('Cannot edit: This reliever row is already saved or marked for deletion.', false);
+         // Revert the UI input
+         input.value = pendingRelieverChanges[stableKey]?.[field] || savedRelieverList.find(r => r.id === stableKey)?.[field] || '';
+         return;
+    }
     
     // Position and Area inputs (Read-only UI elements)
     const positionInput = row.querySelector('[data-field="position"]');
@@ -4524,4 +4635,3 @@ function handleRelieverInfoChange(event) {
     // *****************************************************************************
   }
 </script>
-
