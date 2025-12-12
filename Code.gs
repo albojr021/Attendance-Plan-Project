@@ -1045,7 +1045,7 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
             return false;
         }
         return true;
-     });
+    });
     
     // 2. Filter Reliever Changes (excluding locked)
     const finalRelieverChanges = relieverChanges.filter(change => {
@@ -1056,7 +1056,7 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
         }
         return true;
     });
-
+    
     // 3. Filter Attendance Changes (excluding locked)
     const finalAttendanceChanges = attendanceChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.personnelId);
@@ -1066,19 +1066,27 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
         }
         return true;
     });
-
-    const deletionList = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
+    
+    // --- UPDATED LOGIC: Create unified deletion list (Regular + Reliever) ---
+    const regularDeletions = finalEmployeeChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
+    const relieverDeletions = finalRelieverChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
+    
+    // Combined list of IDs to delete from Plan Sheet
+    const deletionList = regularDeletions.concat(relieverDeletions); 
+    // --- END UPDATED LOGIC ---
 
     // CRITICAL: Regular Employee Info Changes MUST be saved to EmployeeMaster_Consolidated
     const regularEmployeeInfoChanges = finalEmployeeChanges.filter(c => !c.isDeleted);
-    
     if (regularEmployeeInfoChanges && regularEmployeeInfoChanges.length > 0) {
         saveEmployeeInfoBulk(sfcRef, regularEmployeeInfoChanges, year, month, shift, lockedIdRefMap);
     }
     
     // CRITICAL: Pass Reliever Changes to saveAttendancePlanBulk for row versioning
-    if (finalAttendanceChanges.length > 0 || deletionList.length > 0 || finalRelieverChanges.length > 0) {
-        saveAttendancePlanBulk(sfcRef, contractInfo, finalAttendanceChanges, finalRelieverChanges, year, month, shift, group, deletionList); // PASS finalRelieverChanges
+    const newRelieverEntries = finalRelieverChanges.filter(c => !c.isDeleted);
+
+    if (finalAttendanceChanges.length > 0 || deletionList.length > 0 || newRelieverEntries.length > 0) {
+        // deletionList now includes IDs from deleted relievers
+        saveAttendancePlanBulk(sfcRef, contractInfo, finalAttendanceChanges, newRelieverEntries, year, month, shift, group, deletionList);
     }
     
     logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift);
