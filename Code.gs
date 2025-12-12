@@ -976,12 +976,14 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
         const rawId = row[personnelIdIndex];
         const id = cleanPersonnelId(rawId);
         
+        
         if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && id) {
             
             const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
             const versionParts = saveVersionString.split('-');
             const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
           
+        
             const mapKey = id; 
 
             const existingRow = latestVersionMap[mapKey];
@@ -993,8 +995,7 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
     });
     const latestDataRows = Object.values(latestVersionMap).filter(r => r.length > 0); 
     const employees = [];
-    const planMap = {}; 
-    
+    const planMap = {};
     latestDataRows.forEach(row => {
         const id = cleanPersonnelId(row[personnelIdIndex]);
         
@@ -1003,13 +1004,26 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
             employees.push({
                 id: id, 
                 name: String(row[nameIndex] || '').trim(),
+        
                 position: String(row[positionIndex] || '').trim(),
                 area: String(row[areaIndex] || '').trim(),
             });
         }
     });
-    Logger.log(`[getPlanDataForPeriod] Retrieved ${employees.length} employee records for source period (Schedule excluded).`);
-    return { employees, planMap }; // planMap is returned empty.
+    
+    // --- NEW LOGIC START ---
+    // Filter out employees where Position and Area are both 'RELIEVER' (case-insensitive)
+    const regularEmployees = employees.filter(e => {
+        const position = e.position.toUpperCase();
+        const area = e.area.toUpperCase();
+        // Keep the employee if they are NOT a Reliever OR if one of the fields is not 'RELIEVER'
+        return position !== 'RELIEVER' || area !== 'RELIEVER';
+    });
+    
+    Logger.log(`[getPlanDataForPeriod] Retrieved ${employees.length} total employee records; filtered down to ${regularEmployees.length} non-reliever employees.`);
+    // --- NEW LOGIC END ---
+    
+    return { employees: regularEmployees, planMap }; 
 }
 
 function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, attendanceChanges, year, month, shift, group) { // ADDED relieverChanges
