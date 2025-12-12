@@ -4401,7 +4401,7 @@ function handleRelieverInfoChange(event) {
     const stableKey = row.dataset.stableKey; 
     let newValue = input.value;
     
-    // Check if the input is read-only (which includes checking for isMarkedForDeletion)
+    // Check if the input is read-only
     if (input.readOnly) {
          showNotification('Cannot edit: This reliever row is already saved or marked for deletion.', false);
          // Revert the UI input
@@ -4427,6 +4427,21 @@ function handleRelieverInfoChange(event) {
     let masterRecordFound = null; 
     let masterRecord = null;
     
+    // --- NEW: Robust Sanitation (Allows spaces, commas, periods, dashes for Name) ---
+    // We use explicit regex to ensure space is preserved.
+    const ALLOWED_NAME_CHARS_REGEX = /[^A-Z\s.,-]/g; 
+    const ALLOWED_ID_CHARS_REGEX = /[^0-9]/g; 
+    
+    if (field === 'id') {
+         newValue = newValue.replace(ALLOWED_ID_CHARS_REGEX, ''); // Only numbers for ID
+    } else if (field === 'name') {
+         // Force uppercase AND sanitize (allows space)
+         newValue = newValue.toUpperCase().replace(ALLOWED_NAME_CHARS_REGEX, ''); 
+    } else {
+         newValue = newValue.toUpperCase(); // For Position/Area
+    }
+    
+    input.value = newValue; // Update UI immediately with sanitized value
     const upperNewValue = newValue.trim().toUpperCase(); 
     
     // Helper function para sa kumpletong pag-clear
@@ -4489,17 +4504,12 @@ function handleRelieverInfoChange(event) {
     // --- Master Record lookup (ONLY for ID and Name) ---
     if (field === 'id') {
          masterRecord = employeeMasterList.find(e => e.id === upperNewValue);
-         pendingChange.id = upperNewValue; 
+         pendingChange.id = upperNewValue; // Use the sanitized value
     } else if (field === 'name') {
          const normalizedInputName = normalizeNameForComparison(upperNewValue);
          masterRecord = employeeMasterList.find(e => normalizeNameForComparison(e.name) === normalizedInputName);
-         pendingChange.name = upperNewValue.replace(SAFE_NAME_REGEX, ''); 
-         input.value = pendingChange.name;
+         pendingChange.name = newValue; // Use the already sanitized, correct-cased value
     }
-    
-    // Update the pendingChange state for the edited field
-    if (field === 'id') pendingChange.id = upperNewValue;
-    if (field === 'name') pendingChange.name = input.value;
     
     // 2. AUTO-FILL LOGIC: Always override Position/Area to 'RELIEVER'
     const isRowInputting = (pendingChange.id.trim() !== '' || pendingChange.name.trim() !== '');
