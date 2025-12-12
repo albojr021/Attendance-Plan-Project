@@ -507,4 +507,24 @@
         }
         body::after { content: none !important; }
     }
+      tr.line-through.bg-red-200 { 
+        /* Force opacity back to 1 for better visibility of the line-through and text */
+        opacity: 1 !important; 
+        background-color: #fecaca !important; /* Slightly lighter red background */
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact;
+      }
+      tr.line-through.bg-red-200 * {
+        /* Apply line-through to ALL content inside the row, including inputs */
+        text-decoration: line-through !important;
+        color: #b91c1c !important; /* Dark red text */
+      }
+      /* Ensure inputs and spans in deleted rows retain the deletion style */
+      tr.line-through.bg-red-200 .personnel-info-input,
+      tr.line-through.bg-red-200 .sticky-col span {
+        text-decoration: line-through !important;
+        color: #b91c1c !important; 
+        background-color: #fecaca !important; 
+        border-color: #ef4444 !important; /* Red border */
+      }
 </style>
