@@ -4216,7 +4216,11 @@ function renderRelieverTable() {
          }
     });
 
-    // 2. Calculate required rows dynamically
+    // 2. Count active relievers (non-deleted, non-empty ID/Name)
+    const activeRelievers = relieversToRender.filter(r => 
+        !r.isMarkedForDeletion && (r.id && r.id.trim() !== '' && r.name && r.name.trim() !== '')
+    );
+    
     const requiredRows = calculateRelieverRows(currentContract?.headCount || 0);
 
     const tableContainer = document.getElementById('reliever-table-container');
@@ -4225,9 +4229,22 @@ function renderRelieverTable() {
 
     if (!tableContainer || !relieverArea) return;
 
+    // CRITICAL FIX: Laging i-alis ang 'hidden' para makita ito sa screen
+    relieverArea.classList.remove('hidden'); 
+
+    // 3. CRITICAL: Kontrolin lang ang 'print-hidden' class
+    if (activeRelievers.length === 0) {
+        // Hiding the entire section only for print
+        relieverArea.classList.add('print-hidden'); 
+    } else {
+        // Showing the entire section in print
+        relieverArea.classList.remove('print-hidden'); 
+    }
+    
+    // 4. Start Rendering
+    
     tableContainer.innerHTML = '';
-    relieverArea.classList.remove('hidden');
-    relieverTitle.classList.remove('print-hidden'); 
+    
     const relieverTableWrapper = document.createElement('div');
     relieverTableWrapper.className = 'reliever-print-wrapper';
     
@@ -4352,7 +4369,7 @@ function renderRelieverTable() {
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
         
-        // 3. Attach Listeners (Attach ONLY if NOT saved AND NOT marked for deletion)
+        // 5. Attach Listeners (Attach ONLY if NOT saved AND NOT marked for deletion)
         const idInput = tr.querySelector('[data-field="id"]');
         const nameInput = tr.querySelector('[data-field="name"]');
         
