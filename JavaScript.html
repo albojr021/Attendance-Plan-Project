@@ -4428,7 +4428,6 @@ function handleRelieverInfoChange(event) {
     let masterRecord = null;
     
     // --- NEW: Robust Sanitation (Allows spaces, commas, periods, dashes for Name) ---
-    // We use explicit regex to ensure space is preserved.
     const ALLOWED_NAME_CHARS_REGEX = /[^A-Z\s.,-]/g; 
     const ALLOWED_ID_CHARS_REGEX = /[^0-9]/g; 
     
@@ -4510,8 +4509,28 @@ function handleRelieverInfoChange(event) {
          masterRecord = employeeMasterList.find(e => normalizeNameForComparison(e.name) === normalizedInputName);
          pendingChange.name = newValue; // Use the already sanitized, correct-cased value
     }
+
+    // =========================================================================
+    // ** BAGONG LOGIC NA NAG-AAYOS SA ISSUE **
+    // =========================================================================
+    if (field === 'id' && pendingChange.id === '') {
+        // Kapag ginawang blank ang ID, i-clear din ang Name (at vice versa, kung hindi na-clear ng user)
+        if (nameInput.value.trim() !== '') {
+            nameInput.value = '';
+            pendingChange.name = '';
+        }
+    } else if (field === 'name' && pendingChange.name === '') {
+        // Kapag ginawang blank ang Name, i-clear din ang ID
+        if (idInput.value.trim() !== '') {
+            idInput.value = '';
+            pendingChange.id = '';
+        }
+    }
+    // =========================================================================
+
     
     // 2. AUTO-FILL LOGIC: Always override Position/Area to 'RELIEVER'
+    // Titingnan na dito kung BLANK na pareho ang ID at Name
     const isRowInputting = (pendingChange.id.trim() !== '' || pendingChange.name.trim() !== '');
 
     if (isRowInputting) {
@@ -4520,6 +4539,7 @@ function handleRelieverInfoChange(event) {
         pendingChange.position = 'RELIEVER';
         pendingChange.area = 'RELIEVER';
     } else {
+        // CRITICAL: Ensure Position/Area are cleared if both ID and Name are blank
         positionInput.value = '';
         areaInput.value = '';
         pendingChange.position = '';
@@ -4576,6 +4596,7 @@ function handleRelieverInfoChange(event) {
             isNew: true
         };
     } else {
+        // Kung hindi kumpleto (blank ang ID/Name), tanggalin sa pending changes.
         delete pendingRelieverChanges[stableKey];
     }
 }
