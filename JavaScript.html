@@ -4424,8 +4424,10 @@ function handleRelieverInfoChange(event) {
         isNew: true
     };
     
-    // Gumamit ng UPPERCASE version para sa comparison/validation, pero huwag na muna i-trim para sa name sanitation
-    const upperValueForCheck = newValue.trim().toUpperCase(); 
+    let masterRecordFound = null; 
+    let masterRecord = null;
+    
+    const upperNewValue = newValue.trim().toUpperCase(); 
     
     // Helper function para sa kumpletong pag-clear
     const clearRowAndState = () => {
@@ -4456,7 +4458,7 @@ function handleRelieverInfoChange(event) {
         }
         
         // 2. **201 CHECK**
-        if (upperValueForCheck.length > 0) { 
+        if (upperNewValue.length > 0) { 
             
             if (field === 'id' || field === 'name') {
                 const is201Employee = all201PersonnelList.some(e => {
@@ -4484,24 +4486,20 @@ function handleRelieverInfoChange(event) {
     // --- END: REAL-TIME VALIDATION ---
 
     
-    let masterRecordFound = null; 
-    let masterRecord = null;
-    
-    // 1. Update pendingChange and Sanitize UI value
+    // --- Master Record lookup (ONLY for ID and Name) ---
     if (field === 'id') {
-         masterRecord = employeeMasterList.find(e => e.id === upperValueForCheck);
-         pendingChange.id = upperValueForCheck; 
+         masterRecord = employeeMasterList.find(e => e.id === upperNewValue);
+         pendingChange.id = upperNewValue; 
     } else if (field === 'name') {
-         // **CRITICAL FIX:** Direct sanitation on the new value (upper case), ensuring spaces are KEPT (\s).
-         // Ito ang direktang aayos sa isyu ng pagtanggal ng space.
-         let cleanedName = newValue.toUpperCase().replace(/[^A-Z\s.,-]/g, ''); 
-         
-         const normalizedInputName = normalizeNameForComparison(cleanedName);
+         const normalizedInputName = normalizeNameForComparison(upperNewValue);
          masterRecord = employeeMasterList.find(e => normalizeNameForComparison(e.name) === normalizedInputName);
-         
-         pendingChange.name = cleanedName; 
-         input.value = cleanedName; // Update UI to reflect allowed characters
+         pendingChange.name = upperNewValue.replace(SAFE_NAME_REGEX, ''); 
+         input.value = pendingChange.name;
     }
+    
+    // Update the pendingChange state for the edited field
+    if (field === 'id') pendingChange.id = upperNewValue;
+    if (field === 'name') pendingChange.name = input.value;
     
     // 2. AUTO-FILL LOGIC: Always override Position/Area to 'RELIEVER'
     const isRowInputting = (pendingChange.id.trim() !== '' || pendingChange.name.trim() !== '');
@@ -4548,11 +4546,8 @@ function handleRelieverInfoChange(event) {
     
     // --- Name duplication check (Cross-table check na ito) ---
     else if (field === 'name' && pendingChange.name) {
-        // Gumamit ng trimmed value para sa duplication check
-        const trimmedNameForCheck = pendingChange.name.trim(); 
-        
-        if (isDuplicateName(trimmedNameForCheck, stableKey, 0)) {
-            showNotification(`FATAL ERROR: Personnel Name "${trimmedNameForCheck}" is already used by another employee (REGULAR or RELIEVER table). Name must be unique.`, false);
+        if (isDuplicateName(pendingChange.name, stableKey, 0)) {
+            showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee (REGULAR or RELIEVER table). Name must be unique.`, false);
             clearRowAndState(); // Use helper to clear all fields
             return; 
         }
