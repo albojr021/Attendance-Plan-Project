@@ -206,7 +206,7 @@ function getPrintFieldMasterData() {
 }
 
 function updatePrintFieldMaster(printFields) {
-    // Section and Department are Required
+    // Section and Department are Required (Client-side validation ensures this)
     if (!printFields || !printFields.section || !printFields.department) return;
     
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
@@ -215,27 +215,49 @@ function updatePrintFieldMaster(printFields) {
     // Normalize new entry
     const newSection = printFields.section.trim().toUpperCase();
     const newDepartment = printFields.department.trim().toUpperCase();
-    // Remarks retains case/format for the log/master
     const newRemarks = (printFields.remarks || '').trim(); 
-    
-    // Check for uniqueness (check if the exact combination exists)
-    if (sheet.getLastRow() > 1) {
-        const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getDisplayValues();
-        const isExisting = values.some(row => 
-            String(row[0] || '').trim().toUpperCase() === newSection &&
-            String(row[1] || '').trim().toUpperCase() === newDepartment &&
-            String(row[2] || '').trim() === newRemarks
-        );
-        
-        if (isExisting) {
-            Logger.log(`[updatePrintFieldMaster] Entry already exists: ${newSection}/${newDepartment}. Skipping update.`);
-            return;
-        }
+
+    if (sheet.getLastRow() < 2) {
+        // If sheet is empty, save immediately (it's unique by definition)
+        const newEntry = [newSection, newDepartment, newRemarks];
+        sheet.appendRow(newEntry);
+        Logger.log(`[updatePrintFieldMaster] Appended first entry: ${newSection}/${newDepartment}.`);
+        return;
     }
 
-    const newEntry = [newSection, newDepartment, newRemarks];
-    sheet.appendRow(newEntry);
-    Logger.log(`[updatePrintFieldMaster] Appended new print field entry: ${newSection}/${newDepartment}.`);
+    const allValues = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getDisplayValues();
+    
+    const existingSections = new Set();
+    const existingDepartments = new Set();
+    const existingRemarks = new Set();
+    
+    allValues.forEach(row => {
+        // Add existing values to Sets for quick lookup
+        existingSections.add(String(row[0] || '').trim().toUpperCase());
+        existingDepartments.add(String(row[1] || '').trim().toUpperCase());
+        existingRemarks.add(String(row[2] || '').trim());
+    });
+    
+    let isSectionNew = !existingSections.has(newSection);
+    let isDepartmentNew = !existingDepartments.has(newDepartment);
+    let isRemarksNew = !existingRemarks.has(newRemarks);
+    
+    // Check if at least one of the fields is new.
+    if (isSectionNew || isDepartmentNew || isRemarksNew) {
+        // Construct the new row, placing only the new values in their respective columns.
+        // This ensures the sheet only stores unique entries per column (stand-alone values).
+        const newEntry = [
+            isSectionNew ? newSection : '',
+            isDepartmentNew ? newDepartment : '',
+            isRemarksNew ? newRemarks : ''
+        ];
+        
+        sheet.appendRow(newEntry);
+        Logger.log(`[updatePrintFieldMaster] Appended new unique entries. Section New: ${isSectionNew}, Dept New: ${isDepartmentNew}, Remarks New: ${isRemarksNew}`);
+        
+    } else {
+        Logger.log(`[updatePrintFieldMaster] All fields already exist individually. Skipping new row creation.`);
+    }
 }
 
 function createContractSheets(sfcRef, year, month, shift) {
