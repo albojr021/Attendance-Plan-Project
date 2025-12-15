@@ -14,6 +14,7 @@ const PLAN_FIXED_COLUMNS = 18;
 const PLAN_MAX_DAYS_IN_HALF = 16; 
 const MASTER_HEADER_ROW = 5;
 const SIGNATORY_MASTER_SHEET = 'SignatoryMaster';
+const PRINT_FIELD_MASTER_SHEET = 'PrintFieldMaster';
 const EMPLOYEE_MASTER_SHEET_NAME = 'EmployeeMaster_Consolidated'; 
 const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
 const LOG_SHEET_NAME = 'PrintLog';
@@ -139,6 +140,102 @@ function getOrCreateConsolidatedEmployeeMasterSheet(ss) {
         Logger.log(`[getOrCreateConsolidatedEmployeeMasterSheet] Created Consolidated Employee sheet: ${EMPLOYEE_MASTER_SHEET_NAME}`);
     } 
     return empSheet;
+}
+
+function getOrCreatePrintFieldMasterSheet(ss) {
+    let sheet = ss.getSheetByName(PRINT_FIELD_MASTER_SHEET);
+    if (sheet) {
+        return sheet;
+    }
+
+    try {
+        sheet = ss.insertSheet(PRINT_FIELD_MASTER_SHEET);
+        // Headers: SECTION, DEPARTMENT, REMARKS
+        const headers = ['SECTION', 'DEPARTMENT', 'REMARKS'];
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+        sheet.setFrozenRows(1);
+        sheet.setColumnWidth(1, 150);
+        sheet.setColumnWidth(2, 150);
+        sheet.setColumnWidth(3, 300);
+        Logger.log(`[getOrCreatePrintFieldMasterSheet] Created Print Field Master sheet: ${PRINT_FIELD_MASTER_SHEET}`);
+        return sheet;
+    } catch (e) {
+        if (e.message.includes(`sheet with the name "${PRINT_FIELD_MASTER_SHEET}" already exists`)) {
+             Logger.log(`[getOrCreatePrintFieldMasterSheet] WARN: Transient sheet creation failure, retrieving existing sheet.`);
+             return ss.getSheetByName(PRINT_FIELD_MASTER_SHEET);
+        }
+        throw e;
+    }
+}
+
+function getPrintFieldMasterData() {
+    try {
+        const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+        const sheet = getOrCreatePrintFieldMasterSheet(ss);
+
+        if (sheet.getLastRow() < 2) return { sections: [], departments: [], remarks: [] };
+        
+        // Read all three columns (1 to 3)
+        const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3);
+        const values = range.getDisplayValues();
+
+        const sections = new Set();
+        const departments = new Set();
+        const remarks = new Set();
+        
+        values.forEach(row => {
+            // Force uppercase for consistency in Datalist
+            const section = String(row[0] || '').trim().toUpperCase();
+            const department = String(row[1] || '').trim().toUpperCase();
+            const remark = String(row[2] || '').trim(); // Remarks retains case/format from sheet
+            
+            if (section) sections.add(section);
+            if (department) departments.add(department);
+            if (remark) remarks.add(remark);
+        });
+
+        return { 
+            sections: Array.from(sections).sort(), 
+            departments: Array.from(departments).sort(),
+            remarks: Array.from(remarks).sort()
+        };
+    } catch (e) {
+        Logger.log(`[getPrintFieldMasterData] ERROR: ${e.message}`);
+        return { sections: [], departments: [], remarks: [] };
+    }
+}
+
+function updatePrintFieldMaster(printFields) {
+    // Section and Department are Required
+    if (!printFields || !printFields.section || !printFields.department) return;
+    
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const sheet = getOrCreatePrintFieldMasterSheet(ss);
+    
+    // Normalize new entry
+    const newSection = printFields.section.trim().toUpperCase();
+    const newDepartment = printFields.department.trim().toUpperCase();
+    // Remarks retains case/format for the log/master
+    const newRemarks = (printFields.remarks || '').trim(); 
+    
+    // Check for uniqueness (check if the exact combination exists)
+    if (sheet.getLastRow() > 1) {
+        const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getDisplayValues();
+        const isExisting = values.some(row => 
+            String(row[0] || '').trim().toUpperCase() === newSection &&
+            String(row[1] || '').trim().toUpperCase() === newDepartment &&
+            String(row[2] || '').trim() === newRemarks
+        );
+        
+        if (isExisting) {
+            Logger.log(`[updatePrintFieldMaster] Entry already exists: ${newSection}/${newDepartment}. Skipping update.`);
+            return;
+        }
+    }
+
+    const newEntry = [newSection, newDepartment, newRemarks];
+    sheet.appendRow(newEntry);
+    Logger.log(`[updatePrintFieldMaster] Appended new print field entry: ${newSection}/${newDepartment}.`);
 }
 
 function createContractSheets(sfcRef, year, month, shift) {
@@ -1809,7 +1906,7 @@ function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
 }
 
 
-function recordPrintLogEntry(refNum, printGroup, subProperty, signatories, sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { 
+function recordPrintLogEntry(refNum, printGroup, subProperty, printFields, signatories, sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { 
     
     if (!refNum) {
         Logger.log(`[recordPrintLogEntry] ERROR: No Reference String provided.`);
@@ -1819,6 +1916,10 @@ function recordPrintLogEntry(refNum, printGroup, subProperty, signatories, sfcRe
     try {
         const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
         const logSheet = getOrCreateLogSheet(ss);
+        
+        // NEW: Update the Print Field Master sheet
+        updatePrintFieldMaster(printFields); 
+        
         updateSignatoryMaster(signatories);
 
         updatePlanSheetReferenceBulk(refNum, printGroup, sfcRef, year, month, shift, printedPersonnelIds);
@@ -1851,6 +1952,7 @@ function recordPrintLogEntry(refNum, printGroup, subProperty, signatories, sfcRe
             new Date(),
             printedPersonnelIds.join(',') 
         ];
+        
         const lastLoggedRow = logSheet.getLastRow();
         const newRow = lastLoggedRow + 1;
         const LOCKED_IDS_COL = LOG_HEADERS.length;
