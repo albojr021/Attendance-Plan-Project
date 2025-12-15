@@ -3367,12 +3367,10 @@ function triggerPrintPreparation(subProperty, section, department, remarks, sele
 function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { 
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
     
-    // *** CRITICAL UPDATE: Pass printFields to recordPrintLogEntry ***
-    google.script.run
-        .withSuccessHandler(() => { /* No-op on success here, handled by onafterprint */ })
-        .withFailureHandler(handleError)
-        .recordPrintLogEntry(refNum, printGroup, printFields.subProperty, printFields, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
-    // ****************************************************************
+    // *****************************************************************
+    // *** CRITICAL FIX: TINANGGAL ANG IMMEDIATE LOCKING CALL DITO. ***
+    // (Ang locking ay ililipat sa handleOk function sa print confirmation modal)
+    // *****************************************************************
     
     // DESTUCTURE SIGNATORIES FOR EASIER USE
     const { preparedBy, approvedBy } = signatories;
@@ -3500,6 +3498,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
                 }
             });
 
+            // CRITICAL: Refresh the plan to remove the lock (if it was applied on confirmation)
             reloadPlanAndCheckExistence(); 
             
             if (printRefElement) {
@@ -3526,11 +3525,10 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         const handleOk = () => {
             
             toggleUiLock(true, 'Confirming print log and locking schedules...');
-            // NOTE: The recordPrintLogEntry was already called before window.print(), 
-            // so we just confirm the lock state and log it (if needed).
             
-            // We just need to ensure we call the function that performs the logging and locking
-            // For simplicity, we keep the original flow logic here, knowing the server will check for duplicates
+            // *****************************************************************
+            // *** CRITICAL FIX: ILIPAT ANG LOCKING CALL DITO ***
+            // *****************************************************************
             google.script.run
                 .withSuccessHandler(() => {
                     console.log(`Successfully recorded print log entry #${refNum} and locked IDs.`);
@@ -3540,15 +3538,15 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
                 .withFailureHandler((error) => {
                     console.error(`Failed to record print log entry #${refNum}:`, error);
                     showNotification(`Warning: Failed to record print log/lock (Ref# ${refNum}). Error: ${error.message}`, false);
-                    restoreUI();
+                    restoreUI(); // Restore UI even on failure
                 })
-                // Re-call the logging function for the server to log the successful print attempt
+                // Ang function call na ito ay NAGLALOCK. Ito ay tatakbo LAMANG kapag kinonfirm ng user.
                 .recordPrintLogEntry(refNum, printGroup, printFields.subProperty, printFields, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
         };
 
         const handleCancel = () => {
             restoreUI();
-            showNotification(`Print log (Ref# ${refNum}) discarded by user.`, false);
+            showNotification(`Print log (Ref# ${refNum}) discarded by user. No schedules were locked.`, false);
         };
         
         okBtn.addEventListener('click', handleOk);
