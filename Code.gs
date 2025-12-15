@@ -2394,3 +2394,71 @@ function processAdminUnlockFromUrl(params) {
   
   return HtmlService.createHtmlOutput('<h1>Invalid Action</h1><p>The URL provided is incomplete or incorrect.</p>');
 }
+
+function checkIfEmployeeIsUsedInOtherContractForShift(personnelId, personnelName, currentSfcRef, year, month, shift) {
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
+    if (!planSheet || planSheet.getLastRow() <= PLAN_HEADER_ROW) return null;
+
+    const HEADER_ROW = PLAN_HEADER_ROW;
+    const lastRow = planSheet.getLastRow();
+    const numColumns = planSheet.getLastColumn();
+    
+    try {
+        // Basahin ang lahat ng values mula sa header pababa
+        const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - PLAN_HEADER_ROW + 1, numColumns).getDisplayValues();
+        const headers = planValues[0];
+        const dataRows = planValues.slice(1);
+        
+        const sfcRefIndex = headers.indexOf('CONTRACT #');
+        const monthIndex = headers.indexOf('MONTH');
+        const yearIndex = headers.indexOf('YEAR');
+        const shiftIndex = headers.indexOf('PERIOD / SHIFT');
+        const personnelIdIndex = headers.indexOf('Personnel ID');
+        const nameIndex = headers.indexOf('Personnel Name');
+        
+        if (sfcRefIndex === -1 || monthIndex === -1 || yearIndex === -1 || shiftIndex === -1 || personnelIdIndex === -1 || nameIndex === -1) {
+             Logger.log("[checkIfEmployeeIsUsedInOtherContractForShift] Missing critical column in Consolidated Plan sheet.");
+             return null; 
+        }
+        
+        const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
+        const targetYear = String(year);
+        const cleanId = cleanPersonnelId(personnelId);
+        // Tiyakin na uppercase ang pangalan para sa paghahambing
+        const cleanName = String(personnelName || '').trim().toUpperCase();
+
+        for (const row of dataRows) {
+            const currentSfc = String(row[sfcRefIndex] || '').trim();
+            const currentMonth = String(row[monthIndex] || '').trim();
+            const currentYear = String(row[yearIndex] || '').trim();
+            const currentShift = String(row[shiftIndex] || '').trim();
+            const rowId = cleanPersonnelId(row[personnelIdIndex]);
+            const rowName = String(row[nameIndex] || '').trim().toUpperCase();
+            
+            // 1. Filter by period and exclude current contract
+            if (currentSfc !== currentSfcRef && currentSfc !== '' && 
+                currentMonth === targetMonthShort && 
+                currentYear === targetYear && 
+                currentShift === shift) {
+                
+                // 2. Check for ID match 
+                if (rowId === cleanId && cleanId !== '') {
+                    Logger.log(`[checkIfEmployeeIsUsedInOtherContractForShift] Conflict found by ID: ${cleanId} in SFC ${currentSfc}`);
+                    return { sfcRef: currentSfc, name: rowName };
+                }
+                
+                // 3. Check for Name match
+                if (rowName === cleanName && cleanName !== '') {
+                    Logger.log(`[checkIfEmployeeIsUsedInOtherContractForShift] Conflict found by Name: ${cleanName} in SFC ${currentSfc}`);
+                    return { sfcRef: currentSfc, name: rowName };
+                }
+            }
+        }
+
+        return null;
+    } catch(e) {
+        Logger.log(`[checkIfEmployeeIsUsedInOtherContractForShift] ERROR: ${e.message}`);
+        return null;
+    }
+}
