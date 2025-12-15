@@ -84,7 +84,13 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
     <datalist id="employee-name-list"></datalist>
     <datalist id="employee-position-list"></datalist>
     <datalist id="employee-area-list"></datalist>
-    <datalist id="signatory-master-list"></datalist> <div id="planning-area" class="mt-6 hidden">
+    <datalist id="signatory-master-list"></datalist>
+    
+    <datalist id="section-master-list"></datalist>
+    <datalist id="department-master-list"></datalist>
+    <datalist id="remarks-master-list"></datalist>
+    
+    <div id="planning-area" class="mt-6 hidden">
     <h2 class="text-2xl font-bold text-gray-800 mb-4 print-hidden">Attendance Plan</h2>
     
     <div class="card p-4 flex flex-wrap items-center justify-start space-x-3 mb-4 print-hidden">
@@ -282,15 +288,23 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
 </div>
 
 <div id="print-setup-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
-    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
+    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto">
         <h3 class="text-xl font-bold mb-4 text-blue-700">Print Preparation & Signatories</h3>
         <p class="text-gray-700 mb-4">Please complete the required details before proceeding to print.</p>
         
-        <div class="mb-6">
+        <div class="mb-6 space-y-3">
             <label for="sub-property-input" class="block text-sm font-medium text-gray-700 mb-1">Sub Property Name (Required):</label>
-            <input type="text" id="sub-property-input" oninput="this.value = this.value.toUpperCase()" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., TOWER 1, ANNEX BUILDING" required>
-        </div>
+            <input type="text" id="sub-property-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., TOWER 1, ANNEX BUILDING" required>
         
+            <label for="section-input" class="block text-sm font-medium text-gray-700 mb-1">Section: (Required)</label>
+            <input type="text" id="section-input" list="section-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., ADMINISTRATION, OPERATIONS" required>
+
+            <label for="department-input" class="block text-sm font-medium text-gray-700 mb-1">Department: (Required)</label>
+            <input type="text" id="department-input" list="department-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., SECURITY, ENGINEERING" required>
+            
+            <label for="remarks-input" class="block text-sm font-medium text-gray-700 mb-1">Remarks: (Optional)</label>
+            <textarea id="remarks-input" list="remarks-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., SCHEDULE FOR TEMPORARY PERSONNEL ONLY"></textarea>
+        </div>
         <h4 class="text-lg font-bold mb-3 text-gray-800 border-t pt-4">Signatories (Name & Designation Validation Applies)</h4>
 
         <div class="grid grid-cols-2 gap-4 mb-4">
