@@ -1768,7 +1768,6 @@ function showPersonnelWarning(rowElement, message) {
     const previousIdValue = pendingChange.id; 
     
     // Ang lock check na ito ay umaasa sa 'readOnly' attribute na nanggagaling sa renderAttendancePlan.
-    // Kung hindi readOnly ang input, papayagan natin ang edit.
     if (input.readOnly) {
          if (lockedIdRefMap[employee.id]) {
              showNotification('Cannot edit: Saved row is locked by a printed reference number.', false);
@@ -1860,6 +1859,67 @@ function showPersonnelWarning(rowElement, message) {
              showPersonnelWarning(row, null); 
         }
 
+        
+        // --- NEW SERVER-SIDE CROSS-CONTRACT CONFLICT CHECK (START) ---
+        const sfcRef = currentContract?.sfcRef;
+        const currentYear = currentPlanningDate.getFullYear();
+        const currentMonth = currentPlanningDate.getMonth();
+        const currentShift = document.getElementById('shift-period-select').value;
+        
+        // Only proceed if we have at least an ID or a Name and the current contract is defined
+        const isEmployeeIdentified = currentId !== '' || currentName !== '';
+        
+        if (sfcRef && isEmployeeIdentified) {
+            
+            const originalEmployee = currentContract.employees.find(e => e.id === employee.id) || employee;
+            const originalId = originalEmployee.id;
+            const originalName = originalEmployee.name;
+
+            // Only check if the new value is DIFFERENT from the original saved value
+            const isUnchanged = (currentId === originalId) && (currentName === originalName);
+
+            if (!isUnchanged) {
+                google.script.run
+                    .withSuccessHandler((conflict) => {
+                        const latestId = row.querySelector('[data-field="id"]')?.value.trim();
+                        const latestName = row.querySelector('[data-field="name"]')?.value.trim();
+                        
+                        // Critical: Check if the UI state is still the same as the request.
+                        if (latestId === currentId && latestName === currentName) {
+                            if (conflict) {
+                                showNotification(`FATAL: Personnel ID/Name is already scheduled for this shift (${currentShift}) in another contract (SFC Ref: ${conflict.sfcRef}). Please use a different employee or shift.`, false);
+                                
+                                // Revert the local changes in the UI and pending state
+                                const fieldsToRevert = ['id', 'name', 'position', 'area'];
+                                
+                                fieldsToRevert.forEach(f => {
+                                    const inputElement = row.querySelector(`[data-field="${f}"]`);
+                                    if (inputElement) {
+                                         inputElement.value = originalEmployee[f] || '';
+                                    }
+                                    pendingChange[f] = originalEmployee[f] || '';
+                                });
+                                
+                                // Re-delete from pendingEmployeeInfoChanges if reverted to original state
+                                const isReverted = fieldsToRevert.every(f => (originalEmployee[f] || '') === pendingChange[f]);
+                                if (isReverted) {
+                                    delete pendingEmployeeInfoChanges[oldPersonnelKey];
+                                }
+
+                                showPersonnelWarning(row, `CONFLICT: Used in SFC ${conflict.sfcRef}`);
+                                
+                            } else {
+                                // If the check passes, ensure the warning is cleared.
+                                showPersonnelWarning(row, null); 
+                            }
+                        }
+                    })
+                    .withFailureHandler(handleError)
+                    .checkIfEmployeeIsUsedInOtherContractForShift(currentId, currentName, sfcRef, currentYear, currentMonth, currentShift);
+            }
+        }
+        // --- END NEW SERVER-SIDE CROSS-CONTRACT CONFLICT CHECK (END) ---
+        
     } // End of if (event.type === 'change') block
     // --- END: NEW REAL-TIME VALIDATION ---
 
