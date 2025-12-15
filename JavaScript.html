@@ -95,6 +95,18 @@
       ], 
       approvedBy: { name: '', designation: '' }
   };
+  
+  // *****************************************************************
+  // *** NEW GLOBAL STATE FOR PRINT FIELDS ***
+  // *****************************************************************
+  let printFieldMasterData = { sections: [], departments: [], remarks: [] }; 
+  let selectedPrintFields = {
+      subProperty: '',
+      section: '',
+      department: '',
+      remarks: ''
+  };
+  // *****************************************************************
 
   const fixedStatusOptions = [
     { value: 'RD', label: 'Rest Day (RD)', color: 'status-rd text-red-700' },
@@ -232,6 +244,39 @@ function checkIsBlacklisted(id, name) {
     console.log(`Datalists populated with ${employeeMasterList.length} employees. (${uniquePositions.size} positions, ${uniqueAreas.size} areas)`);
 }
   // --- END NEW DATALIST FUNCTIONS ---
+  
+  // *****************************************************************
+  // *** NEW PRINT FIELD MASTER DATA FUNCTIONS ***
+  // *****************************************************************
+  function fetchPrintFieldMasterData() {
+       google.script.run
+            .withSuccessHandler(populatePrintFieldDatalists)
+            .withFailureHandler(handleError)
+            .getPrintFieldMasterData(); 
+  }
+
+  function populatePrintFieldDatalists(data) {
+    printFieldMasterData = data;
+    
+    const populateList = (listId, items) => {
+        const list = document.getElementById(listId);
+        if (!list) return;
+        list.innerHTML = '';
+        items.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item;
+            list.appendChild(option);
+        });
+    };
+    
+    populateList('section-master-list', data.sections);
+    populateList('department-master-list', data.departments);
+    populateList('remarks-master-list', data.remarks);
+
+    console.log(`Print Field datalists populated with ${data.sections.length} sections, ${data.departments.length} departments, and ${data.remarks.length} remarks.`);
+  }
+  // *****************************************************************
+  
   
   // *** NEW FUNCTIONS: Fetch and Populate Signatory Master Data ***
   function fetchSignatoryMasterData() {
@@ -428,6 +473,7 @@ function filterDatalistOptions(event) {
     // Check if the input value has at least 1 character before filtering
     const filterValue = input.value.toUpperCase().trim();
     const isIdList = (listId === 'employee-id-list');
+    const isMasterList = (listId === 'employee-name-list' || isIdList);
     const maxResults = 20; // Limitahan sa 20 resulta para sa performance
 
     // 1. Clear current datalist options immediately
@@ -440,36 +486,49 @@ function filterDatalistOptions(event) {
     if (filterValue.length === 0) {
         return; // Walang gagawin kung walang input
     }
-
-    // 2. Filter the global employeeMasterList
-    const filteredEmployees = employeeMasterList.filter(emp => {
-        if (isIdList) {
-            // Filter by Personnel ID
-            return emp.id.toUpperCase().includes(filterValue);
-        } else {
-            // Filter by Personnel Name
-            return emp.name.toUpperCase().includes(filterValue);
-        }
-    }).slice(0, maxResults); // Kunin lang ang top 20
-
-    // 3. Populate the datalist with filtered results
-    filteredEmployees.forEach(emp => {
-        const option = document.createElement('option');
-        const displayName = emp.name.toUpperCase(); 
-        const displayPosition = emp.position.toUpperCase();
+    
+    // Check if filtering the main employee master list
+    if (isMasterList) {
         
-        if (isIdList) {
-            // ID Datalist: Value is ID, Text shows Name/Position
-            option.value = emp.id;
-            option.textContent = `${displayName} (${displayPosition})`;
-        } else {
-            // Name Datalist: Value is Name, Text shows ID/Position
-            option.value = displayName;
-            option.textContent = `${emp.id} (${displayPosition})`;
-        }
-        
-        datalist.appendChild(option);
-    });
+        // 2. Filter the global employeeMasterList
+        const filteredEmployees = employeeMasterList.filter(emp => {
+            if (isIdList) {
+                // Filter by Personnel ID
+                return emp.id.toUpperCase().includes(filterValue);
+            } else {
+                // Filter by Personnel Name
+                return emp.name.toUpperCase().includes(filterValue);
+            }
+        }).slice(0, maxResults); // Kunin lang ang top 20
+
+        // 3. Populate the datalist with filtered results
+        filteredEmployees.forEach(emp => {
+            const option = document.createElement('option');
+            const displayName = emp.name.toUpperCase(); 
+            const displayPosition = emp.position.toUpperCase();
+            
+            if (isIdList) {
+                // ID Datalist: Value is ID, Text shows Name/Position
+                option.value = emp.id;
+                option.textContent = `${displayName} (${displayPosition})`;
+            } else {
+                // Name Datalist: Value is Name, Text shows ID/Position
+                option.value = displayName;
+                option.textContent = `${emp.id} (${displayPosition})`;
+            }
+            
+            datalist.appendChild(option);
+        });
+    } else if (listId === 'remarks-master-list') {
+        // Filter Remarks (optional field, uses printFieldMasterData.remarks)
+        printFieldMasterData.remarks.filter(remark => {
+            return remark.toUpperCase().includes(filterValue);
+        }).slice(0, maxResults).forEach(remark => {
+             const option = document.createElement('option');
+             option.value = remark;
+             datalist.appendChild(option);
+        });
+    }
 }
 
 // --- NEW FUNCTION: TRIGGERS ASYNCHRONOUS BLACKLIST CHECK FOR A ROW (NEWLY ADDED) ---
@@ -3109,7 +3168,7 @@ function toggleSelectAllPrint(event) {
   
 function openPrintSetupModal() {
     
-    // UPDATED: Populate Name and Designation/Position
+    // UPDATED: Populate Name and Designation/Position (Existing code)
     document.getElementById('signatory-prepared-by').value = selectedSignatories.preparedBy.name;
     document.getElementById('signatory-prepared-by-designation').value = selectedSignatories.preparedBy.designation;
 
@@ -3124,9 +3183,53 @@ function openPrintSetupModal() {
         if(inputDesignation) inputDesignation.value = selectedSignatories.checkedBy[i].designation;
     }
     
+    // *****************************************************************
+    // --- NEW: Populate Print Fields and Attach Listeners ---
+    // *****************************************************************
+    const subPropertyInput = document.getElementById('sub-property-input');
+    const sectionInput = document.getElementById('section-input');
+    const departmentInput = document.getElementById('department-input');
+    const remarksInput = document.getElementById('remarks-input');
+    
+    // Populate with current state
+    subPropertyInput.value = selectedPrintFields.subProperty;
+    sectionInput.value = selectedPrintFields.section;
+    departmentInput.value = selectedPrintFields.department;
+    remarksInput.value = selectedPrintFields.remarks;
+
+    // Attach listeners for state updates (only on change/input for simplicity)
+    subPropertyInput.oninput = (e) => handlePrintFieldInputChange(e, 'subProperty');
+    sectionInput.oninput = (e) => handlePrintFieldInputChange(e, 'section');
+    departmentInput.oninput = (e) => handlePrintFieldInputChange(e, 'department');
+    remarksInput.oninput = (e) => handlePrintFieldInputChange(e, 'remarks');
+    
+    // Attach filter for remarks (since it uses a datalist)
+    remarksInput.addEventListener('input', filterDatalistOptions);
+
     document.getElementById('print-setup-modal').classList.remove('hidden'); 
     document.getElementById('sub-property-input').focus();
 }
+
+// NEW: Handle Print Field Input Change (Validation and State Update)
+function handlePrintFieldInputChange(event, field) {
+    // 1. Kunin ang value at gawing uppercase
+    let newValue = event.target.value.toUpperCase(); 
+    
+    // FIX: Force the input element's value to the newly uppercased value for immediate visual feedback
+    event.target.value = newValue; 
+
+    // Update the state immediately
+    if (field === 'subProperty') {
+        selectedPrintFields.subProperty = newValue.trim();
+    } else if (field === 'section') {
+        selectedPrintFields.section = newValue.trim();
+    } else if (field === 'department') {
+        selectedPrintFields.department = newValue.trim();
+    } else if (field === 'remarks') {
+        selectedPrintFields.remarks = newValue.trim(); // Optional
+    }
+}
+// *****************************************************************
 
 function hidePrintSetupModal() {
     document.getElementById('print-setup-modal').classList.add('hidden');
@@ -3134,12 +3237,32 @@ function hidePrintSetupModal() {
 
 
 function handlePrintSetupConfirm(event) {
+    // GATHER ALL FIELDS
     const subProperty = document.getElementById('sub-property-input').value.trim();
+    const section = document.getElementById('section-input').value.trim();
+    const department = document.getElementById('department-input').value.trim();
+    const remarks = document.getElementById('remarks-input').value.trim();
+    
+    // 1. VALIDATION
     if (!subProperty) {
         showNotification('Sub Property is required before printing.', false);
         return;
     }
+    if (!section) {
+        showNotification('Section is required before printing.', false);
+        return;
+    }
+    if (!department) {
+        showNotification('Department is required before printing.', false);
+        return;
+    }
     
+    // 2. SAVE STATE (Already done by oninput, but ensure final trim/check)
+    selectedPrintFields.subProperty = subProperty;
+    selectedPrintFields.section = section;
+    selectedPrintFields.department = department;
+    selectedPrintFields.remarks = remarks; // Optional
+
     const signatoryError = validateAllSignatories();
     if (signatoryError) {
         showNotification(`Signatory Error: ${signatoryError}`, false);
@@ -3147,8 +3270,8 @@ function handlePrintSetupConfirm(event) {
     }
     
     hidePrintSetupModal();
-    // PASS THE LIST OF SELECTED IDS
-    triggerPrintPreparation(subProperty, bulkPrintSelected);
+    // PASS ALL REQUIRED FIELDS
+    triggerPrintPreparation(subProperty, section, department, remarks, bulkPrintSelected); 
 }
 
 // MODIFIED: This function now calls the print selection modal first.
@@ -3162,7 +3285,8 @@ function handlePrintPlan() {
     openPrintSelectionModal();
 }
 
-function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selectedPrintIds parameter
+// MODIFIED: Accepts all new fields (section, department, remarks)
+function triggerPrintPreparation(subProperty, section, department, remarks, selectedPrintIds) { 
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
         return;
@@ -3220,6 +3344,9 @@ function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selec
         headCount: currentContract.headCount
     };
 
+    // NEW: Define printFields object to pass to triggerPrint and recordPrintLogEntry
+    const printFields = { subProperty, section, department, remarks };
+
     toggleLoading(true, 'Generating Print Reference and Locking Schedules...');
 
     // UPDATED: logPrintAction now returns an object {refNum, printGroup}
@@ -3227,8 +3354,8 @@ function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selec
         .withSuccessHandler((response) => { 
             toggleLoading(false);
             const { refNum, printGroup } = response; // Destructure new response
-            // PASS the final list of IDs AND printGroup to the print function
-            triggerPrint(refNum, printGroup, subProperty, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
+            // PASS ALL PRINT FIELDS
+            triggerPrint(refNum, printGroup, printFields, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds); 
         })
         .withFailureHandler((error) => {
             handleError(error);
@@ -3236,8 +3363,16 @@ function triggerPrintPreparation(subProperty, selectedPrintIds) { // ADDED selec
         .logPrintAction(subProperty, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
 }
 
-function triggerPrint(refNum, printGroup, subProperty, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { // ADDED printGroup
+// MODIFIED: Accepts printFields object instead of separate subProperty string
+function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { 
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
+    
+    // *** CRITICAL UPDATE: Pass printFields to recordPrintLogEntry ***
+    google.script.run
+        .withSuccessHandler(() => { /* No-op on success here, handled by onafterprint */ })
+        .withFailureHandler(handleError)
+        .recordPrintLogEntry(refNum, printGroup, printFields.subProperty, printFields, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
+    // ****************************************************************
     
     // DESTUCTURE SIGNATORIES FOR EASIER USE
     const { preparedBy, approvedBy } = signatories;
@@ -3282,13 +3417,32 @@ function triggerPrint(refNum, printGroup, subProperty, signatories, dynamicallyH
     }
     printRefElement.textContent = refNum; 
     
-    // --- 2a. Sub Property Container ---
+    // *****************************************************************
+    // --- 2a. Sub Property Container (UPDATED HTML for flow) ---
+    // *****************************************************************
     const subPropertyHtml = `
-        <div id="print-sub-property-container" class="print-only-container">
-            <p class="text-sm font-medium text-black font-bold">Sub Property</p>
-            <p id="sub-property-display" class="text-base font-bold text-black">${subProperty}</p>
+        <div id="print-sub-property-container" class="print-only-container space-y-1">
+            <div class="flex">
+                <p class="text-sm font-medium text-black font-bold min-w-[80px] mr-5">Sub Property</p>
+                <p id="sub-property-display" class="text-base font-bold text-black">${printFields.subProperty}</p>
+            </div>
+            <div class="flex">
+                <p class="text-sm font-medium text-black font-bold min-w-[80px] mr-5">Section</p>
+                <p id="section-display" class="text-base font-bold text-black">${printFields.section}</p>
+            </div>
+            <div class="flex">
+                <p class="text-sm font-medium text-black font-bold min-w-[80px] mr-5">Department</p>
+                <p id="department-display" class="text-base font-bold text-black">${printFields.department}</p>
+            </div>
+            ${printFields.remarks.trim() !== '' ? 
+              `<div class="flex">
+                  <p class="text-sm font-medium text-black font-bold min-w-[80px] mr-5">Remarks</p>
+                  <p id="remarks-display" class="text-base font-bold text-black">${printFields.remarks}</p>
+              </div>` 
+              : ''}
         </div>
     `;
+    // *****************************************************************
 
     // --- 2b. Signatories Container (UPDATED LAYOUT) ---
     const signatoriesOnlyHtml = `
@@ -3313,6 +3467,13 @@ function triggerPrint(refNum, printGroup, subProperty, signatories, dynamicallyH
     
     // 3. Perform Injection
     const contractDetailsGrid = document.getElementById('contract-details-grid');
+    
+    // Remove old injected elements if they exist
+    const oldSubProperty = document.getElementById('print-sub-property-container');
+    if (oldSubProperty) oldSubProperty.remove();
+    const oldSignatories = document.getElementById('print-signatories-container');
+    if (oldSignatories) oldSignatories.remove();
+
     if (contractDetailsGrid) {
         contractDetailsGrid.insertAdjacentHTML('afterend', subPropertyHtml);
     } 
@@ -3365,6 +3526,11 @@ function triggerPrint(refNum, printGroup, subProperty, signatories, dynamicallyH
         const handleOk = () => {
             
             toggleUiLock(true, 'Confirming print log and locking schedules...');
+            // NOTE: The recordPrintLogEntry was already called before window.print(), 
+            // so we just confirm the lock state and log it (if needed).
+            
+            // We just need to ensure we call the function that performs the logging and locking
+            // For simplicity, we keep the original flow logic here, knowing the server will check for duplicates
             google.script.run
                 .withSuccessHandler(() => {
                     console.log(`Successfully recorded print log entry #${refNum} and locked IDs.`);
@@ -3376,7 +3542,8 @@ function triggerPrint(refNum, printGroup, subProperty, signatories, dynamicallyH
                     showNotification(`Warning: Failed to record print log/lock (Ref# ${refNum}). Error: ${error.message}`, false);
                     restoreUI();
                 })
-                .recordPrintLogEntry(refNum, printGroup, subProperty, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds); // ADDED printGroup
+                // Re-call the logging function for the server to log the successful print attempt
+                .recordPrintLogEntry(refNum, printGroup, printFields.subProperty, printFields, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
         };
 
         const handleCancel = () => {
@@ -4630,6 +4797,11 @@ function handleRelieverInfoChange(event) {
     document.getElementById('print-setup-confirm-btn').addEventListener('click', handlePrintSetupConfirm);
     document.getElementById('print-setup-cancel-btn').addEventListener('click', hidePrintSetupModal);
     
+    // *****************************************************************
+    // *** NEW: Fetch Print Field Master Data on load ***
+    fetchPrintFieldMasterData();
+    // *****************************************************************
+    
     // NEW: Attach Bulk Delete Modal Listeners
     document.getElementById('delete-modal-cancel-btn').addEventListener('click', () => {
          document.getElementById('bulk-delete-selection-modal').classList.add('hidden');
@@ -4681,5 +4853,12 @@ function handleRelieverInfoChange(event) {
         }
     }
     // *****************************************************************************
+    
+    // ************************ NEW PRINT FIELD LISTENERS (FOR DATALIST FILTERING) ************************
+    const remarksInput = document.getElementById('remarks-input');
+    if (remarksInput) {
+        remarksInput.addEventListener('input', filterDatalistOptions); 
+    }
+    // ***************************************************************************************************
   }
 </script>
