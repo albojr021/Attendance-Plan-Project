@@ -269,23 +269,62 @@
         .reliever-print-wrapper td:nth-child(4), .reliever-print-wrapper th:nth-child(4) { width: 100px !important; } /* Position */
         .reliever-print-wrapper td:nth-child(5), .reliever-print-wrapper th:nth-child(5) { width: 100px !important; } /* Area Posting */
 
-        #print-sub-property-container, #print-signatories-container { display: block !important; }
-        
-        .locked-row { background-color: white !important; opacity: 1 !important; }
-
-        body { background-color: white !important; margin: 0; padding: 0 !important; font-size: 10pt; }
-        
-        #contract-details-area, #planning-area { 
-          display: block !important; 
-          margin-top: 0.1rem; 
-          padding: 0; 
-          break-after: avoid; 
-        }
-        .card { 
-          box-shadow: none !important; 
-          border-radius: 0 !important; 
+        #print-signatories-container {
+          display: block !important; /* CRITICAL FIX: Ensure visibility */
+          position: static !important; 
+          bottom: auto !important; 
+          left: auto !important; 
+          right: auto !important; 
+          width: 100% !important; 
           padding: 0 !important; 
+          margin-top: 15mm !important; 
+          break-before: auto !important; 
+          break-inside: avoid !important; 
+          z-index: auto !important;
+        }
+        
+        /* ************************************************* */
+        /* --- NEW FIX: Force white background on info columns to remove bleed --- */
+        /* ************************************************* */
+        .attendance-grid td:nth-child(-n+5) { 
+             background-color: white !important;
+             box-shadow: none !important;
+             -webkit-print-color-adjust: exact;
+             print-color-adjust: exact;
+        }
+        /* ************************************************* */
+        
+        
+        /* --- NEW PRINT FIELD CONTAINER STYLES (Print Details) --- */
+        #print-sub-property-container { 
+          display: block !important; 
+          border: none !important; 
+          padding: 0 0 !important; 
+          margin-bottom: 5px !important; 
           background-color: transparent !important; 
+          break-inside: avoid; 
+        }
+
+        #print-sub-property-container .flex { 
+             display: flex !important;
+             align-items: flex-start !important;
+             margin-bottom: 0.5px !important; /* Tight spacing */
+        }
+        
+        #print-sub-property-container p { 
+            font-size: 0.55rem !important; 
+            line-height: 1.1 !important; 
+            font-weight: normal !important; 
+            margin: 0; 
+            padding: 0; 
+            color: black !important;
+        }
+
+        #print-sub-property-container p:first-child { 
+            font-weight: bold !important; 
+            color: black !important; 
+            min-width: 80px; 
+            margin-right: 5px; 
         }
         
         #contract-details-grid { display: block; margin-bottom: 0.1rem; padding: 0; }
@@ -298,28 +337,6 @@
           break-inside: avoid; 
         }
         
-        #print-sub-property-container { 
-          display: flex !important; 
-          border: none !important; 
-          padding: 0 0 !important; 
-          margin-bottom: 5px !important; 
-          background-color: transparent !important; 
-          break-inside: avoid; 
-        }
-
-        #print-signatories-container {
-          position: static !important; 
-          bottom: auto !important; 
-          left: auto !important; 
-          right: auto !important; 
-          width: 100% !important; 
-          padding: 0 !important; 
-          margin-top: 15mm !important; 
-          break-before: auto !important; 
-          break-inside: avoid !important; 
-          z-index: auto !important;
-        }
-
         //* --- UPDATED SIGNATORY LAYOUT (FLEXBOX) --- */
         .print-signatories {
             display: flex !important; /* Flexbox para dynamic */
@@ -375,7 +392,7 @@
              padding-top: 0 !important; border-top: none !important; margin-top: 5px !important;
         }
 
-        #contract-details-grid p, #print-sub-property-container p, 
+        #contract-details-grid p, 
         #contract-details-grid .text-xl, .text-gray-700 { 
             font-size: 0.55rem !important; 
             line-height: 1.1 !important; 
@@ -384,7 +401,7 @@
             padding: 0; 
             color: black !important;
         }
-        #contract-details-grid > div p:first-child, #print-sub-property-container p:first-child { 
+        #contract-details-grid > div p:first-child { 
           font-weight: bold !important; 
           color: black !important; 
           min-width: 80px; 
@@ -513,11 +530,6 @@
         background-color: #fecaca !important; /* Slightly lighter red background */
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact;
-      }
-      tr.line-through.bg-red-200 * {
-        /* Apply line-through to ALL content inside the row, including inputs */
-        text-decoration: line-through !important;
-        color: #b91c1c !important; /* Dark red text */
       }
       /* Ensure inputs and spans in deleted rows retain the deletion style */
       tr.line-through.bg-red-200 .personnel-info-input,
