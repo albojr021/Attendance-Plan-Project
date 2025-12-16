@@ -127,6 +127,7 @@
   // *** NEW REGEX FOR SIGNATORY NAMES (Letters, Space, Dash, Comma, Period only) ***
   const SIGNATORY_REGEX = /^[A-Z\s.,-]+$/; 
   const SAFE_NAME_REGEX = /[^A-Z\s.,-]/g; 
+  
   // ---------------------------------------------
 
   // --- NEW: Time Option Generator for Dropdowns ---
@@ -3337,11 +3338,14 @@ function triggerPrintPreparation(subProperty, section, department, remarks, sele
     const currentMonth = currentPlanningDate.getMonth();
     const currentShift = document.getElementById('shift-period-select').value;
     
+    // UPDATED: Include propOrGrpCode and sector
     const contractInfo = {
         payor: currentContract.payorCompany,
         agency: currentContract.agency,
         serviceType: currentContract.serviceType,
-        headCount: currentContract.headCount
+        headCount: currentContract.headCount,
+        propOrGrpCode: currentContract.propOrGrpCode, // ADDED
+        sector: currentContract.sector // ADDED
     };
 
     // NEW: Define printFields object to pass to triggerPrint and recordPrintLogEntry
@@ -3367,29 +3371,34 @@ function triggerPrintPreparation(subProperty, section, department, remarks, sele
 function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { 
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
     
-    // *****************************************************************
-    // *** CRITICAL FIX: TINANGGAL ANG IMMEDIATE LOCKING CALL DITO. ***
-    // (Ang locking ay ililipat sa handleOk function sa print confirmation modal)
-    // *****************************************************************
-    
     // DESTUCTURE SIGNATORIES FOR EASIER USE
     const { preparedBy, approvedBy } = signatories;
     
-    // --- NEW LOGIC: GENERATE 5 SEPARATE CHECKED BY COLUMNS ---
-    const checkedByNames = signatories.checkedBy; // Kunin ang raw array (kahit may empty)
-    let checkedByColumnsHtml = '';
-    const maxChecked = 5; // Maximum Checked By signatories
+    // 1. Compute planPeriodDisplay
+    const date = new Date(year, month, 1);
+    const monthName = date.toLocaleString('en-US', { month: 'long' });
+    const yearNum = date.getFullYear();
+    const daysInMonth = getDaysInMonth(year, month); // Gagamitin ang client-side getDaysInMonth
 
-    // Loop 5 times para gumawa ng fixed columns
+    let planPeriodDisplay = '';
+    if (shift === '1stHalf') {
+        planPeriodDisplay = `${monthName} 1-15, ${yearNum} (${shift})`;
+    } else {
+        planPeriodDisplay = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
+    }
+
+    // --- NEW LOGIC: GENERATE 5 SEPARATE CHECKED BY COLUMNS (As per existing code) ---
+    const checkedByNames = signatories.checkedBy; 
+    let checkedByColumnsHtml = '';
+    const maxChecked = 5; 
+
     for (let i = 0; i < maxChecked; i++) {
         const signatory = checkedByNames[i];
         
-        // Default: Blank content at data-filled="false"
         let nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">&nbsp;</p>`;
         let designationHtml = `<p class="text-xs font-normal text-black pb-1">&nbsp;</p>`;
         let isFilled = false;
         
-        // Kung may laman ang signatory sa index na ito
         if (signatory && signatory.name.trim() !== '') {
             nameHtml = `<p class="text-sm font-bold text-black line-break border-t pt-1">${signatory.name.trim()}</p>`;
             designationHtml = `<p class="text-xs font-normal text-black pb-1">${signatory.designation.trim()}</p>`;
@@ -3416,33 +3425,32 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     printRefElement.textContent = refNum; 
     
     // *****************************************************************
-    // --- 2a. Sub Property Container (UPDATED HTML for flow) ---
+    // --- NEW UNIFIED PRINT DETAILS CONTAINER (Ang Desired Layout) ---
     // *****************************************************************
-    const subPropertyHtml = `
-        <div id="print-sub-property-container" class="print-only-container space-y-1">
-            <div class="flex">
-                <p class="text-sm font-medium text-black font-bold min-w-[80px] mr-5">Sub Property</p>
-                <p id="sub-property-display" class="text-base font-bold text-black">${printFields.subProperty}</p>
+    const printDetailsUnifiedHtml = `
+        <div id="print-details-unified-container" class="print-only-container">
+            <div class="print-details-col left-col">
+                <div class="flex"><p class="label">Payor Company</p><p class="value">${contractInfo.payor}</p></div>
+                <div class="flex"><p class="label">Sub Property</p><p class="value">${printFields.subProperty}</p></div>
+                <div class="flex"><p class="label">Plan Period</p><p class="value">${planPeriodDisplay}</p></div>
+                <div class="flex"><p class="label">Agency</p><p class="value">${contractInfo.agency}</p></div>
+                <div class="flex"><p class="label">Section</p><p class="value">${printFields.section}</p></div>
+                <div class="flex"><p class="label">Department</p><p class="value">${printFields.department}</p></div>
             </div>
-            <div class="flex">
-                <p class="text-sm font-medium text-black font-bold min-w-[80px] mr-5">Section</p>
-                <p id="section-display" class="text-base font-bold text-black">${printFields.section}</p>
+            
+            <div class="print-details-col right-col">
+                <div class="flex"><p class="label">Prop / Grp. Code</p><p class="value">${contractInfo.propOrGrpCode}</p></div>
+                <div class="flex"><p class="label">Sector</p><p class="value">${contractInfo.sector}</p></div>
+                <div class="flex"><p class="label">Service Type</p><p class="value">${contractInfo.serviceType}</p></div>
+                ${printFields.remarks.trim() !== '' ? 
+                    `<div class="flex"><p class="label">Remarks</p><p class="value">${printFields.remarks}</p></div>` 
+                    : `<div class="flex"><p class="label">Remarks</p><p class="value">N/A</p></div>`}
             </div>
-            <div class="flex">
-                <p class="text-sm font-medium text-black font-bold min-w-[80px] mr-5">Department</p>
-                <p id="department-display" class="text-base font-bold text-black">${printFields.department}</p>
-            </div>
-            ${printFields.remarks.trim() !== '' ? 
-              `<div class="flex">
-                  <p class="text-sm font-medium text-black font-bold min-w-[80px] mr-5">Remarks</p>
-                  <p id="remarks-display" class="text-base font-bold text-black">${printFields.remarks}</p>
-              </div>` 
-              : ''}
         </div>
     `;
     // *****************************************************************
 
-    // --- 2b. Signatories Container (UPDATED LAYOUT) ---
+    // --- 2b. Signatories Container ---
     const signatoriesOnlyHtml = `
         <div id="print-signatories-container" class="print-only-container">
             <div class="grid gap-x-4 gap-y-2 text-center print-signatories">
@@ -3463,17 +3471,20 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         </div>
     `;
     
-    // 3. Perform Injection
+    // 3. Perform Injection and Cleanup
     const contractDetailsGrid = document.getElementById('contract-details-grid');
     
-    // Remove old injected elements if they exist
+    // Remove old injected elements
     const oldSubProperty = document.getElementById('print-sub-property-container');
     if (oldSubProperty) oldSubProperty.remove();
     const oldSignatories = document.getElementById('print-signatories-container');
     if (oldSignatories) oldSignatories.remove();
 
     if (contractDetailsGrid) {
-        contractDetailsGrid.insertAdjacentHTML('afterend', subPropertyHtml);
+        // I-inject ang bagong unified block bago ang attendance grid
+        contractDetailsGrid.insertAdjacentHTML('afterend', printDetailsUnifiedHtml);
+        // Itago ang lumang contract details grid (UI version) sa print
+        contractDetailsGrid.classList.add('print-hidden'); 
     } 
 
     document.body.insertAdjacentHTML('beforeend', signatoriesOnlyHtml);
@@ -3504,14 +3515,23 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             if (printRefElement) {
                  printRefElement.remove();
             }
-            const injectedSubProperty = document.getElementById('print-sub-property-container');
-            if (injectedSubProperty) {
-                 injectedSubProperty.remove();
+            // Tanggalin ang bagong in-inject na unified container
+            const injectedUnified = document.getElementById('print-details-unified-container');
+            // UPDATED ID: From print-sub-property-container to print-details-unified-container
+            if (injectedUnified) {
+                 injectedUnified.remove();
             }
+
             const injectedSignatories = document.getElementById('print-signatories-container');
             if (injectedSignatories) {
                  injectedSignatories.remove();
             }
+            
+            // Ibalik ang visibility ng Contract Details Grid para sa UI
+            if (contractDetailsGrid) {
+                 contractDetailsGrid.classList.remove('print-hidden');
+            }
+
 
             const inputs = document.querySelectorAll('#attendance-table-container input');
             inputs.forEach(input => {
