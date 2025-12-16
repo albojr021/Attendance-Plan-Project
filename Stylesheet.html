@@ -304,26 +304,38 @@
         /* --- NEW UNIFIED PRINT DETAILS STYLES --- */
         #print-details-unified-container {
           display: grid !important; 
-          grid-template-columns: 1fr 1fr !important; /* Two columns */
-          gap: 10px !important; 
+          /* NEW: 3 parts for Left Col, 3 parts for Spacer, 2 parts for Right Col (Total 8 parts) */
+          grid-template-columns: 3fr 3fr 2fr !important; 
+          gap: 0 !important; /* Use the spacer column instead of gap */
           border: none !important; 
           padding: 0 0 !important; 
           margin-bottom: 5px !important; 
           background-color: transparent !important; 
           break-inside: avoid; 
+          
+          /* CRITICAL CHANGE (from last step): Align items to the start (top) */
+          align-items: flex-start !important; 
         }
 
         #print-details-unified-container .print-details-col {
           display: flex !important;
           flex-direction: column !important;
           gap: 1px !important; 
+          
+          /* Pilitin ang right column na magsimula sa pinakataas ng grid area */
+          align-self: flex-start !important; 
+        }
+        
+        /* ASSIGN GRID COLUMNS TO PUSH RIGHT COLUMN OVER THE SPACER */
+        #print-details-unified-container .print-details-col.left-col {
+          grid-column: 1 / span 1 !important; /* Start at line 1, spans 1 column */
         }
 
-        #print-details-unified-container .flex { 
-             display: flex !important;
-             align-items: flex-start !important;
-             margin-bottom: 0 !important; 
+        #print-details-unified-container .print-details-col.right-col {
+          grid-column: 3 / span 1 !important; /* Start at line 3, spans 1 column (skipping the 3fr spacer) */
         }
+        /* END NEW GRID ASSIGNMENT */
+
 
         #print-details-unified-container p.label,
         #print-details-unified-container p.value { 
