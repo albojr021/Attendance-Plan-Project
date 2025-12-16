@@ -219,43 +219,26 @@
     @page {
         size: 13in 8.5in landscape; 
         margin: 5mm; 
+        @bottom-right {
+             content: "Page " counter(page) " of " counter(pages);
+             font-size: 7pt;
+             color: #444;
+        }
     }
     
     @media print {
 
-        /* I-position ang Timestamp (Bottom Left) */
         #print-timestamp-display {
           display: block !important;
           position: fixed !important;
-          bottom: 0 !important;
-          left: 0 !important;
-          font-size: 7pt !important;
-          font-weight: bold !important;
-          color: #444 !important;
-          z-index: 1000 !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-
-        /* NEW: I-position ang Page Number (Bottom Right) */
-        #print-page-number-display {
-          display: block !important;
-          position: fixed !important;
           bottom: 0 !important; 
-          right: 0 !important; 
+          left: 0 !important; 
           font-size: 7pt !important;
           font-weight: bold !important;
           color: #444 !important;
           z-index: 1000 !important;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
-          
-          /* Gamitin ang CSS counters para ipakita ang page number */
-          counter-increment: page;
-        }
-
-        #print-page-number-display::before {
-             content: "Page " counter(page);
         }
 
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
@@ -264,7 +247,7 @@
 
         .reliever-title-for-print { 
         display: block !important;
-        font-size: 8pt !important; 
+        font-size: 8pt !important; // Binago mula 10pt patungong 8pt
         font-weight: bold !important;
         margin-top: 10px !important; 
         margin-bottom: 2px !important;
@@ -300,6 +283,20 @@
         .reliever-print-wrapper td:nth-child(4), .reliever-print-wrapper th:nth-child(4) { width: 100px !important; } /* Position */
         .reliever-print-wrapper td:nth-child(5), .reliever-print-wrapper th:nth-child(5) { width: 100px !important; } /* Area Posting */
 
+        #print-signatories-container {
+          display: block !important; /* CRITICAL FIX: Ensure visibility */
+          position: static !important; 
+          bottom: auto !important; 
+          left: auto !important; 
+          right: auto !important; 
+          width: 100% !important; 
+          padding: 0 !important; 
+          margin-top: 15mm !important; 
+          break-before: auto !important; 
+          break-inside: avoid !important; 
+          z-index: auto !important;
+        }
+        
         /* ************************************************* */
         /* --- NEW FIX: Force white background on info columns to remove bleed --- */
         /* ************************************************* */
