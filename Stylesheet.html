@@ -295,9 +295,17 @@
         /* ************************************************* */
         
         
-        /* --- NEW PRINT FIELD CONTAINER STYLES (Print Details) --- */
-        #print-sub-property-container { 
-          display: block !important; 
+        /* --- REMOVE OLD PRINT FIELD CONTAINER STYLES --- */
+        #print-sub-property-container, 
+        #contract-details-grid {
+             display: none !important; 
+        }
+
+        /* --- NEW UNIFIED PRINT DETAILS STYLES --- */
+        #print-details-unified-container {
+          display: grid !important; 
+          grid-template-columns: 1fr 1fr !important; /* Two columns */
+          gap: 10px !important; 
           border: none !important; 
           padding: 0 0 !important; 
           margin-bottom: 5px !important; 
@@ -305,13 +313,20 @@
           break-inside: avoid; 
         }
 
-        #print-sub-property-container .flex { 
+        #print-details-unified-container .print-details-col {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 1px !important; 
+        }
+
+        #print-details-unified-container .flex { 
              display: flex !important;
              align-items: flex-start !important;
-             margin-bottom: 0.5px !important; /* Tight spacing */
+             margin-bottom: 0 !important; 
         }
-        
-        #print-sub-property-container p { 
+
+        #print-details-unified-container p.label,
+        #print-details-unified-container p.value { 
             font-size: 0.55rem !important; 
             line-height: 1.1 !important; 
             font-weight: normal !important; 
@@ -320,24 +335,14 @@
             color: black !important;
         }
 
-        #print-sub-property-container p:first-child { 
+        #print-details-unified-container p.label { 
             font-weight: bold !important; 
             color: black !important; 
-            min-width: 80px; 
+            min-width: 100px; /* Mas malaking min-width for labels */
             margin-right: 5px; 
         }
         
-        #contract-details-grid { display: block; margin-bottom: 0.1rem; padding: 0; }
-        #contract-details-grid > div { 
-          display: flex; 
-          border: none !important; 
-          padding: 0 0 !important; 
-          margin-bottom: 0; 
-          background-color: transparent !important; 
-          break-inside: avoid; 
-        }
-        
-        //* --- UPDATED SIGNATORY LAYOUT (FLEXBOX) --- */
+        /* --- UPDATED SIGNATORY LAYOUT (FLEXBOX) --- */
         .print-signatories {
             display: flex !important; /* Flexbox para dynamic */
             justify-content: space-evenly !important; /* Pantay na spacing at centering */
