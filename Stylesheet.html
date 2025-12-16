@@ -227,6 +227,20 @@
     }
     
     @media print {
+
+        #print-timestamp-display {
+          display: block !important;
+          position: fixed !important;
+          bottom: 0 !important; 
+          left: 0 !important; 
+          font-size: 7pt !important;
+          font-weight: bold !important;
+          color: #444 !important;
+          z-index: 1000 !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
         .print-hidden, #loading-alert, #notification-area, #floating-status-modal,
         #legend-area, .action-icon, .new-label-no-col, #floating-bulk-modal, .print-header
         { display: none !important; }
