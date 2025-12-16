@@ -3387,6 +3387,24 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         planPeriodDisplay = `${monthName} 16-${daysInMonth}, ${yearNum} (${shift})`;
     }
 
+    // --- NEW LOGIC: Generate and set print timestamp on the body for CSS @page ---
+    const now = new Date();
+    const formattedTime = now.toLocaleString('en-US', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        hour12: true // Use AM/PM for standard time display
+    });
+    const timestampDisplay = document.getElementById('print-timestamp-display');
+    if (timestampDisplay) {
+         timestampDisplay.textContent = `Printed: ${formattedTime}`;
+         timestampDisplay.classList.remove('print-hidden'); 
+    }
+    // --- END NEW LOGIC ---
+    
     // --- NEW LOGIC: GENERATE 5 SEPARATE CHECKED BY COLUMNS (As per existing code) ---
     const checkedByNames = signatories.checkedBy; 
     let checkedByColumnsHtml = '';
@@ -3531,7 +3549,11 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             if (contractDetailsGrid) {
                  contractDetailsGrid.classList.remove('print-hidden');
             }
-
+            
+            if (timestampDisplay) {
+                timestampDisplay.classList.add('print-hidden'); // ITAGO ANG ELEMENT
+                timestampDisplay.textContent = '';
+            }
 
             const inputs = document.querySelectorAll('#attendance-table-container input');
             inputs.forEach(input => {
