@@ -1374,6 +1374,11 @@ function handleAttendanceData(data) {
   function renderAttendancePlan() {
     if (!currentContract) return;
 
+    if (currentContract.serviceType === 'SECURITY SERVICES') {
+        renderSecurityPlan(); 
+        return; 
+    }
+
     const year = currentPlanningDate.getFullYear();
     const month = currentPlanningDate.getMonth();
     const daysInMonth = getDaysInMonth(year, month);
@@ -1725,6 +1730,233 @@ function handleAttendanceData(data) {
     
     tableContainer.appendChild(table);
     renderRelieverTable();
+  }
+
+  function renderSecurityPlan() {
+    const tableContainer = document.getElementById('attendance-table-container');
+    tableContainer.innerHTML = ''; // Clear existing table
+
+    const year = currentPlanningDate.getFullYear();
+    const month = currentPlanningDate.getMonth();
+    const selectedShift = document.getElementById('shift-period-select').value;
+    const daysInMonth = getDaysInMonth(year, month);
+    
+    // Calculate Period Label (e.g., "Dec 1-15, 2025")
+    const monthName = currentPlanningDate.toLocaleString('en-US', { month: 'short' });
+    let periodLabel = '';
+    if (selectedShift === '1stHalf') {
+        periodLabel = `${monthName} 1-15, ${year}`;
+    } else {
+        periodLabel = `${monthName} 16-${daysInMonth}, ${year}`;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'w-full text-sm text-left text-gray-700 border-collapse';
+
+    // --- TABLE HEAD (Security Specific) ---
+    const thead = table.createTHead();
+    
+    // ROW 1
+    const tr1 = thead.insertRow();
+    
+    // Headers setup
+    const headers1 = [
+        { text: 'NO.', rowspan: 2, width: '50px' },
+        { text: 'Name of Guards', rowspan: 2, width: '250px' }, // Mas malapad para sa Pangalan
+        { text: 'Designation', rowspan: 2, width: '150px' },
+        { text: 'Place of Duty (Location)', rowspan: 2, width: '200px' },
+        { text: 'Time of Shift', rowspan: 1, width: '150px' }, 
+        { text: 'Firearm Nomenclature', rowspan: 1, colspan: 4, width: '' }, 
+        { text: 'Validity of License', rowspan: 2, width: '120px' }
+    ];
+
+    headers1.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h.text;
+        if (h.rowspan) th.rowSpan = h.rowspan;
+        if (h.colspan) th.colSpan = h.colspan;
+        if (h.width) th.style.width = h.width;
+        th.className = 'sticky-col-header text-xs font-bold uppercase tracking-wider p-2 bg-gray-100 border border-gray-300 text-center align-middle';
+        tr1.appendChild(th);
+    });
+
+    // ROW 2 (Sub-headers)
+    const tr2 = thead.insertRow();
+    
+    // Sub-header: Period
+    const thPeriod = document.createElement('th');
+    thPeriod.textContent = periodLabel;
+    thPeriod.className = 'sticky-col-header text-xs font-semibold uppercase p-2 bg-gray-50 border border-gray-300 text-center text-blue-800';
+    tr2.appendChild(thPeriod);
+
+    // Sub-headers: Firearms
+    const firearmHeaders = ['Type', 'Make', 'Caliber', 'Serial No.'];
+    firearmHeaders.forEach(text => {
+        const th = document.createElement('th');
+        th.textContent = text;
+        th.className = 'sticky-col-header text-xs font-semibold uppercase p-2 bg-gray-50 border border-gray-300 text-center';
+        tr2.appendChild(th);
+    });
+
+    // --- TABLE BODY ---
+    const tbody = table.createTBody();
+    
+    let rowsToRender = currentContract.employees.slice() || [];
+    
+    // Isama ang mga pending new employees
+    Object.keys(pendingEmployeeInfoChanges).forEach(stableKey => {
+         const change = pendingEmployeeInfoChanges[stableKey];
+         if (change.originalEmployeeId === '' && !rowsToRender.some(e => e.id === change.id)) {
+             rowsToRender.push({
+                 no: 0, id: change.id, name: change.name, 
+                 position: change.position, area: change.area, isNew: true
+             });
+         }
+    });
+
+    // Sort alphabetically by Name
+    rowsToRender.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    
+    const maxRenderedRows = Math.max(currentContract?.headCount || 0, rowsToRender.length);
+
+    for (let i = 0; i < maxRenderedRows; i++) {
+        const employee = rowsToRender[i] || { no: i + 1, id: '', name: '', position: '', area: '' };
+        const stableLookupKey = employee.id || `TEMP_${i + 1}`;
+        const pendingInfo = pendingEmployeeInfoChanges[stableLookupKey];
+        
+        const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
+        const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
+        const displayDesignation = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
+        const displayPlace = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
+        
+        const tr = tbody.insertRow();
+        tr.dataset.stableKey = stableLookupKey;
+
+        // 1. NO.
+        let td = tr.insertCell();
+        td.className = 'text-center p-2 border border-gray-300 bg-gray-50 font-bold';
+        td.textContent = i + 1;
+
+        // 2. Name of Guards (ALL CAPS + Datalist from 201)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        
+        let input = createTableInput('text', displayName, 'NAME OF GUARD', false);
+        input.setAttribute('list', 'employee-name-list'); // Gamitin ang 201 File Datalist
+        input.dataset.field = 'name';
+        input.dataset.oldPersonnelId = stableLookupKey;
+        
+        // Event Listeners for Name
+        input.addEventListener('input', function(e) {
+            this.value = this.value.toUpperCase(); // Force Uppercase habang nagta-type
+            filterDatalistOptions(e); // Optional: Filter list logic kung meron ka
+        });
+        // Gamitin ang handlePersonnelInfoChange para mag-autofill ng Designation/Location kung nasa masterlist
+        input.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee)); 
+        
+        td.appendChild(input);
+
+        // Hidden ID Input (Nakatago pero nagse-save ng ID para sa backend integrity)
+        let hiddenIdInput = document.createElement('input');
+        hiddenIdInput.type = 'hidden';
+        hiddenIdInput.value = displayId;
+        hiddenIdInput.dataset.field = 'id';
+        hiddenIdInput.dataset.oldPersonnelId = stableLookupKey;
+        td.appendChild(hiddenIdInput);
+
+        // 3. Designation (ALL CAPS)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        input = createTableInput('text', displayDesignation, 'DESIGNATION', false);
+        input.setAttribute('list', 'employee-position-list');
+        input.dataset.field = 'position';
+        input.dataset.oldPersonnelId = stableLookupKey;
+        input.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        input.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
+        td.appendChild(input);
+
+        // 4. Place of Duty (ALL CAPS)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        input = createTableInput('text', displayPlace, 'LOCATION', false);
+        input.setAttribute('list', 'employee-area-list');
+        input.dataset.field = 'area';
+        input.dataset.oldPersonnelId = stableLookupKey;
+        input.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        input.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
+        td.appendChild(input);
+
+        // 5. Time of Shift (ALL CAPS)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        input = createTableInput('text', '', '00:00-00:00', false); 
+        input.className += ' text-center';
+        input.dataset.field = 'securityTime';
+        input.addEventListener('input', function() { this.value = this.value.toUpperCase(); }); 
+        td.appendChild(input);
+
+        // 6. Firearm Type (ALL CAPS)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        input = createTableInput('text', '', 'TYPE', false);
+        input.dataset.field = 'firearmType';
+        input.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        td.appendChild(input);
+
+        // 7. Firearm Make (ALL CAPS)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        input = createTableInput('text', '', 'MAKE', false);
+        input.dataset.field = 'firearmMake';
+        input.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        td.appendChild(input);
+
+        // 8. Firearm Caliber (ALL CAPS)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        input = createTableInput('text', '', 'CALIBER', false);
+        input.dataset.field = 'firearmCaliber';
+        input.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        td.appendChild(input);
+
+        // 9. Serial No. (ALL CAPS)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        input = createTableInput('text', '', 'SERIAL #', false);
+        input.dataset.field = 'firearmSerial';
+        input.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        td.appendChild(input);
+
+        // 10. Validity of License (ALL CAPS)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-300';
+        input = createTableInput('text', '', 'VALIDITY', false);
+        input.placeholder = 'MM/DD/YYYY';
+        input.dataset.field = 'licenseValidity';
+        input.addEventListener('input', function() { this.value = this.value.toUpperCase(); });
+        td.appendChild(input);
+    }
+
+    tableContainer.appendChild(table);
+    
+    // Show Reliever Table (STANDARD GRID)
+    const relieverArea = document.getElementById('reliever-personnel-area');
+    if (relieverArea) {
+        relieverArea.classList.remove('hidden'); 
+        renderRelieverTable(); 
+    }
+  }
+
+  // UPDATE: Updated helper para sa styling
+  function createTableInput(type, value, placeholder, readOnly) {
+      const input = document.createElement('input');
+      input.type = type;
+      input.value = value || '';
+      input.placeholder = placeholder;
+      if (readOnly) input.readOnly = true;
+      // Added 'uppercase' class just in case you have CSS for it too
+      input.className = 'w-full p-1 bg-transparent border-none focus:ring-1 focus:ring-blue-500 outline-none text-sm uppercase';
+      return input;
   }
 
   // NEW FUNCTION: Apply Schedule Pattern to a specific grid row
