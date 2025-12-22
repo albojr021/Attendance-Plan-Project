@@ -3345,7 +3345,8 @@ function triggerPrintPreparation(subProperty, section, department, remarks, sele
         serviceType: currentContract.serviceType,
         headCount: currentContract.headCount,
         propOrGrpCode: currentContract.propOrGrpCode, // ADDED
-        sector: currentContract.sector // ADDED
+        sector: currentContract.sector, // ADDED
+        kindOfSfc: currentContract.kindOfSfc || ''
     };
 
     // NEW: Define printFields object to pass to triggerPrint and recordPrintLogEntry
