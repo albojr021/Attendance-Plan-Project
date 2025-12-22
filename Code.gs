@@ -1937,8 +1937,20 @@ function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
         
         const finalPrintGroup = `P${nextPrintGroupNumeric}`;
         
-        // --- NEW LOGIC: Add Kind of SFC Prefix ---
-        const kindOfSfc = (contractInfo.kindOfSfc || 'SFC').toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); 
+        // --- UPDATED LOGIC: RA Check Only + Fallback ---
+        let rawKind = (contractInfo.kindOfSfc || 'SFC').toString().trim().toUpperCase();
+        let kindOfSfc = '';
+
+        if (rawKind.startsWith('RA') || rawKind.includes(' RA')) {
+            kindOfSfc = 'RA';
+        } else {
+
+            kindOfSfc = rawKind.replace(/[^A-Z0-9]/g, '');
+            
+            if (kindOfSfc.length > 8) {
+                kindOfSfc = kindOfSfc.substring(0, 8); 
+            }
+        }
         
         const baseRef = [kindOfSfc, sfcRef, monthYear, shift, finalSequentialNumber];
         const finalPrintReference = `${baseRef.join('-')}-${finalPrintGroup}`;
