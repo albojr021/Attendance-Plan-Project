@@ -321,7 +321,7 @@ function getContracts() {
     const contractIdValue = (c[contractIdKey] || '').toString().trim();
     if (!contractIdValue) return false; 
     const status = (c[statusKey] || '').toString().trim().toLowerCase();
-    const isLive = status === 'live' || status === 'on process - live';
+    const isLive = status === 'live' || status === 'on process - live' || status === "ongoing temporary augmentation";
 
     return isLive;
   });
