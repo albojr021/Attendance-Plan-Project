@@ -1814,14 +1814,12 @@ function showPersonnelWarning(rowElement, message) {
 }
 
   // --- EMPLOYEE INFO HANDLERS (Manual Save) ---
-  
   function handlePersonnelInfoChange(event, employee) {
     const input = event.target;
     const field = input.dataset.field;
     const oldPersonnelKey = input.dataset.oldPersonnelId; 
     let newValue = input.value;
     
-    // Tiyakin na ang pendingChange ay laging nababasa/nalilikha nang tama
     let pendingChange = pendingEmployeeInfoChanges[oldPersonnelKey] || {
         id: employee.id, 
         name: employee.name, 
@@ -1834,8 +1832,6 @@ function showPersonnelWarning(rowElement, message) {
     
     const previousIdValue = pendingChange.id; 
     
-    // Ang lock check na ito ay umaasa sa 'readOnly' attribute na nanggagaling sa renderAttendancePlan.
-    // Kung hindi readOnly ang input, papayagan natin ang edit.
     if (input.readOnly) {
          if (lockedIdRefMap[employee.id]) {
              showNotification('Cannot edit: Saved row is locked by a printed reference number.', false);
@@ -1848,14 +1844,13 @@ function showPersonnelWarning(rowElement, message) {
          return;
     }
 
-
     const row = input.closest('tr');
     let masterRecordFound = null; 
     let masterRecord = null;
     
     const upperNewValue = newValue.trim().toUpperCase(); 
     
-    // --- SIMULA: NEW REAL-TIME VALIDATION (Change Event Only) ---
+    // --- SIMULA: REAL-TIME VALIDATION (Change Event Only) ---
     if (event.type === 'change') {
         const idInput = row.querySelector('[data-field="id"]');
         const nameInput = row.querySelector('[data-field="name"]');
@@ -1863,77 +1858,50 @@ function showPersonnelWarning(rowElement, message) {
         const currentName = nameInput?.value.trim() || '';
         const upperCurrentName = currentName.toUpperCase();
         
-        // 1. **BLACKLIST CHECK (Client-side synchronous)**
+        // 1. BLACKLIST CHECK
         const blacklistCheckResult = checkIsBlacklisted(currentId, currentName);
-
         if (blacklistCheckResult.isBlacklisted) {
             showNotification(`FATAL: Cannot use Personnel ID/Name. Employee is BLACKLISTED! ${blacklistCheckResult.reason}`, false);
-            
-            // Revert value to the original saved state or the previous valid value
             const oldState = currentContract.employees.find(e => e.id === employee.id) || employee;
-            
-            // Revert the UI input
             input.value = oldState[field] || ''; 
-            
-            // Revert the pending change state
             pendingChange[field] = input.value;
-            
-            // Clear visual warning if any
             showPersonnelWarning(row, null); 
-            return; // BLOCK FURTHER PROCESSING
+            return; 
         }
-        
-        // 2. **UPDATED 201 CHECK for NEW ROWS**
-        const isNewUnsaved = pendingChange.isNew; 
-        
-        if (upperNewValue.length > 0 && isNewUnsaved) { 
-            
-            if (field === 'id' || field === 'name') {
-                
-                // Tinitingnan ang ALL 201 list (all201PersonnelList) para payagan ang input
-                const is201Employee = all201PersonnelList.some(e => {
-                    if (field === 'id') {
-                        return e.id === currentId;
-                    } else {
-                        // NEW: Gumamit ng normalization para sa pangalan
-                        const normalizedInputName = normalizeNameForComparison(upperCurrentName);
-                        return normalizeNameForComparison(e.name) === normalizedInputName;
-                    }
-                });
 
-                if (!is201Employee) { 
-                    showNotification(`FATAL: Personnel ${field.toUpperCase()} "${newValue}" not found in the 201 Master File/Employee Master. New employees must be in the 201 Master File.`, false);
-                
-                    // Revert value to original state (empty for new slots)
-                    input.value = employee[field] || ''; 
-        
-                    // Revert pending change state for this field
-                    pendingChange[field] = employee[field] || ''; 
-                    
-                    // I-check kung blank na ulit ang buong pending change, at kung oo, i-delete ang entry.
-                    const allPendingBlank = !pendingChange.id.trim() && !pendingChange.name.trim() && !pendingChange.position.trim() && !pendingChange.area.trim();
-        
-                    if (allPendingBlank) {
-                        delete pendingEmployeeInfoChanges[oldPersonnelKey];
-                    }
-                    
-                    return; // BLOCK FURTHER PROCESSING
+        // 2. UPDATED 201 CHECK
+        const isNewUnsaved = pendingChange.isNew; 
+        if (upperNewValue.length > 0 && isNewUnsaved && (field === 'id' || field === 'name')) { 
+            const is201Employee = all201PersonnelList.some(e => {
+                if (field === 'id') return e.id === currentId;
+                else {
+                    const normalizedInputName = normalizeNameForComparison(upperCurrentName);
+                    return normalizeNameForComparison(e.name) === normalizedInputName;
                 }
+            });
+
+            if (!is201Employee) { 
+                showNotification(`FATAL: Personnel ${field.toUpperCase()} "${newValue}" not found in the 201 Master File.`, false);
+                input.value = employee[field] || ''; 
+                pendingChange[field] = employee[field] || ''; 
+                const allPendingBlank = !pendingChange.id.trim() && !pendingChange.name.trim() && !pendingChange.position.trim() && !pendingChange.area.trim();
+                if (allPendingBlank) delete pendingEmployeeInfoChanges[oldPersonnelKey];
+                return; 
             }
         }
         
-        // Clear the visual warning if the validation passed
-        if (field === 'id' || field === 'name') {
-             showPersonnelWarning(row, null); 
+        // 3. NEW: CROSS-CONTRACT CONFLICT CHECK (Trigger only if Name is present)
+        if (currentName.length > 0) {
+             triggerCrossContractCheck(row, currentName, 'regular');
         }
 
+        if (field === 'id' || field === 'name') showPersonnelWarning(row, null); 
+
     } // End of if (event.type === 'change') block
-    // --- END: NEW REAL-TIME VALIDATION ---
+    // --- END: REAL-TIME VALIDATION ---
 
-    
-    let isSaved = currentContract.employees.some(e => e.id === employee.id); // Check if this is a SAVED row
+    let isSaved = currentContract.employees.some(e => e.id === employee.id);
 
-    // --- UPDATED: masterRecord lookup para gamitin ang normalization ---
     if (field === 'id') {
          masterRecord = employeeMasterList.find(e => e.id === upperNewValue);
     } else if (field === 'name') {
@@ -1945,252 +1913,144 @@ function showPersonnelWarning(rowElement, message) {
     
     if (masterRecord) {
         masterRecordFound = masterRecord; 
-        
-        // I-fill ang LAHAT ng fields mula sa Master Record
         row.querySelector('[data-field="id"]').value = masterRecord.id;
         row.querySelector('[data-field="name"]').value = masterRecord.name;
         row.querySelector('[data-field="position"]').value = masterRecord.position;
         row.querySelector('[data-field="area"]').value = masterRecord.area;
         
-        // I-update ang pendingChange
         pendingChange.id = masterRecord.id;
         pendingChange.name = masterRecord.name;
         pendingChange.position = masterRecord.position;
         pendingChange.area = masterRecord.area;
         
-        // Only show notification if it was not an existing saved employee being re-entered.
         if (!isSaved) {
              showNotification(`Employee details auto-filled for ${masterRecord.name}. Click 'Save All Changes' to save this new entry.`, true);
+             // Re-trigger conflict check specifically for the autofilled name
+             triggerCrossContractCheck(row, masterRecord.name, 'regular');
         }
-
     } else {
-       // --- Force UPPERCASE for Name, Position, Area ---
        if (field === 'name' || field === 'position' || field === 'area') {
-           
            newValue = newValue.toUpperCase(); 
            input.value = newValue; 
            pendingChange[field] = newValue;
        } else {
-           
            pendingChange[field] = newValue;
        }
     }
 
-    // --- Original Logic: ID validation and Duplicate Check ---
+    // ID Regex and Duplicate Check
     if (field === 'id') {
         const cleanId = pendingChange.id; 
-        
         if (cleanId && !PERSONNEL_ID_REGEX.test(cleanId)) {
              showNotification('Personnel ID must contain numbers only.', false);
              input.value = employee.id; 
              return; 
         }
-        
-        if (cleanId) {
-            if (isDuplicateId(cleanId, employee.id, employee.no)) { 
-                showNotification(`Personnel ID "${cleanId}" is already used in another row (saved or pending).`, false);
-                
-                const nameInput = row.querySelector('[data-field="name"]');
-                const positionInput = row.querySelector('[data-field="position"]');
-                const areaInput = row.querySelector('[data-field="area"]');
-                
-                // Revert values to old state
-                input.value = employee.id; 
-                if (nameInput) nameInput.value = employee.name; 
-                if (positionInput) positionInput.value = employee.position; 
-                if (areaInput) areaInput.value = employee.area;
-                
-                pendingChange.id = employee.id;
-                pendingChange.name = employee.name; 
-                pendingChange.position = employee.position; 
-                pendingChange.area = employee.area;
-                
-                if (employee.id === input.value) { 
-                    delete pendingEmployeeInfoChanges[oldPersonnelKey];
-                }
-                return; 
-            }
+        if (cleanId && isDuplicateId(cleanId, employee.id, employee.no)) { 
+            showNotification(`Personnel ID "${cleanId}" is already used in another row (saved or pending).`, false);
+            input.value = employee.id; 
+            if (row.querySelector('[data-field="name"]')) row.querySelector('[data-field="name"]').value = employee.name; 
+            if (row.querySelector('[data-field="position"]')) row.querySelector('[data-field="position"]').value = employee.position; 
+            if (row.querySelector('[data-field="area"]')) row.querySelector('[data-field="area"]').value = employee.area;
+            
+            pendingChange.id = employee.id;
+            pendingChange.name = employee.name; 
+            pendingChange.position = employee.position; 
+            pendingChange.area = employee.area;
+            if (employee.id === input.value) delete pendingEmployeeInfoChanges[oldPersonnelKey];
+            return; 
         }
     } else if (field === 'name' || field === 'position' || field === 'area') {
-        // --- Name sanitation and duplication check ---
         if (!masterRecord) { 
             let cleanedValue = pendingChange[field].toUpperCase(); 
-            let regexToUse = '';
-            
-            if (field === 'name') {
-                regexToUse = /[^A-Z\s.,-]/g; 
-            } else {
-                regexToUse = /[^A-Z0-9\s.,-]/g; 
-            }
-
+            let regexToUse = (field === 'name') ? /[^A-Z\s.,-]/g : /[^A-Z0-9\s.,-]/g; 
             cleanedValue = cleanedValue.replace(regexToUse, ''); 
-            
-            if (cleanedValue !== pendingChange[field].toUpperCase()) { 
-                showNotification(`Special characters and/or numbers removed from ${field}.`, false);
-            }
-            
+            if (cleanedValue !== pendingChange[field].toUpperCase()) showNotification(`Special characters and/or numbers removed from ${field}.`, false);
             input.value = cleanedValue;
             pendingChange[field] = cleanedValue;
         }
 
-        
-        // --- CRITICAL FIX: REPLACEMENT SLOT LOGIC (Name Clear) ---
         if (field === 'name' && pendingChange.name === '') {
              const idInput = row.querySelector('[data-field="id"]');
              const positionInput = row.querySelector('[data-field="position"]');
              const areaInput = row.querySelector('[data-field="area"]');
              
-             const originalEmployeeId = employee.id.trim(); // JR's ID
-
+             const originalEmployeeId = employee.id.trim(); 
              if (originalEmployeeId !== '') {
-                 // 1. REGISTER DELETION: Create a separate pending change for the old ID (JR)
                  pendingEmployeeInfoChanges[originalEmployeeId] = {
-                    id: originalEmployeeId, 
-                    name: employee.name, 
-                    position: employee.position, 
-                    area: employee.area,
-                    isNew: false, 
-                    originalEmployeeId: originalEmployeeId,
-                    isDeleted: true 
+                    id: originalEmployeeId, name: employee.name, position: employee.position, area: employee.area,
+                    isNew: false, originalEmployeeId: originalEmployeeId, isDeleted: true 
                  };
-                 showNotification(`Employee ${employee.name} (ID: ${originalEmployeeId}) marked for DELETION on save. Slot cleared for replacement.`, true);
-
-                 // 2. CONVERT CURRENT ROW TO 'NEW' SLOT:
-                 // Mutate the *original* employee object (passed by reference) to make the next input/render treat it as a new row.
+                 showNotification(`Employee ${employee.name} (ID: ${originalEmployeeId}) marked for DELETION.`, true);
                  employee.id = ''; 
-                 
-                 // Update the row's stable key to a temporary one (e.g., TEMP_3)
                  row.dataset.stableKey = `TEMP_${employee.no}`;
-                 
-                 // Remove the current pending change (as the deletion is split into a new entry)
                  delete pendingEmployeeInfoChanges[oldPersonnelKey];
              }
-             // --- END CRITICAL FIX ---
-
 
              if (idInput) idInput.value = '';
              if (positionInput) positionInput.value = '';
              if (areaInput) areaInput.value = '';
 
-             // Clear all pending changes for the row now treated as a new slot
-             pendingChange.id = '';
-             pendingChange.name = ''; 
-             pendingChange.position = '';
-             pendingChange.area = '';
-             pendingChange.isDeleted = false; // Tiyaking hindi ito marked for deletion.
-             pendingChange.isNew = true;
-             pendingChange.originalEmployeeId = '';
+             pendingChange.id = ''; pendingChange.name = ''; pendingChange.position = ''; pendingChange.area = '';
+             pendingChange.isDeleted = false; pendingChange.isNew = true; pendingChange.originalEmployeeId = '';
 
-             // Clear any local schedule changes associated with the old ID
              const idToClear = originalEmployeeId; 
              if (idToClear) {
                  Object.keys(pendingAttendanceChanges).forEach(key => {
-                     if (key.startsWith(idToClear + '_')) { 
-                         delete pendingAttendanceChanges[key];
-                     }
+                     if (key.startsWith(idToClear + '_')) delete pendingAttendanceChanges[key];
                  });
              }
-             
              row.querySelectorAll('.cell-container').forEach(cell => {
                   const dayKey = cell.dataset.dayKey;
-                  // Use the original employee.id for the planMap lookup to reset cell visuals
                   updateCellVisuals(cell, currentContract.planMap[`${originalEmployeeId}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
              });
-
-             showNotification('Personnel Name cleared. Personnel ID, Position, Area, and local schedule changes were also cleared to prevent accidental override.', false);
+             showNotification('Personnel Name cleared. Slot is now empty.', false);
         }
         
         if (field === 'name' && pendingChange.name) {
             if (isDuplicateName(pendingChange.name, employee.id, employee.no)) {
-                showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee. Please edit the name to be unique (e.g., add initials/middle name) before saving.`, false);
-                
-                const idInput = row.querySelector('[data-field="id"]');
-                const positionInput = row.querySelector('[data-field="position"]');
-                const areaInput = row.querySelector('[data-field="area"]');
-                
+                showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee.`, false);
                 input.value = employee.name; 
-                if (idInput) idInput.value = employee.id; 
-                if (positionInput) positionInput.value = employee.position; 
-                if (areaInput) areaInput.value = employee.area;
-                
-                pendingChange.id = employee.id;
-                pendingChange.name = employee.name; 
-                pendingChange.position = employee.position; 
-                pendingChange.area = employee.area;
-                
-                if (employee.id === input.value) { 
-                    delete pendingEmployeeInfoChanges[oldPersonnelKey];
-                }
+                if (row.querySelector('[data-field="id"]')) row.querySelector('[data-field="id"]').value = employee.id; 
+                pendingChange.id = employee.id; pendingChange.name = employee.name; 
+                if (employee.id === input.value) delete pendingEmployeeInfoChanges[oldPersonnelKey];
                 return; 
             }
         }
     }
 
-    // --- Original Logic: Clearing ID/Name for schedule clearing (Updated for Replacement) ---
-    if (field === 'id') {
-        
-        if (pendingChange.id === '' && previousIdValue !== '') {
-            const row = input.closest('tr');
+    // Clearing ID logic
+    if (field === 'id' && pendingChange.id === '' && previousIdValue !== '') {
             const idToClear = previousIdValue; 
-
             if (idToClear) {
-                const nameInput = row.querySelector('[data-field="name"]');
-                const positionInput = row.querySelector('[data-field="position"]');
-                const areaInput = row.querySelector('[data-field="area"]');
-                
-                // --- CRITICAL FIX: Register deletion if the ID being cleared was a SAVED ID ---
                 const originalEmployeeId = employee.id.trim();
                 if (originalEmployeeId !== '') {
                      pendingEmployeeInfoChanges[originalEmployeeId] = {
-                        id: originalEmployeeId, 
-                        name: employee.name, 
-                        position: employee.position, 
-                        area: employee.area,
-                        isNew: false, 
-                        originalEmployeeId: originalEmployeeId,
-                        isDeleted: true 
+                        id: originalEmployeeId, name: employee.name, position: employee.position, area: employee.area,
+                        isNew: false, originalEmployeeId: originalEmployeeId, isDeleted: true 
                      };
-                     showNotification(`Employee ${employee.name} (ID: ${originalEmployeeId}) marked for DELETION on save. Slot cleared for replacement.`, true);
-
-                     // Convert current row to new slot
-                     employee.id = '';
-                     row.dataset.stableKey = `TEMP_${employee.no}`;
+                     employee.id = ''; row.dataset.stableKey = `TEMP_${employee.no}`;
                      delete pendingEmployeeInfoChanges[oldPersonnelKey];
                 }
-                // --- END CRITICAL FIX ---
-
-
-                if (nameInput) nameInput.value = '';
-                if (positionInput) positionInput.value = '';
-                if (areaInput) areaInput.value = '';
+                if (row.querySelector('[data-field="name"]')) row.querySelector('[data-field="name"]').value = '';
+                if (row.querySelector('[data-field="position"]')) row.querySelector('[data-field="position"]').value = '';
+                if (row.querySelector('[data-field="area"]')) row.querySelector('[data-field="area"]').value = '';
                 
-                // Clear pendingChange data for the now-new slot
-                pendingChange.name = '';
-                pendingChange.position = '';
-                pendingChange.area = '';
-                pendingChange.isNew = true;
-                pendingChange.originalEmployeeId = '';
-
+                pendingChange.name = ''; pendingChange.position = ''; pendingChange.area = '';
+                pendingChange.isNew = true; pendingChange.originalEmployeeId = '';
 
                 Object.keys(pendingAttendanceChanges).forEach(key => {
-                    if (key.startsWith(idToClear + '_')) { 
-                        delete pendingAttendanceChanges[key];
-                    }
+                    if (key.startsWith(idToClear + '_')) delete pendingAttendanceChanges[key];
                 });
-                
                 row.querySelectorAll('.cell-container').forEach(cell => {
                      const dayKey = cell.dataset.dayKey;
-                     // Use the idToClear (original ID) for the planMap lookup
                      updateCellVisuals(cell, currentContract.planMap[`${idToClear}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
                 });
-                showNotification('Personnel info and schedule cleared locally as Personnel ID was made blank.', false);
+                showNotification('Personnel info cleared.', false);
                 checkPlanSheetLockState(); 
             }
-        }
     }
 
-    // --- Original Logic: Autofill schedule pattern ---
-    // We only use masterRecordFound if it's NOT a saved employee (meaning it's a new or replacement entry)
     if (masterRecordFound && !isSaved && !pendingChange.isDeleted && !lockedIdRefMap[oldPersonnelKey]) {
         const currentIdInInput = row.querySelector('[data-field="id"]').value.trim();
         if (currentIdInInput === masterRecordFound.id) {
@@ -2198,7 +2058,7 @@ function showPersonnelWarning(rowElement, message) {
                  .withSuccessHandler((patternMap) => {
                      if (Object.keys(patternMap).length > 0) {
                          applySchedulePatternToRow(row, masterRecordFound.id, patternMap);
-                         showNotification(`Schedule pattern found and auto-filled for ${masterRecordFound.name}. Review changes and click 'Save All Changes'.`, true);
+                         showNotification(`Schedule pattern auto-filled for ${masterRecordFound.name}.`, true);
                      }
                  })
                  .withFailureHandler(handleError)
@@ -2206,74 +2066,45 @@ function showPersonnelWarning(rowElement, message) {
         }
     }
     
-    // --- Original Logic: Signatory Autofill ---
+    // Signatory Autofill
     const preparedByNameInput = document.getElementById('signatory-prepared-by');
     const preparedByDesignationInput = document.getElementById('signatory-prepared-by-designation');
-    
     if (preparedByNameInput && preparedByNameInput.value.toUpperCase() === newValue.toUpperCase()) {
         const emp = employeeMasterList.find(e => e.name.toUpperCase() === newValue.toUpperCase());
-        
-        
         const currentDesignationUI = preparedByDesignationInput ? preparedByDesignationInput.value.trim() : '';
-
         if (emp) {
-            const newDesignation = emp.position;
             selectedSignatories.preparedBy.name = emp.name;
-            
-            if (currentDesignationUI === '' || newDesignation !== '') {
-                selectedSignatories.preparedBy.designation = newDesignation;
-                if (preparedByDesignationInput) preparedByDesignationInput.value = newDesignation;
-            } else {
-                
-                selectedSignatories.preparedBy.designation = currentDesignationUI;
+            if (currentDesignationUI === '' || emp.position !== '') {
+                selectedSignatories.preparedBy.designation = emp.position;
+                if (preparedByDesignationInput) preparedByDesignationInput.value = emp.position;
             }
         } else {
             selectedSignatories.preparedBy.name = newValue;
-            
             if (newValue === '') {
                 selectedSignatories.preparedBy.designation = '';
                 if (preparedByDesignationInput) preparedByDesignationInput.value = '';
-            } else {
-                
-                selectedSignatories.preparedBy.designation = currentDesignationUI;
             }
         }
     }
     
-
-    // --- Final State Update ---
-    const isChanged = (pendingChange.id.trim() !== employee.id || 
-                       pendingChange.name.trim() !== employee.name || 
-                       pendingChange.position.trim() !== employee.position || 
-                       pendingChange.area.trim() !== employee.area ||
+    const isChanged = (pendingChange.id.trim() !== employee.id || pendingChange.name.trim() !== employee.name || 
+                       pendingChange.position.trim() !== employee.position || pendingChange.area.trim() !== employee.area ||
                        (pendingChange.originalEmployeeId === '' && pendingChange.id.trim() !== '')); 
 
     if (isChanged) {
         pendingEmployeeInfoChanges[oldPersonnelKey] = pendingChange;
     } else {
         delete pendingEmployeeInfoChanges[oldPersonnelKey];
-        
-        if (field === 'id' || field === 'name') {
-            const row = input.closest('tr');
-            const attendanceId = employee.id; 
-
-            if (attendanceId) {
-                if (employee.id !== '') {
-                    Object.keys(pendingAttendanceChanges).forEach(key => {
-                        if (key.startsWith(attendanceId + '_')) { 
-                            delete pendingAttendanceChanges[key];
-                        }
-                    });
-                    
-                    row.querySelectorAll('.cell-container').forEach(cell => {
-                         const dayKey = cell.dataset.dayKey;
-                         updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
-                    });
-                }
-            }
+        if ((field === 'id' || field === 'name') && employee.id !== '') {
+            Object.keys(pendingAttendanceChanges).forEach(key => {
+                if (key.startsWith(employee.id + '_')) delete pendingAttendanceChanges[key];
+            });
+            row.querySelectorAll('.cell-container').forEach(cell => {
+                 const dayKey = cell.dataset.dayKey;
+                 updateCellVisuals(cell, currentContract.planMap[`${employee.id}_${dayKey}_${cell.dataset.shiftKey}`] || '', dayKey); 
+            });
         }
     }
-    
 }
 
 
@@ -4636,58 +4467,41 @@ function handleRelieverInfoChange(event) {
     const stableKey = row.dataset.stableKey; 
     let newValue = input.value;
     
-    // Check if the input is read-only
     if (input.readOnly) {
          showNotification('Cannot edit: This reliever row is already saved or marked for deletion.', false);
-         // Revert the UI input
          input.value = pendingRelieverChanges[stableKey]?.[field] || savedRelieverList.find(r => r.id === stableKey)?.[field] || '';
          return;
     }
     
-    // Position and Area inputs (Read-only UI elements)
     const positionInput = row.querySelector('[data-field="position"]');
     const areaInput = row.querySelector('[data-field="area"]');
     const idInput = row.querySelector('[data-field="id"]');
     const nameInput = row.querySelector('[data-field="name"]');
     
-    // 1. Tiyakin na ang pendingChange ay laging nababasa/nalilikha nang tama
     let pendingChange = pendingRelieverChanges[stableKey] || {
-        id: '', 
-        name: '',
-        position: '',
-        area: '',
-        isNew: true
+        id: '', name: '', position: '', area: '', isNew: true
     };
     
     let masterRecordFound = null; 
     let masterRecord = null;
     
-    // --- NEW: Robust Sanitation (Allows spaces, commas, periods, dashes for Name) ---
     const ALLOWED_NAME_CHARS_REGEX = /[^A-Z\s.,-]/g; 
     const ALLOWED_ID_CHARS_REGEX = /[^0-9]/g; 
     
     if (field === 'id') {
-         newValue = newValue.replace(ALLOWED_ID_CHARS_REGEX, ''); // Only numbers for ID
+         newValue = newValue.replace(ALLOWED_ID_CHARS_REGEX, ''); 
     } else if (field === 'name') {
-         // Force uppercase AND sanitize (allows space)
          newValue = newValue.toUpperCase().replace(ALLOWED_NAME_CHARS_REGEX, ''); 
     } else {
-         newValue = newValue.toUpperCase(); // For Position/Area
+         newValue = newValue.toUpperCase(); 
     }
     
-    input.value = newValue; // Update UI immediately with sanitized value
+    input.value = newValue; 
     const upperNewValue = newValue.trim().toUpperCase(); 
     
-    // Helper function para sa kumpletong pag-clear
     const clearRowAndState = () => {
-         idInput.value = '';
-         nameInput.value = '';
-         positionInput.value = '';
-         areaInput.value = '';
-         pendingChange.id = '';
-         pendingChange.name = ''; 
-         pendingChange.position = '';
-         pendingChange.area = '';
+         idInput.value = ''; nameInput.value = ''; positionInput.value = ''; areaInput.value = '';
+         pendingChange.id = ''; pendingChange.name = ''; pendingChange.position = ''; pendingChange.area = '';
          delete pendingRelieverChanges[stableKey];
     };
     
@@ -4696,9 +4510,8 @@ function handleRelieverInfoChange(event) {
         const currentId = idInput?.value.trim() || '';
         const currentName = nameInput?.value.trim() || '';
         
-        // 1. **BLACKLIST CHECK**
+        // 1. BLACKLIST CHECK
         const blacklistCheckResult = checkIsBlacklisted(currentId, currentName);
-
         if (blacklistCheckResult.isBlacklisted) {
             showNotification(`FATAL: Cannot use Personnel ID/Name. Employee is BLACKLISTED! ${blacklistCheckResult.reason}`, false);
             clearRowAndState();
@@ -4706,21 +4519,19 @@ function handleRelieverInfoChange(event) {
             return; 
         }
         
-        // 2. **201 CHECK**
+        // 2. 201 CHECK
         if (upperNewValue.length > 0) { 
-            
             if (field === 'id' || field === 'name') {
                 const is201Employee = all201PersonnelList.some(e => {
-                    if (field === 'id') {
-                        return e.id === currentId;
-                    } else {
+                    if (field === 'id') return e.id === currentId;
+                    else {
                         const normalizedInputName = normalizeNameForComparison(currentName.toUpperCase());
                         return normalizeNameForComparison(e.name) === normalizedInputName;
                     }
                 });
 
                 if (!is201Employee) { 
-                    showNotification(`FATAL: Personnel ${field.toUpperCase()} "${newValue}" not found in the 201 Master File/Employee Master.`, false);
+                    showNotification(`FATAL: Personnel ${field.toUpperCase()} "${newValue}" not found in the 201 Master File.`, false);
                     clearRowAndState();
                     showPersonnelWarning(row, null); 
                     return; 
@@ -4728,101 +4539,76 @@ function handleRelieverInfoChange(event) {
             }
         }
         
-        if (field === 'id' || field === 'name') {
-             showPersonnelWarning(row, null); 
+        // 3. NEW: CROSS-CONTRACT CONFLICT CHECK (Trigger only if Name is present)
+        if (currentName.length > 0) {
+             triggerCrossContractCheck(row, currentName, 'reliever');
         }
+
+        if (field === 'id' || field === 'name') showPersonnelWarning(row, null); 
     } 
     // --- END: REAL-TIME VALIDATION ---
 
-    
-    // --- Master Record lookup (ONLY for ID and Name) ---
     if (field === 'id') {
          masterRecord = employeeMasterList.find(e => e.id === upperNewValue);
-         pendingChange.id = upperNewValue; // Use the sanitized value
+         pendingChange.id = upperNewValue; 
     } else if (field === 'name') {
          const normalizedInputName = normalizeNameForComparison(upperNewValue);
          masterRecord = employeeMasterList.find(e => normalizeNameForComparison(e.name) === normalizedInputName);
-         pendingChange.name = newValue; // Use the already sanitized, correct-cased value
+         pendingChange.name = newValue; 
     }
 
-    // =========================================================================
-    // ** BAGONG LOGIC NA NAG-AAYOS SA ISSUE **
-    // =========================================================================
     if (field === 'id' && pendingChange.id === '') {
-        // Kapag ginawang blank ang ID, i-clear din ang Name (at vice versa, kung hindi na-clear ng user)
-        if (nameInput.value.trim() !== '') {
-            nameInput.value = '';
-            pendingChange.name = '';
-        }
+        if (nameInput.value.trim() !== '') { nameInput.value = ''; pendingChange.name = ''; }
     } else if (field === 'name' && pendingChange.name === '') {
-        // Kapag ginawang blank ang Name, i-clear din ang ID
-        if (idInput.value.trim() !== '') {
-            idInput.value = '';
-            pendingChange.id = '';
-        }
+        if (idInput.value.trim() !== '') { idInput.value = ''; pendingChange.id = ''; }
     }
-    // =========================================================================
 
-    
-    // 2. AUTO-FILL LOGIC: Always override Position/Area to 'RELIEVER'
-    // Titingnan na dito kung BLANK na pareho ang ID at Name
     const isRowInputting = (pendingChange.id.trim() !== '' || pendingChange.name.trim() !== '');
 
     if (isRowInputting) {
-        positionInput.value = 'RELIEVER';
-        areaInput.value = 'RELIEVER';
-        pendingChange.position = 'RELIEVER';
-        pendingChange.area = 'RELIEVER';
+        positionInput.value = 'RELIEVER'; areaInput.value = 'RELIEVER';
+        pendingChange.position = 'RELIEVER'; pendingChange.area = 'RELIEVER';
     } else {
-        // CRITICAL: Ensure Position/Area are cleared if both ID and Name are blank
-        positionInput.value = '';
-        areaInput.value = '';
-        pendingChange.position = '';
-        pendingChange.area = '';
+        positionInput.value = ''; areaInput.value = '';
+        pendingChange.position = ''; pendingChange.area = '';
     }
 
     if (masterRecord) {
         masterRecordFound = masterRecord; 
-        
-        // I-fill ang ID at Name mula sa Master Record (HUWAG i-overwrite ang Position/Area)
         idInput.value = masterRecord.id;
         nameInput.value = masterRecord.name;
-        
         pendingChange.id = masterRecord.id;
         pendingChange.name = masterRecord.name;
-        
         showNotification(`Employee details auto-filled for ${masterRecord.name}. Position/Area set to RELIEVER.`, true);
+        
+        // Re-trigger conflict check specifically for the autofilled name
+        triggerCrossContractCheck(row, masterRecord.name, 'reliever');
     } 
 
-    // --- ID validation and Duplicate Check (Cross-table check na ito) ---
     if (field === 'id' && pendingChange.id) {
         if (!PERSONNEL_ID_REGEX.test(pendingChange.id)) {
              showNotification('Personnel ID must contain numbers only.', false);
-             clearRowAndState(); // Use helper to clear all fields
+             clearRowAndState(); 
              return; 
         }
-        
         if (isDuplicateId(pendingChange.id, stableKey, 0)) { 
-            showNotification(`FATAL: Personnel ID "${pendingChange.id}" is already used in another row (REGULAR or RELIEVER table).`, false);
-            clearRowAndState(); // Use helper to clear all fields
+            showNotification(`FATAL: Personnel ID "${pendingChange.id}" is already used in another row.`, false);
+            clearRowAndState(); 
             return; 
         }
     } 
     
-    // --- Name duplication check (Cross-table check na ito) ---
     else if (field === 'name' && pendingChange.name) {
         if (isDuplicateName(pendingChange.name, stableKey, 0)) {
-            showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee (REGULAR or RELIEVER table). Name must be unique.`, false);
-            clearRowAndState(); // Use helper to clear all fields
+            showNotification(`FATAL ERROR: Personnel Name "${pendingChange.name}" is already used by another employee.`, false);
+            clearRowAndState(); 
             return; 
         }
     }
 
-    // --- Final State Update: Only save if ID and Name are filled (since Pos/Area are auto-filled) ---
     const isRowComplete = pendingChange.id.trim() !== '' && pendingChange.name.trim() !== '';
 
     if (isRowComplete) {
-        // Tiyakin na Position/Area ay 'RELIEVER' bago i-save sa pending state
         pendingRelieverChanges[stableKey] = {
             id: pendingChange.id.trim(),
             name: pendingChange.name.trim(),
@@ -4831,9 +4617,59 @@ function handleRelieverInfoChange(event) {
             isNew: true
         };
     } else {
-        // Kung hindi kumpleto (blank ang ID/Name), tanggalin sa pending changes.
         delete pendingRelieverChanges[stableKey];
     }
+}
+
+// --- NEW FUNCTION: TRIGGERS CROSS-CONTRACT CONFLICT CHECK ---
+function triggerCrossContractCheck(rowElement, personnelName, fieldType) {
+    const currentName = (personnelName || '').trim();
+    if (!currentName) return;
+
+    const currentSfc = currentContract?.sfcRef;
+    const currentYear = currentPlanningDate.getFullYear();
+    const currentMonth = currentPlanningDate.getMonth();
+    const currentShift = document.getElementById('shift-period-select').value;
+
+    google.script.run
+        .withSuccessHandler((result) => {
+            // Check if the input value is still the same (user didn't type something else quickly)
+            const latestNameInput = rowElement.querySelector('[data-field="name"]');
+            if (latestNameInput.value.trim() !== currentName) return;
+
+            if (result.hasConflict) {
+                // CLEAR THE ROW
+                showNotification(`CONFLICT ALERT: ${currentName} is ${result.conflictDetails}. Cannot add to this contract.`, false);
+                
+                // Clear UI Inputs
+                const idInput = rowElement.querySelector('[data-field="id"]');
+                const nameInput = rowElement.querySelector('[data-field="name"]');
+                const posInput = rowElement.querySelector('[data-field="position"]');
+                const areaInput = rowElement.querySelector('[data-field="area"]');
+
+                if (idInput) idInput.value = '';
+                if (nameInput) nameInput.value = '';
+                if (posInput && !posInput.readOnly) posInput.value = ''; // Don't clear if read-only (Reliever)
+                if (areaInput && !areaInput.readOnly) areaInput.value = '';
+
+                // Remove from Pending Changes State
+                const stableKey = rowElement.dataset.stableKey;
+                if (fieldType === 'regular') {
+                    delete pendingEmployeeInfoChanges[stableKey];
+                } else if (fieldType === 'reliever') {
+                    delete pendingRelieverChanges[stableKey];
+                }
+
+                showPersonnelWarning(rowElement, `CONFLICT: ${result.conflictDetails}`);
+            } else {
+                // Clear warning if valid
+                showPersonnelWarning(rowElement, null);
+            }
+        })
+        .withFailureHandler((error) => {
+            console.error("Cross-contract check failed", error);
+        })
+        .checkCrossContractConflict(currentName, currentSfc, currentYear, currentMonth, currentShift);
 }
 
   // --- INITIALIZATION ---
