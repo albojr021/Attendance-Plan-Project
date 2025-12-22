@@ -352,6 +352,59 @@ function getContracts() {
   });
 }
 
+/**
+ * 1. BACKEND: Idagdag ito sa Code.gs
+ * Kinukuha nito ang lahat ng contracts na kapareho ng Group ID (Live or Not).
+ */
+function fetchSupportingContracts(targetGroupId) {
+    if (!targetGroupId) return [];
+    
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(CONTRACTS_SHEET_NAME);
+    if (!sheet) return [];
+
+    const startRow = REFSERIES_HEADER_ROW;
+    const lastRow = sheet.getLastRow();
+    
+    if (lastRow < startRow) return [];
+
+    const numRows = lastRow - startRow + 1;
+    const numCols = sheet.getLastColumn();
+    const dataRange = sheet.getRange(startRow, 1, numRows, numCols);
+    const values = dataRange.getDisplayValues();
+    const headers = values[0]; // Row 8 headers
+    
+    const findColIndex = (searchName) => headers.findIndex(h => String(h).trim().toLowerCase() === searchName.toLowerCase());
+
+    const colGrpId = findColIndex('Contract Group ID');
+    const colKindSfc = findColIndex('Kind of SFC');
+    const colRef = findColIndex('Ref #');
+    const colBallWith = findColIndex('SFC Ball with?');
+
+    if (colGrpId === -1) return []; // Critical column missing
+
+    const relatedContracts = [];
+
+    // Loop through data rows (skipping header)
+    for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        // Kunin ang value ng Contract Group ID sa row na ito
+        const currentGrpId = String(row[colGrpId] || '').trim();
+
+        // Compare: Kung pareho sa targetGroupId, isama sa listahan
+        if (currentGrpId === String(targetGroupId).trim()) {
+            relatedContracts.push({
+                grpId: currentGrpId,
+                kindSfc: colKindSfc !== -1 ? String(row[colKindSfc] || '') : '',
+                refNum: colRef !== -1 ? String(row[colRef] || '') : '',
+                ballWith: colBallWith !== -1 ? String(row[colBallWith] || '') : ''
+            });
+        }
+    }
+
+    return relatedContracts;
+}
+
 function cleanPersonnelId(rawId) {
     let idString = String(rawId || '').trim();
     return idString.replace(/\D/g, '');
