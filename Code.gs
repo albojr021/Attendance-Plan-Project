@@ -1829,26 +1829,35 @@ function getNextSequentialNumber(logSheet, sfcRef) {
         logSheet.getRange(2, 1, logSheet.getLastRow() - 1, 1).getDisplayValues() : [];
     
     let maxSequentialNumber = 0;
+    
     logValues.forEach(row => {
         const logRefString = String(row[0] || '').trim();
         const parts = logRefString.split('-');
         
-        if (parts.length === 5 && parts[0] === sfcRef) { 
-   
-            const sequentialPart = parts[3]; // The sequential part (e.g., '0001', '10000')
-            const numericPart = parseInt(sequentialPart, 10);
+        let currentSfc = '';
+        let sequentialPart = '0';
 
-        
+        if (parts.length === 5) {
+            currentSfc = parts[0];
+            sequentialPart = parts[3];
+        } 
+        else if (parts.length === 6) {
+            currentSfc = parts[1]; // SFC is now index 1
+            sequentialPart = parts[4]; // Sequence is now index 4
+        }
+
+        // Compare using the detected SFC
+        if (currentSfc === sfcRef) { 
+            const numericPart = parseInt(sequentialPart, 10);
             if (!isNaN(numericPart)) {
                 if (numericPart > maxSequentialNumber) {
                     maxSequentialNumber = numericPart;
-         
                 }
             }
         }
     });
-    const nextNumber = maxSequentialNumber + 1;
 
+    const nextNumber = maxSequentialNumber + 1;
     // Apply padding only up to 9999.
     if (nextNumber <= 9999) {
         return String(nextNumber).padStart(4, '0');
@@ -1867,33 +1876,42 @@ function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
         const numLogRows = logSheetLastRow > 1 ? logSheetLastRow - 1 : 0;
         const date = new Date(year, month, 1);
         const monthYear = date.toLocaleString('en-US', { month: 'short' }) + date.getFullYear();
+        
         let maxGroupNumber = 0;
         let finalSequentialNumber = '';
         let foundUnlockedBaseRefSequential = '';
         const unlockedSequentialNumbers = new Set();
+        
         if (numLogRows > 0) {
             const logValues = logSheet.getRange(2, 1, numLogRows, LOG_HEADERS.length).getDisplayValues();
             logValues.forEach(row => {
                 const logRefString = String(row[0] || '').trim();
                 const parts = logRefString.split('-');
                 
-                if (parts.length === 5 && parts[0] === sfcRef && parts[1] === monthYear && parts[2] === shift) {
-          
-                    const sequentialPart = parts[3]; // 4-digit sequential no.
-                 
-                    const groupPart = parts[4];   // P[Group]
-                   
-                    const lockedIdsString = String(row[LOG_HEADERS.length - 1] || '').trim();
+                let isMatch = false;
+                let sequentialPart = '';
+                let groupPart = '';
 
+                if (parts.length === 5 && parts[0] === sfcRef && parts[1] === monthYear && parts[2] === shift) {
+                    sequentialPart = parts[3];
+                    groupPart = parts[4];
+                    isMatch = true;
+                }
+
+                else if (parts.length === 6 && parts[1] === sfcRef && parts[2] === monthYear && parts[3] === shift) {
+                    sequentialPart = parts[4];
+                    groupPart = parts[5];
+                    isMatch = true;
+                }
+                
+                if (isMatch) {
+                    const lockedIdsString = String(row[LOG_HEADERS.length - 1] || '').trim();
                     const isExplicitlyUnlocked = lockedIdsString.includes('UNLOCKED:'); 
 
                     if (isExplicitlyUnlocked) {
-                      
                         unlockedSequentialNumbers.add(sequentialPart);
-                        
                         const numericPart = parseInt(groupPart.replace(/[^\d]/g, ''), 10);
                         if (!isNaN(numericPart) && numericPart > maxGroupNumber) {
-               
                             maxGroupNumber = numericPart;
                             foundUnlockedBaseRefSequential = sequentialPart;
                         }
@@ -1906,29 +1924,33 @@ function logPrintAction(subProperty, sfcRef, contractInfo, year, month, shift) {
         if (unlockedSequentialNumbers.size > 1) {
             nextPrintGroupNumeric = 1;
             finalSequentialNumber = getNextSequentialNumber(logSheet, sfcRef);
-            Logger.log(`[logPrintAction] MULTIPLE UNLOCKS (${unlockedSequentialNumbers.size} sequences). Generating NEW sequential number: ${finalSequentialNumber}.`);
+            Logger.log(`[logPrintAction] MULTIPLE UNLOCKS. Generating NEW sequential: ${finalSequentialNumber}.`);
         } else if (unlockedSequentialNumbers.size === 1) {
             nextPrintGroupNumeric = maxGroupNumber + 1;
             finalSequentialNumber = foundUnlockedBaseRefSequential;
-            Logger.log(`[logPrintAction] SINGLE UNLOCK. Reusing sequential reference ${finalSequentialNumber} and incrementing group to P${nextPrintGroupNumeric}`);
+            Logger.log(`[logPrintAction] SINGLE UNLOCK. Reusing sequential ${finalSequentialNumber}, Group P${nextPrintGroupNumeric}`);
         } else {
             nextPrintGroupNumeric = 1;
             finalSequentialNumber = getNextSequentialNumber(logSheet, sfcRef); 
-            Logger.log(`[logPrintAction] No EXPLICITLY UNLOCKED base reference found. Generating new sequential number: ${finalSequentialNumber}.`);
+            Logger.log(`[logPrintAction] New sequential: ${finalSequentialNumber}.`);
         }
         
         const finalPrintGroup = `P${nextPrintGroupNumeric}`;
-        const baseRef = [sfcRef, monthYear, shift, finalSequentialNumber];
+        
+        // --- NEW LOGIC: Add Kind of SFC Prefix ---
+        const kindOfSfc = (contractInfo.kindOfSfc || 'SFC').toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); 
+        
+        const baseRef = [kindOfSfc, sfcRef, monthYear, shift, finalSequentialNumber];
         const finalPrintReference = `${baseRef.join('-')}-${finalPrintGroup}`;
 
-        Logger.log(`[logPrintAction] Calculated Print Reference String (New Format): ${finalPrintReference}.`);
+        Logger.log(`[logPrintAction] Generated Ref: ${finalPrintReference}.`);
         return { refNum: finalPrintReference, printGroup: finalPrintGroup };
+        
     } catch (e) {
         Logger.log(`[logPrintAction] FATAL ERROR: ${e.message}`);
         throw new Error(`Failed to generate print reference string. Error: ${e.message}`);
     }
 }
-
 
 function recordPrintLogEntry(refNum, printGroup, subProperty, printFields, signatories, sfcRef, contractInfo, year, month, shift, printedPersonnelIds) { 
     
