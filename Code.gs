@@ -2603,3 +2603,61 @@ function processAdminUnlockFromUrl(params) {
   
   return HtmlService.createHtmlOutput('<h1>Invalid Action</h1><p>The URL provided is incomplete or incorrect.</p>');
 }
+
+function checkCrossContractConflict(personnelName, currentSfcRef, year, month, shift) {
+    if (!personnelName) return { hasConflict: false };
+
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
+    
+    if (!planSheet || planSheet.getLastRow() <= PLAN_HEADER_ROW) {
+        return { hasConflict: false };
+    }
+
+    const targetNameClean = String(personnelName).toUpperCase().replace(/[^A-Z\s.,-]/g, '').trim();
+    const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
+    const targetYear = String(year);
+    
+    const lastRow = planSheet.getLastRow();
+    const numColumns = planSheet.getLastColumn();
+
+    const headers = planSheet.getRange(PLAN_HEADER_ROW, 1, 1, numColumns).getDisplayValues()[0];
+    
+    const sfcIndex = headers.indexOf('CONTRACT #');
+    const nameIndex = headers.indexOf('Personnel Name');
+    const monthIndex = headers.indexOf('MONTH');
+    const yearIndex = headers.indexOf('YEAR');
+    const shiftIndex = headers.indexOf('PERIOD / SHIFT');
+    const saveVersionIndex = headers.indexOf('SAVE VERSION');
+
+    if (sfcIndex === -1 || nameIndex === -1 || monthIndex === -1 || yearIndex === -1 || shiftIndex === -1) {
+        // Fallback if headers are missing, assume no conflict to avoid blocking UI errors
+        return { hasConflict: false };
+    }
+
+    const dataValues = planSheet.getRange(PLAN_HEADER_ROW + 1, 1, lastRow - PLAN_HEADER_ROW, numColumns).getDisplayValues();
+
+    for (let i = 0; i < dataValues.length; i++) {
+        const row = dataValues[i];
+        
+        const rowSfc = String(row[sfcIndex] || '').trim();
+        const rowName = String(row[nameIndex] || '').toUpperCase().replace(/[^A-Z\s.,-]/g, '').trim();
+        const rowMonth = String(row[monthIndex] || '').trim();
+        const rowYear = String(row[yearIndex] || '').trim();
+        const rowShift = String(row[shiftIndex] || '').trim();
+
+        if (rowName === targetNameClean && 
+            rowMonth === targetMonthShort && 
+            rowYear === targetYear && 
+            rowShift === shift && 
+            rowSfc !== currentSfcRef) {
+            
+            return { 
+                hasConflict: true, 
+                conflictDetails: `Already scheduled in Contract ${rowSfc}` 
+            };
+        }
+    }
+
+    return { hasConflict: false };
+}
