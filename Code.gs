@@ -352,10 +352,6 @@ function getContracts() {
   });
 }
 
-/**
- * 1. BACKEND: Idagdag ito sa Code.gs
- * Kinukuha nito ang lahat ng contracts na kapareho ng Group ID (Live or Not).
- */
 function fetchSupportingContracts(targetGroupId) {
     if (!targetGroupId) return [];
     
