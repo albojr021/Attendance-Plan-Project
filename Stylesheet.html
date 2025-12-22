@@ -228,6 +228,38 @@
     
     @media print {
 
+        .page-break-before {
+            page-break-before: always !important;
+            break-before: page !important;
+            display: block !important;
+        }
+        
+        /* Table Styles para sa Supporting Docs */
+        .supporting-docs-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10pt; /* Mas maliit na font para magkasya */
+            margin-top: 10px;
+        }
+        .supporting-docs-table th, .supporting-docs-table td {
+            border: 1px solid #000;
+            padding: 4px 8px;
+            text-align: left;
+        }
+        .supporting-docs-table th {
+            background-color: #f0f0f0 !important;
+            font-weight: bold;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .supporting-docs-title {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 10px;
+            margin-top: 20px;
+            color: black;
+        }
+
         #print-timestamp-display {
           display: block !important;
           position: fixed !important;
