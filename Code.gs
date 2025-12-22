@@ -1,6 +1,6 @@
 const SPREADSHEET_ID = '1qheN_KURc-sOKSngpzVxLvfkkc8StzGv-1gMvGJZdsc';
 const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; 
-const CONTRACTS_SHEET_NAME = 'MASTER';
+const CONTRACTS_SHEET_NAME = 'RefSeries';
 const FILE_201_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM';
 const FILE_201_SHEET_NAME = ['MEG'];
 const BLACKLIST_FILE_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM'; 
@@ -12,7 +12,7 @@ const PLAN_SHEET_NAME = 'AttendancePlan_Consolidated';
 const PLAN_HEADER_ROW = 1;
 const PLAN_FIXED_COLUMNS = 18;
 const PLAN_MAX_DAYS_IN_HALF = 16; 
-const MASTER_HEADER_ROW = 5;
+const REFSERIES_HEADER_ROW = 8;
 const SIGNATORY_MASTER_SHEET = 'SignatoryMaster';
 const PRINT_FIELD_MASTER_SHEET = 'PrintFieldMaster';
 const EMPLOYEE_MASTER_SHEET_NAME = 'EmployeeMaster_Consolidated'; 
@@ -72,9 +72,9 @@ function getSheetData(spreadsheetId, sheetName) {
   let numRows = sheet.getLastRow();
   let numColumns = sheet.getLastColumn();
   if (sheetName === CONTRACTS_SHEET_NAME) {
-    startRow = MASTER_HEADER_ROW;
+    startRow = REFSERIES_HEADER_ROW;
     if (numRows < startRow) {
-      Logger.log(`[getSheetData] MASTER sheet has no data starting from Row ${startRow}.`);
+      Logger.log(`[getSheetData] RefSeries sheet has no data starting from Row ${startRow}.`);
       return [];
     }
     numRows = sheet.getLastRow() - startRow + 1;
@@ -315,8 +315,8 @@ function getContracts() {
   };
     
   const filteredContracts = allContracts.filter((c) => {
-    const statusKey = findKey(c, 'Status of SFC');
-    const contractIdKey = findKey(c, 'CONTRACT GRP ID');
+    const statusKey = findKey(c, 'Status of Agreement (SFC)');
+    const contractIdKey = findKey(c, 'Contract Group ID');
     if (!statusKey || !contractIdKey) return false;
     const contractIdValue = (c[contractIdKey] || '').toString().trim();
     if (!contractIdValue) return false; 
@@ -326,15 +326,16 @@ function getContracts() {
     return isLive;
   });
   return filteredContracts.map(c => {
-    const contractIdKey = findKey(c, 'CONTRACT GRP ID');
-    const statusKey = findKey(c, 'Status of SFC');
-    const payorKey = findKey(c, 'PAYOR COMPANY NAME');
-    const agencyKey = findKey(c, 'PAYEE/ SUPPLIER/ SERVICE PROVIDER COMPANY/ AGENCY NAME');
-    const serviceTypeKey = findKey(c, 'SERVICE TYPE');
-    const headCountKey = findKey(c, 'TOTAL HEAD COUNT');
-    const sfcRefKey = findKey(c, 'SFC Ref#');
+    const contractIdKey = findKey(c, 'Contract Group ID');
+    const statusKey = findKey(c, 'Status of Agreement (SFC)');
+    const payorKey = findKey(c, 'PAYOR');
+    const agencyKey = findKey(c, 'SUPPLIER');
+    const serviceTypeKey = findKey(c, 'Kind of Service');
+    const headCountKey = findKey(c, 'Headcount');
+    const sfcRefKey = findKey(c, 'Ref #');
     const propOrGrpCodeKey = findKey(c, 'PROP OR GRP CODE'); 
-    const sectorKey = findKey(c, 'SECTOR'); 
+    const sectorKey = findKey(c, 'Sector'); 
+    const kindOfSfcKey = findKey(c, 'Kind of SFC')
     
     return {
       id: contractIdKey ? (c[contractIdKey] || '').toString() : '',     
@@ -346,6 +347,7 @@ function getContracts() {
       sfcRef: sfcRefKey ? (c[sfcRefKey] || '').toString() : '', 
       propOrGrpCode: propOrGrpCodeKey ? (c[propOrGrpCodeKey] || '').toString() : '',
       sector: sectorKey ? (c[sectorKey] || '').toString() : '',
+      kindOfSfc: kindOfSfcKey ? (c[kindOfSfcKey] || '').toString() : ''
     };
   });
 }
