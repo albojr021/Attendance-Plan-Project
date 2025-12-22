@@ -1080,7 +1080,7 @@ function handlePreviousPlanData(data) {
 
     contracts.forEach(contract => {
       const option = document.createElement('option');
-      option.value = contract.id;
+      option.value = contract.sfcRef;
       // Gamumat ng Contract ID at SFC Ref# para sa mas madaling hanapin
       option.textContent = `${contract.id} - ${contract.status} (Ref#: ${contract.sfcRef})`;
       select.appendChild(option);
@@ -1174,9 +1174,9 @@ function handlePreviousPlanData(data) {
 
   // NEW: I-create ang handler para sa Select2 change
   function handleSelect2Change(event) {
-      const contractId = $('#contract-select').val(); 
+      const selectedSfcRef = $('#contract-select').val(); 
       
-      if (!contractId || contractId === "") {
+      if (!selectedSfcRef || selectedSfcRef === "") {
           document.getElementById('contract-details-area').classList.add('hidden');
           document.getElementById('planning-area').classList.add('hidden');
           document.getElementById('plan-action-area').classList.add('hidden');
@@ -1194,7 +1194,7 @@ function handlePreviousPlanData(data) {
           return;
       }
       
-      currentContract = contractList.find(c => c.id === contractId);
+      currentContract = contractList.find(c => c.sfcRef === selectedSfcRef);
       sessionStorage.setItem(CONTRACT_ID_CACHE_KEY, currentContract.id); 
       
       if (currentContract) {
@@ -3448,10 +3448,10 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     const printDetailsUnifiedHtml = `
         <div id="print-details-unified-container" class="print-only-container">
             <div class="print-details-col left-col">
-                <div class="flex"><p class="label">Payor Company</p><p class="value">${contractInfo.payor}</p></div>
-                <div class="flex"><p class="label">Sub Property</p><p class="value">${printFields.subProperty}</p></div>
-                <div class="flex"><p class="label">Plan Period</p><p class="value">${planPeriodDisplay}</p></div>
-                <div class="flex"><p class="label">Agency</p><p class="value">${contractInfo.agency}</p></div>
+                <div class="flex"><p class="label">Company Name</p><p class="value">${contractInfo.payor}</p></div>
+                <div class="flex"><p class="label">Sub-Property</p><p class="value">${printFields.subProperty}</p></div>
+                <div class="flex"><p class="label">Schedule Period</p><p class="value">${planPeriodDisplay}</p></div>
+                <div class="flex"><p class="label">Agency Name</p><p class="value">${contractInfo.agency}</p></div>
                 <div class="flex"><p class="label">Section</p><p class="value">${printFields.section}</p></div>
                 <div class="flex"><p class="label">Department</p><p class="value">${printFields.department}</p></div>
             </div>
