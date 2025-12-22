@@ -335,7 +335,7 @@ function getContracts() {
     const sfcRefKey = findKey(c, 'Ref #');
     const propOrGrpCodeKey = findKey(c, 'PROP OR GRP CODE'); 
     const sectorKey = findKey(c, 'Sector'); 
-    const kindOfSfcKey = findKey(c, 'Kind of SFC')
+    const kindOfSfcKey = findKey(c, 'Kind of SFC');
     
     return {
       id: contractIdKey ? (c[contractIdKey] || '').toString() : '',     
