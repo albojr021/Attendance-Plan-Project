@@ -1049,9 +1049,10 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     ensureContractSheets(sfcRef, year, month, shift);
     
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    
     const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     const lockedIds = Object.keys(lockedIdRefMap);
-    
+
     const finalEmployeeChanges = employeeChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.id || change.oldPersonnelId);
         if (lockedIds.includes(idToCheck) && !change.isDeleted) {
@@ -1059,7 +1060,7 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
         }
         return true;
     });
-    
+
     const finalRelieverChanges = relieverChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.id);
         if (lockedIds.includes(idToCheck)) return false;
@@ -1077,38 +1078,34 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     const deletionList = regularDeletions.concat(relieverDeletions);
 
     const regularEmployeeInfoChanges = finalEmployeeChanges.filter(c => !c.isDeleted);
-    if (regularEmployeeInfoChanges && regularEmployeeInfoChanges.length > 0) {
-        saveEmployeeInfoBulk(sfcRef, regularEmployeeInfoChanges, year, month, shift, lockedIdRefMap);
+    
+    if (regularEmployeeInfoChanges.length > 0) {
+        saveEmployeeInfoBulk(sfcRef, regularEmployeeInfoChanges, ss);
     }
     
     const newRelieverEntries = finalRelieverChanges.filter(c => !c.isDeleted);
-    if (finalAttendanceChanges.length > 0 || deletionList.length > 0 || newRelieverEntries.length > 0) {
-        saveAttendancePlanBulk(sfcRef, contractInfo, finalAttendanceChanges, newRelieverEntries, year, month, shift, group, deletionList);
+
+    if (finalAttendanceChanges.length > 0 || deletionList.length > 0 || newRelieverEntries.length > 0 || regularEmployeeInfoChanges.length > 0) {
+        saveAttendancePlanBulk(sfcRef, contractInfo, finalAttendanceChanges, newRelieverEntries, regularEmployeeInfoChanges, year, month, shift, group, deletionList, ss);
     }
     
     logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift);
 }
 
-function saveAttendancePlanBulk(sfcRef, contractInfo, changes, relieverChanges, year, month, shift, group, deletionList) {
-    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+function saveAttendancePlanBulk(sfcRef, contractInfo, changes, relieverChanges, regularEmployeeInfoChanges, year, month, shift, group, deletionList, ss) {
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     if (!planSheet) throw new Error(`AttendancePlan Sheet for ${PLAN_SHEET_NAME} not found.`);
+    
     const HEADER_ROW = PLAN_HEADER_ROW;
     
-    planSheet.setFrozenRows(0);
-    const lastRow = planSheet.getLastRow();
-    const numRowsToRead = lastRow - HEADER_ROW;
-    const numColumns = planSheet.getLastColumn();
+    const range = planSheet.getDataRange();
+    let values = range.getDisplayValues();
     
-    let values = [];
-    let headers = [];
-    if (numRowsToRead >= 0 && numColumns > 0) {
-        values = planSheet.getRange(HEADER_ROW, 1, numRowsToRead + 1, numColumns).getDisplayValues();
-        headers = values[0]; 
-    } else {
-        headers = planSheet.getRange(HEADER_ROW, 1, 1, numColumns).getDisplayValues()[0];
-    }
+    if (values.length < HEADER_ROW) return;
     
+    const headers = values[HEADER_ROW - 1]; 
+    
+    // Kunin ang mga index
     const sfcRefIndex = headers.indexOf('CONTRACT #');
     const headcountIndex = headers.indexOf('TOTAL HEADCOUNT');
     const propOrGrpCodeIndex = headers.indexOf('PROP OR GRP CODE');
@@ -1122,71 +1119,61 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, relieverChanges, 
     const saveGroupIndex = headers.indexOf('SAVE GROUP');
     const saveVersionIndex = headers.indexOf('SAVE VERSION');
     const printGroupIndex = headers.indexOf('PRINT GROUP');
-    const referenceIndex = headers.indexOf('Reference #'); 
+    const referenceIndex = headers.indexOf('Reference #');
     const personnelIdIndex = headers.indexOf('Personnel ID');
     const nameIndex = headers.indexOf('Personnel Name');
     const positionIndex = headers.indexOf('POSITION');
     const areaIndex = headers.indexOf('AREA POSTING');
     const day1Index = headers.indexOf('DAY1');
+    const numColumns = headers.length;
 
     if (sfcRefIndex === -1 || shiftIndex === -1 || personnelIdIndex === -1 || day1Index === -1) {
         throw new Error("Missing critical column in Consolidated Plan sheet.");
     }
-    
+
     const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
     const targetYear = String(year);
-    const dataRows = values.slice(1);
-    const latestVersionMap = {};
 
-    dataRows.forEach(row => {
+    const retainedRows = [];
+    const latestVersionMap = {}; 
+
+    for (let i = HEADER_ROW; i < values.length; i++) {
+        const row = values[i];
         const currentSfc = String(row[sfcRefIndex] || '').trim();
         const currentMonth = String(row[monthIndex] || '').trim();
         const currentYear = String(row[yearIndex] || '').trim();
         const currentShift = String(row[shiftIndex] || '').trim();
         const id = cleanPersonnelId(row[personnelIdIndex]);
 
-        if (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift && id) {
-            const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
-            const versionParts = saveVersionString.split('-');
-            const version = parseFloat(versionParts[versionParts.length - 1]) || 0; 
-            const existingRow = latestVersionMap[id];
-            if (!existingRow || version > (parseFloat(existingRow[saveVersionIndex].split('-').pop()) || 0)) { 
-                 latestVersionMap[id] = row;
-            }
+        const isTargetRow = (currentSfc === sfcRef && currentMonth === targetMonthShort && currentYear === targetYear && currentShift === shift);
+        
+        if (isTargetRow && deletionList.includes(id)) {
+            continue; 
         }
-    });
 
-    const rowsToDeleteMap = {};
-    if (deletionList && deletionList.length > 0) {
-        deletionList.forEach(deletedId => {
-            const latestRow = latestVersionMap[deletedId];
-            if (latestRow) {
-                const r_index_in_values = values.findIndex(r => r === latestRow);
-                if (r_index_in_values > 0) { 
-                    const sheetRowIndex = r_index_in_values + HEADER_ROW; 
-                    rowsToDeleteMap[sheetRowIndex] = deletedId;
-                    delete latestVersionMap[deletedId]; 
-                }
-            }
-        });
+        if (isTargetRow && id) {
+             const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
+             const versionParts = saveVersionString.split('-');
+             const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
+             
+             const existingRow = latestVersionMap[id];
+             if (!existingRow || version > (parseFloat(existingRow[saveVersionIndex].split('-').pop()) || 0)) {
+                 latestVersionMap[id] = row;
+             }
+             
+             const infoChange = regularEmployeeInfoChanges.find(c => c.id === id);
+             if (infoChange) {
+                 if (infoChange.name) row[nameIndex] = infoChange.name;
+                 if (infoChange.position) row[positionIndex] = infoChange.position;
+                 if (infoChange.area) row[areaIndex] = infoChange.area;
+             }
+        }
+
+        retainedRows.push(row);
     }
-
-    const sheetRowsToDelete = Object.keys(rowsToDeleteMap).map(Number);
-    if (sheetRowsToDelete.length > 0) {
-        sheetRowsToDelete.sort((a, b) => b - a);
-        sheetRowsToDelete.forEach(rowNum => {
-            planSheet.deleteRow(rowNum);
-        });
-    }
-
-    const changesByRow = changes.reduce((acc, change) => {
-        const key = change.personnelId;
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(change);
-        return acc;
-    }, {});
 
     const rowsToAppend = [];
+    
     const masterEmployeeMap = getEmployeeMasterData(sfcRef).reduce((map, emp) => { 
         map[emp.id] = { name: emp.name, position: emp.position, area: emp.area };
         return map;
@@ -1194,10 +1181,10 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, relieverChanges, 
 
     relieverChanges.forEach(reliever => {
         const personnelId = reliever.id;
-        if (latestVersionMap[personnelId] || changesByRow[personnelId]) return;
-        
-        const planHeadersCount = headers.length; 
-        let newRow = Array(planHeadersCount).fill('');            
+
+        if (latestVersionMap[personnelId]) return; 
+
+        const newRow = Array(numColumns).fill('');
         newRow[sfcRefIndex] = sfcRef;
         newRow[headcountIndex] = contractInfo.headCount;
         newRow[propOrGrpCodeIndex] = contractInfo.propOrGrpCode;
@@ -1209,46 +1196,39 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, relieverChanges, 
         newRow[yearIndex] = targetYear;
         newRow[shiftIndex] = shift;
         newRow[saveGroupIndex] = group;
-        newRow[printGroupIndex] = '';
-        newRow[referenceIndex] = '';
         newRow[personnelIdIndex] = personnelId;
         newRow[nameIndex] = reliever.name;
-        newRow[positionIndex] = 'RELIEVER'; 
-        newRow[areaIndex] = 'RELIEVER';     
+        newRow[positionIndex] = 'RELIEVER';
+        newRow[areaIndex] = 'RELIEVER';
+        newRow[saveVersionIndex] = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${group}-1.0`;
 
-        for (let d = day1Index; d < numColumns; d++) {
-             newRow[d] = '';
-        }
-
-        const nextVersion = '1.0';
-        newRow[saveVersionIndex] = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${group}-${nextVersion}`;
         rowsToAppend.push(newRow);
-        latestVersionMap[personnelId] = newRow;
+        latestVersionMap[personnelId] = newRow; // Update map
     });
 
-    changes.sort((a, b) => {
-        const dateA = new Date(a.dayKey);
-        const dateB = new Date(b.dayKey);
-        if (dateA.getTime() !== dateB.getTime()) return dateA.getTime() - dateB.getTime();
-        return a.personnelId.localeCompare(b.personnelId);
-    });
+    const changesByRow = changes.reduce((acc, change) => {
+        const key = change.personnelId;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(change);
+        return acc;
+    }, {});
 
     Object.keys(changesByRow).forEach(personnelId => {
         const dailyChanges = changesByRow[personnelId];
         const latestVersionRow = latestVersionMap[personnelId];
         let newRow;
         let currentVersion = 0;
-        
+        let nextGroupToUse = group;
+
         const empDetails = masterEmployeeMap[personnelId] || { 
             name: (latestVersionRow ? latestVersionRow[nameIndex] : 'N/A'), 
             position: (latestVersionRow ? latestVersionRow[positionIndex] : ''), 
             area: (latestVersionRow ? latestVersionRow[areaIndex] : '')
-        };    
-        let nextGroupToUse = group; 
+        };
 
         if (!latestVersionRow) {
-            const planHeadersCount = headers.length; 
-            newRow = Array(planHeadersCount).fill('');            
+            // New entry na wala pa sa sheet (regular employee added via copy or new input)
+            newRow = Array(numColumns).fill('');
             newRow[sfcRefIndex] = sfcRef;
             newRow[headcountIndex] = contractInfo.headCount;
             newRow[propOrGrpCodeIndex] = contractInfo.propOrGrpCode;
@@ -1259,69 +1239,76 @@ function saveAttendancePlanBulk(sfcRef, contractInfo, changes, relieverChanges, 
             newRow[monthIndex] = targetMonthShort;
             newRow[yearIndex] = targetYear;
             newRow[shiftIndex] = shift;
-            newRow[saveGroupIndex] = nextGroupToUse;
-            newRow[printGroupIndex] = '';
-            newRow[referenceIndex] = '';
+            newRow[saveGroupIndex] = group;
             newRow[personnelIdIndex] = personnelId;
             newRow[nameIndex] = empDetails.name;
             newRow[positionIndex] = empDetails.position;
             newRow[areaIndex] = empDetails.area;
             currentVersion = 0;
         } else {
+            // Existing row, copy it
             newRow = [...latestVersionRow];
-            const versionString = latestVersionRow[saveVersionIndex].split('-').pop(); 
-            currentVersion = parseFloat(versionString) || 0; 
-
+            const versionString = String(latestVersionRow[saveVersionIndex] || '').split('-').pop();
+            currentVersion = parseFloat(versionString) || 0;
+            
+            // Clear reference for new version
             newRow[referenceIndex] = '';
-            newRow[printGroupIndex] = ''; 
+            newRow[printGroupIndex] = '';
+            
+            // Update Group logic
             const oldGroup = latestVersionRow[saveGroupIndex];
             if (oldGroup && String(oldGroup).trim().toUpperCase() !== String(group).trim().toUpperCase()) {
                 nextGroupToUse = oldGroup;
             }
-
             newRow[saveGroupIndex] = nextGroupToUse;
+
+            // Update info fields just in case
             if (empDetails.position !== 'RELIEVER') {
                 newRow[nameIndex] = empDetails.name;
                 newRow[positionIndex] = empDetails.position;
                 newRow[areaIndex] = empDetails.area;
             }
         }
-        
+
         let isRowChanged = false;
+        
         dailyChanges.forEach(data => {
             const { dayKey, status: newStatus } = data;
-            const dayNumber = parseInt(dayKey.split('-')[2], 10); 
-            let dayColumnNumber; 
-            if (shift === '1stHalf') dayColumnNumber = dayNumber; 
-            else dayColumnNumber = dayNumber - 15; 
-            
-            if (dayColumnNumber < 1 || dayColumnNumber > PLAN_MAX_DAYS_IN_HALF) return;
-            
-            const dayColIndex = day1Index + dayColumnNumber - 1;
-            if (dayColIndex >= day1Index && dayColIndex < numColumns) {
-                const oldStatus = String((latestVersionRow || newRow)[dayColIndex] || '').trim();
-                if (oldStatus !== newStatus) {
-                    isRowChanged = true;
-                    newRow[dayColIndex] = newStatus; 
+            const dayNumber = parseInt(dayKey.split('-')[2], 10);
+            let dayColumnNumber;
+            if (shift === '1stHalf') dayColumnNumber = dayNumber;
+            else dayColumnNumber = dayNumber - 15;
+
+            if (dayColumnNumber >= 1 && dayColumnNumber <= PLAN_MAX_DAYS_IN_HALF) {
+                const dayColIndex = day1Index + dayColumnNumber - 1;
+                if (dayColIndex < numColumns) {
+                    const oldStatus = String((latestVersionRow || newRow)[dayColIndex] || '').trim();
+                    if (oldStatus !== newStatus) {
+                        isRowChanged = true;
+                        newRow[dayColIndex] = newStatus;
+                    }
                 }
             }
         });
-        
-        if (isRowChanged) {
+
+        if (isRowChanged || !latestVersionRow) {
             const nextVersion = (currentVersion + 1).toFixed(1);
             newRow[saveVersionIndex] = `${sfcRef}-${targetMonthShort}${targetYear}-${shift}-${nextGroupToUse}-${nextVersion}`;
             rowsToAppend.push(newRow);
         }
     });
 
-    if (rowsToAppend.length > 0) {
-        const newRowLength = rowsToAppend[0].length;
-        const startRow = planSheet.getLastRow() + 1;
-        planSheet.getRange(startRow, 1, rowsToAppend.length, newRowLength).setValues(rowsToAppend);
-        planSheet.getRange(startRow, 1, rowsToAppend.length, PLAN_FIXED_COLUMNS).setNumberFormat('@');
+    const topRows = values.slice(0, HEADER_ROW); 
+    
+    const finalData = [...topRows, ...retainedRows, ...rowsToAppend];
+    
+    planSheet.clearContents();
+    
+    if (finalData.length > 0) {
+        planSheet.getRange(1, 1, finalData.length, finalData[0].length).setValues(finalData);
+        // Re-apply number formatting for fixed columns to ensure IDs are strings
+        planSheet.getRange(HEADER_ROW, 1, finalData.length - HEADER_ROW + 1, PLAN_FIXED_COLUMNS).setNumberFormat('@');
     }
-
-    planSheet.setFrozenRows(HEADER_ROW);
 }
 
 function updatePlanSheetReferenceBulk(refNum, printGroup, sfcRef, year, month, shift, printedPersonnelIds) { 
@@ -1396,62 +1383,54 @@ function updatePlanSheetReferenceBulk(refNum, printGroup, sfcRef, year, month, s
     }
 }
 
-function saveEmployeeInfoBulk(sfcRef, changes, year, month, shift, lockedIdRefMap) {
-    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+function saveEmployeeInfoBulk(sfcRef, changes, ss) {
     const empSheet = getOrCreateConsolidatedEmployeeMasterSheet(ss);
-    const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
-    if (!empSheet) throw new Error(`Employee Consolidated Sheet not found.`);
-    empSheet.setFrozenRows(0);
-    const numRows = empSheet.getLastRow() > 0 ? empSheet.getLastRow() : 1;
-    const numColumns = empSheet.getLastColumn() > 0 ? empSheet.getLastColumn() : 5;
-    const values = empSheet.getRange(1, 1, numRows, numColumns).getValues();
+    
+    const numRows = empSheet.getLastRow();
+    const startRow = numRows > 0 ? numRows : 1; 
+    
+    const values = empSheet.getDataRange().getValues();
     const headers = values[0];
-    empSheet.setFrozenRows(1); 
     
     const contractRefIndex = headers.indexOf('CONTRACT #');
     const personnelIdIndex = headers.indexOf('Personnel ID');
     const nameIndex = headers.indexOf('Personnel Name');
     const positionIndex = headers.indexOf('Position');
     const areaIndex = headers.indexOf('Area Posting');
-    const rowsToAppend = [];
-    const rowsToDelete = [];
-    const personnelIdMap = {};
-    for (let i = 1; i < values.length; i++) { 
-        const sfc = String(values[i][contractRefIndex] || '').trim();
-        const id = String(values[i][personnelIdIndex] || '').trim();
-        if (sfc === sfcRef) {
-            personnelIdMap[id] = i + 1;
+    
+    const existingIds = new Set();
+    for (let i = 1; i < values.length; i++) {
+        const rowSfc = String(values[i][contractRefIndex] || '').trim();
+        const rowId = String(values[i][personnelIdIndex] || '').trim();
+        if (rowSfc === sfcRef) {
+            existingIds.add(rowId);
         }
     }
-    
+
+    const rowsToAppend = [];
+
     changes.forEach((data) => {
-        const oldId = String(data.oldPersonnelId || '').trim();
+        if (data.isDeleted) return; 
+
         const newId = String(data.id || '').trim();
-        if (data.isDeleted && oldId && planSheet) {
-            rowsToDelete.push({ id: oldId, isMasterDelete: false }); 
-            return;
-        }
-        if (newId && !data.isDeleted && !personnelIdMap[newId]) {    
+        
+        if (newId && !existingIds.has(newId)) {
             const newRow = [];
+            for(let k=0; k<headers.length; k++) newRow.push('');
+
             newRow[contractRefIndex] = sfcRef;
             newRow[personnelIdIndex] = data.id;
             newRow[nameIndex] = data.name;
             newRow[positionIndex] = data.position;
             newRow[areaIndex] = data.area;
             
-            const finalRow = [];
-            for(let i = 0; i < headers.length; i++) {
-                finalRow.push(newRow[i] !== undefined ? newRow[i] : '');
-            }
-            rowsToAppend.push(finalRow);
-            personnelIdMap[newId] = -1;
+            rowsToAppend.push(newRow);
+            existingIds.add(newId); 
         }
     });
-    
+
     if (rowsToAppend.length > 0) {
-      rowsToAppend.forEach(row => {
-          empSheet.appendRow(row); 
-      });
+        empSheet.getRange(numRows + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
     }
 }
 
