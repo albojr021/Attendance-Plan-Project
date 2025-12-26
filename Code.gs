@@ -647,6 +647,61 @@ function getBlacklistData() {
     return getBlacklistedEmployeesFrom201();
 }
 
+function getSecurityFieldSuggestions() {
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const suggestions = {
+        designations: new Set(),
+        places: new Set(),
+        types: new Set(),
+        makes: new Set(),
+        calibers: new Set(),
+        serials: new Set()
+    };
+
+    // 1. Get Designation (Position) and Place (Area) from Employee Master
+    const empSheet = ss.getSheetByName(EMPLOYEE_MASTER_SHEET_NAME);
+    if (empSheet && empSheet.getLastRow() > 1) {
+        const data = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, empSheet.getLastColumn()).getValues();
+        const headers = empSheet.getRange(1, 1, 1, empSheet.getLastColumn()).getValues()[0];
+        const posIdx = headers.indexOf('Position');
+        const areaIdx = headers.indexOf('Area Posting');
+
+        data.forEach(row => {
+            if (posIdx > -1 && row[posIdx]) suggestions.designations.add(String(row[posIdx]).trim().toUpperCase());
+            if (areaIdx > -1 && row[areaIdx]) suggestions.places.add(String(row[areaIdx]).trim().toUpperCase());
+        });
+    }
+
+    // 2. Get Firearm Details from Security Plan History
+    const secSheet = ss.getSheetByName(SECURITY_PLAN_SHEET_NAME);
+    if (secSheet && secSheet.getLastRow() > 1) {
+        const data = secSheet.getRange(2, 1, secSheet.getLastRow() - 1, secSheet.getLastColumn()).getValues();
+        const headers = secSheet.getRange(1, 1, 1, secSheet.getLastColumn()).getValues()[0];
+        
+        const typeIdx = headers.indexOf('Firearm Type');
+        const makeIdx = headers.indexOf('Firearm Make');
+        const calIdx = headers.indexOf('Firearm Caliber');
+        const serialIdx = headers.indexOf('Firearm Serial');
+
+        data.forEach(row => {
+            if (typeIdx > -1 && row[typeIdx]) suggestions.types.add(String(row[typeIdx]).trim().toUpperCase());
+            if (makeIdx > -1 && row[makeIdx]) suggestions.makes.add(String(row[makeIdx]).trim().toUpperCase());
+            if (calIdx > -1 && row[calIdx]) suggestions.calibers.add(String(row[calIdx]).trim().toUpperCase());
+            if (serialIdx > -1 && row[serialIdx]) suggestions.serials.add(String(row[serialIdx]).trim().toUpperCase());
+        });
+    }
+
+    // Convert Sets to Arrays and Sort
+    return {
+        designations: Array.from(suggestions.designations).sort(),
+        places: Array.from(suggestions.places).sort(),
+        types: Array.from(suggestions.types).sort(),
+        makes: Array.from(suggestions.makes).sort(),
+        calibers: Array.from(suggestions.calibers).sort(),
+        serials: Array.from(suggestions.serials).sort()
+    };
+}
+
 // ============================================================================
 // 6. ATTENDANCE PLAN READ OPERATIONS
 // ============================================================================
