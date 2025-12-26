@@ -1753,7 +1753,7 @@ function handleAttendanceData(data) {
     // Update Date Picker Display
     updateDatePickerDisplay(year, month);
 
-    // Calculate Date Range String for the Header (e.g., "Dec 1-15, 2025")
+    // Calculate Date Range String for the Header
     const monthName = currentPlanningDate.toLocaleString('en-US', { month: 'short' });
     let dateRangeStr = "";
     if (selectedShift === '1stHalf') {
@@ -1768,18 +1768,18 @@ function handleAttendanceData(data) {
     const table = document.createElement('table');
     table.className = 'w-full text-sm text-left text-gray-700 border-collapse border border-gray-400';
     
-    // --- TABLE HEAD (Complex Headers with Colspan) ---
+    // --- TABLE HEAD ---
     const thead = table.createTHead();
     
     // ROW 1
     const trHead1 = thead.insertRow();
     const headers1 = [
-        { text: 'NO.', rowSpan: 2, width: '50px' },
-        { text: 'Name of Guards', rowSpan: 2, width: '250px' }, // Combined Name Column
-        { text: 'Designation', rowSpan: 2, width: '120px' },
-        { text: 'Place of Duty (Location)', rowSpan: 2, width: '200px' },
-        { text: 'Time of Shift', rowSpan: 1, colSpan: 1, width: '150px' }, // Header for Date Range
-        { text: 'Firearm Nomenclature', rowSpan: 1, colSpan: 4, width: 'auto' }, // Merged Header
+        { text: 'NO.', rowSpan: 2, width: '40px' },
+        { text: 'Name of Guards', rowSpan: 2, width: '220px' }, 
+        { text: 'Designation', rowSpan: 2, width: '100px' },
+        { text: 'Place of Duty (Location)', rowSpan: 2, width: '180px' },
+        { text: 'Time of Shift', rowSpan: 1, colSpan: 1, width: '140px' }, // Modified width
+        { text: 'Firearm Nomenclature', rowSpan: 1, colSpan: 4, width: 'auto' }, 
         { text: 'Validity of License', rowSpan: 2, width: '120px' }
     ];
 
@@ -1796,7 +1796,7 @@ function handleAttendanceData(data) {
     // ROW 2 (Sub-headers)
     const trHead2 = thead.insertRow();
     const headers2 = [
-        { text: dateRangeStr, className: 'text-blue-800 font-extrabold' }, // Date Range Sub-header
+        { text: dateRangeStr, className: 'text-blue-800 font-extrabold' }, // Time of Shift subheader
         { text: 'Type' },
         { text: 'Make' },
         { text: 'Caliber' },
@@ -1813,12 +1813,7 @@ function handleAttendanceData(data) {
     // --- TABLE BODY ---
     const tbody = table.createTBody();
 
-    // Prepare rows (Combine saved employees + pending changes)
-    // NOTE: Reuse existing logic to sort/merge employees
     let rowsToRender = currentContract.employees.slice() || [];
-    
-    // (Optional: Reuse logic to add pending new rows here if needed, copy from renderStandardPlan)
-    // For now, let's render existing rows
     rowsToRender.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     const maxRenderedRows = Math.max(currentContract?.headCount || 0, rowsToRender.length);
@@ -1826,11 +1821,9 @@ function handleAttendanceData(data) {
     for (let i = 0; i < maxRenderedRows; i++) {
         const employee = rowsToRender[i] || { no: i + 1, id: '', name: '', position: '', area: '' };
         const stableLookupKey = employee.id || `TEMP_${i + 1}`;
-        
         const pendingInfo = pendingEmployeeInfoChanges[stableLookupKey];
         const isMarkedForDeletion = pendingInfo && pendingInfo.isDeleted;
         
-        // Use pending values if available
         const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
         const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         const displayPos = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
@@ -1845,29 +1838,15 @@ function handleAttendanceData(data) {
         td.className = 'text-center p-2 border border-gray-400 font-semibold bg-gray-50';
         td.textContent = i + 1;
 
-        // 2. Name of Guards (Includes hidden ID for logic)
+        // 2. Name
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400 relative';
-        
-        // Hidden ID Input (Required for backend saving/logic)
-        const inputId = document.createElement('input');
-        inputId.type = 'hidden';
-        inputId.value = displayId;
-        inputId.dataset.field = 'id';
-        inputId.dataset.oldPersonnelId = stableLookupKey;
-        td.appendChild(inputId);
+        const inputId = document.createElement('input'); inputId.type = 'hidden'; inputId.value = displayId; inputId.dataset.field = 'id'; inputId.dataset.oldPersonnelId = stableLookupKey; td.appendChild(inputId);
 
-        // Name Input
         const inputName = document.createElement('input');
-        inputName.type = 'text';
-        inputName.setAttribute('list', 'employee-name-list'); // Reusing existing datalist
-        inputName.value = displayName;
-        inputName.placeholder = 'Select Guard';
-        inputName.dataset.field = 'name';
-        inputName.dataset.oldPersonnelId = stableLookupKey;
+        inputName.type = 'text'; inputName.setAttribute('list', 'employee-name-list'); inputName.value = displayName; inputName.placeholder = 'Select Guard';
+        inputName.dataset.field = 'name'; inputName.dataset.oldPersonnelId = stableLookupKey;
         inputName.className = 'w-full p-1 bg-transparent focus:ring-2 focus:ring-blue-500 outline-none personnel-info-input uppercase font-bold text-gray-800';
-        
-        // Attach standard listeners (reuse existing logic for name changes)
         inputName.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
         inputName.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
         inputName.addEventListener('input', filterDatalistOptions);
@@ -1877,91 +1856,102 @@ function handleAttendanceData(data) {
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputPos = document.createElement('input');
-        inputPos.type = 'text';
-        inputPos.value = displayPos;
-        inputPos.dataset.field = 'position'; // Reusing field name
-        inputPos.dataset.oldPersonnelId = stableLookupKey;
+        inputPos.type = 'text'; inputPos.value = displayPos; inputPos.dataset.field = 'position'; inputPos.dataset.oldPersonnelId = stableLookupKey;
         inputPos.className = 'w-full p-1 bg-transparent focus:ring-2 focus:ring-blue-500 outline-none personnel-info-input text-center uppercase';
         inputPos.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
         td.appendChild(inputPos);
 
-        // 4. Place of Duty (Location) - Maps to "Area"
+        // 4. Place of Duty
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputArea = document.createElement('input');
-        inputArea.type = 'text';
-        inputArea.value = displayArea;
-        inputArea.dataset.field = 'area'; // Reusing field name
-        inputArea.dataset.oldPersonnelId = stableLookupKey;
+        inputArea.type = 'text'; inputArea.value = displayArea; inputArea.dataset.field = 'area'; inputArea.dataset.oldPersonnelId = stableLookupKey;
         inputArea.className = 'w-full p-1 bg-transparent focus:ring-2 focus:ring-blue-500 outline-none personnel-info-input text-center uppercase';
         inputArea.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
         td.appendChild(inputArea);
 
-        // --- SECURITY SPECIFIC COLUMNS (Currently treated as custom attendance/info) ---
-        // Note: For now, we will add inputs. Backend saving for these specific fields needs update later.
+        // --- 5. Time of Shift (UPDATED: Single Dropdown 24h) ---
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-400';
         
-        // 5. Time of Shift (e.g., 0700H-1900H)
-        td = tr.insertCell();
-        td.className = 'p-1 border border-gray-400';
-        const inputTime = document.createElement('input');
-        inputTime.type = 'text';
-        inputTime.placeholder = '07:00-19:00';
-        // TODO: Bind to a data model later. For now, use a temp data-attribute or attendance logic
-        inputTime.dataset.securityField = 'timeOfShift'; 
-        inputTime.className = 'w-full p-1 bg-transparent text-center font-mono text-blue-900 font-bold outline-none';
-        td.appendChild(inputTime);
+        const selectShift = document.createElement('select');
+        selectShift.className = 'w-full text-xs p-1 border border-gray-300 rounded bg-white focus:ring-blue-500 text-center font-semibold h-8';
+        selectShift.dataset.securityField = 'timeOfShift';
 
-        // 6. Firearm - Type
-        td = tr.insertCell();
-        td.className = 'p-1 border border-gray-400';
-        const inputFA_Type = document.createElement('input');
-        inputFA_Type.type = 'text';
-        inputFA_Type.placeholder = 'PISTOL';
-        inputFA_Type.dataset.securityField = 'faType';
-        inputFA_Type.className = 'w-full p-1 bg-transparent text-center text-xs uppercase outline-none';
-        td.appendChild(inputFA_Type);
+        // Add Default Option
+        const defOpt = document.createElement('option');
+        defOpt.value = '';
+        defOpt.text = '- Select -';
+        selectShift.appendChild(defOpt);
 
-        // 7. Firearm - Make
-        td = tr.insertCell();
-        td.className = 'p-1 border border-gray-400';
-        const inputFA_Make = document.createElement('input');
-        inputFA_Make.type = 'text';
-        inputFA_Make.dataset.securityField = 'faMake';
-        inputFA_Make.className = 'w-full p-1 bg-transparent text-center text-xs uppercase outline-none';
-        td.appendChild(inputFA_Make);
+        // Generate Options: Every 30 mins for 24 hours (12-hour duration logic)
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 30) {
+                // Format Start Time
+                const startH = h.toString().padStart(2, '0');
+                const startM = m.toString().padStart(2, '0');
+                
+                // Calculate End Time (Start + 12 hours)
+                let endVal = (h + 12) % 24; 
+                
+                let endH;
+                // SPECIAL CHECK: Kung 0 (Midnight) ang result, gawing "24" para sa display
+                if (endVal === 0) {
+                    endH = "24"; 
+                } else {
+                    endH = endVal.toString().padStart(2, '0');
+                }
 
-        // 8. Firearm - Caliber
-        td = tr.insertCell();
-        td.className = 'p-1 border border-gray-400';
-        const inputFA_Cal = document.createElement('input');
-        inputFA_Cal.type = 'text';
-        inputFA_Cal.dataset.securityField = 'faCaliber';
-        inputFA_Cal.className = 'w-full p-1 bg-transparent text-center text-xs outline-none';
-        td.appendChild(inputFA_Cal);
+                const endM = startM; // Minute stays same
 
-        // 9. Firearm - Serial No.
-        td = tr.insertCell();
-        td.className = 'p-1 border border-gray-400';
-        const inputFA_Serial = document.createElement('input');
-        inputFA_Serial.type = 'text';
-        inputFA_Serial.dataset.securityField = 'faSerial';
-        inputFA_Serial.className = 'w-full p-1 bg-transparent text-center text-xs uppercase outline-none';
-        td.appendChild(inputFA_Serial);
+                const shiftStr = `${startH}:${startM} - ${endH}:${endM}`;
+                
+                const opt = document.createElement('option');
+                opt.value = shiftStr;
+                opt.text = shiftStr;
+                selectShift.appendChild(opt);
+            }
+        }
+        td.appendChild(selectShift);
 
-        // 10. Validity of License
+
+        // 6. FA Type
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
+        const inputFA_Type = document.createElement('input'); inputFA_Type.type = 'text'; inputFA_Type.placeholder = 'PISTOL'; inputFA_Type.dataset.securityField = 'faType'; inputFA_Type.className = 'w-full p-1 bg-transparent text-center text-xs uppercase outline-none'; td.appendChild(inputFA_Type);
+
+        // 7. FA Make
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
+        const inputFA_Make = document.createElement('input'); inputFA_Make.type = 'text'; inputFA_Make.dataset.securityField = 'faMake'; inputFA_Make.className = 'w-full p-1 bg-transparent text-center text-xs uppercase outline-none'; td.appendChild(inputFA_Make);
+
+        // 8. FA Caliber
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
+        const inputFA_Cal = document.createElement('input'); inputFA_Cal.type = 'text'; inputFA_Cal.dataset.securityField = 'faCaliber'; inputFA_Cal.className = 'w-full p-1 bg-transparent text-center text-xs outline-none'; td.appendChild(inputFA_Cal);
+
+        // 9. FA Serial
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
+        const inputFA_Serial = document.createElement('input'); inputFA_Serial.type = 'text'; inputFA_Serial.dataset.securityField = 'faSerial'; inputFA_Serial.className = 'w-full p-1 bg-transparent text-center text-xs uppercase outline-none'; td.appendChild(inputFA_Serial);
+
+        // --- 10. Validity of License (DatePicker) ---
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputValid = document.createElement('input');
-        inputValid.type = 'text'; // Can use 'date' but text is more flexible for display
+        inputValid.type = 'text'; 
         inputValid.placeholder = 'MM/DD/YYYY';
         inputValid.dataset.securityField = 'licenseValidity';
-        inputValid.className = 'w-full p-1 bg-transparent text-center text-xs outline-none';
+        inputValid.className = 'w-full p-1 bg-transparent text-center text-xs outline-none security-date-input cursor-pointer'; 
+        inputValid.readOnly = true; // Prevent typing, force picker usage
         td.appendChild(inputValid);
     }
 
     tableContainer.appendChild(table);
 
-    // Render Reliever Table (Shared Function)
+    // Initialize jQuery UI Datepicker
+    $('.security-date-input').datepicker({
+        dateFormat: 'mm/dd/yy',
+        changeMonth: true,
+        changeYear: true
+    });
+
     renderRelieverTable();
   }
 
