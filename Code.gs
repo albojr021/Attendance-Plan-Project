@@ -14,6 +14,7 @@ const SIGNATORY_MASTER_SHEET = 'SignatoryMaster';
 const PRINT_FIELD_MASTER_SHEET = 'PrintFieldMaster';
 const LOG_SHEET_NAME = 'PrintLog';
 const UNLOCK_LOG_SHEET_NAME = 'UnlockRequestLog';
+const SECURITY_PLAN_SHEET_NAME = 'SecurityPlan_Details';
 const FILE_201_SHEET_NAME = ['MEG'];
 const BLACKLIST_SHEET_NAMES = ['MEG'];
 
@@ -303,6 +304,32 @@ function ensureContractSheets(sfcRef, year, month, shift) {
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     if (!planSheet) {
         createContractSheets(sfcRef, year, month, shift);
+    }
+}
+
+function getOrCreateSecurityPlanSheet(ss) {
+    let sheet = ss.getSheetByName(SECURITY_PLAN_SHEET_NAME);
+    if (sheet) return sheet;
+
+    try {
+        sheet = ss.insertSheet(SECURITY_PLAN_SHEET_NAME);
+        // Headers specific for Security Details
+        const headers = [
+            'CONTRACT #', 'MONTH', 'YEAR', 'PERIOD / SHIFT', 
+            'Personnel ID', 'Personnel Name', 
+            'Time of Shift', 'Firearm Type', 'Firearm Make', 
+            'Firearm Caliber', 'Firearm Serial', 'License Validity'
+        ];
+        sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+        sheet.setFrozenRows(1);
+        // Format columns as text/string to avoid date conversion issues
+        sheet.getRange(1, 1, 1, headers.length).setNumberFormat('@'); 
+        return sheet;
+    } catch (e) {
+        if (e.message.includes(`sheet with the name "${SECURITY_PLAN_SHEET_NAME}" already exists`)) {
+             return ss.getSheetByName(SECURITY_PLAN_SHEET_NAME);
+        }
+        throw e;
     }
 }
 
@@ -860,16 +887,74 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     
-    if (!planSheet) return { employees: [], planMap: {}, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap };
+    // --- FETCH SECURITY DETAILS (FIXED) ---
+    let securityDetailsMap = {};
+    const securitySheet = ss.getSheetByName(SECURITY_PLAN_SHEET_NAME);
+    
+    // Check if sheet exists and has data beyond header
+    if (securitySheet && securitySheet.getLastRow() > 1) {
+        // CRITICAL FIX: Use getDisplayValues() instead of getValues() 
+        // This ensures dates like '12/31/2025' come in as strings, preventing UI crashes.
+        const secValues = securitySheet.getRange(1, 1, securitySheet.getLastRow(), securitySheet.getLastColumn()).getDisplayValues();
+        const secHeaders = secValues[0];
+        
+        // Map headers
+        const sIdx = secHeaders.indexOf('CONTRACT #');
+        const mIdx = secHeaders.indexOf('MONTH');
+        const yIdx = secHeaders.indexOf('YEAR');
+        const shIdx = secHeaders.indexOf('PERIOD / SHIFT');
+        const iIdx = secHeaders.indexOf('Personnel ID');
+        
+        // Data Column Indices
+        const timeIdx = secHeaders.indexOf('Time of Shift');
+        const typeIdx = secHeaders.indexOf('Firearm Type');
+        const makeIdx = secHeaders.indexOf('Firearm Make');
+        const calIdx = secHeaders.indexOf('Firearm Caliber');
+        const serialIdx = secHeaders.indexOf('Firearm Serial');
+        const validIdx = secHeaders.indexOf('License Validity');
+        
+        const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
+        const targetYear = String(year);
+
+        if (sIdx > -1 && iIdx > -1) {
+             for (let i = 1; i < secValues.length; i++) {
+                 const row = secValues[i];
+                 // Check if row matches current context
+                 if (String(row[sIdx]) === sfcRef && 
+                     String(row[mIdx]) === targetMonthShort && 
+                     String(row[yIdx]) === targetYear && 
+                     String(row[shIdx]) === shift) {
+                     
+                     const pId = cleanPersonnelId(row[iIdx]);
+                     
+                     if (pId) {
+                         securityDetailsMap[pId] = {
+                             timeOfShift: timeIdx > -1 ? String(row[timeIdx] || '') : '',
+                             faType: typeIdx > -1 ? String(row[typeIdx] || '') : '',
+                             faMake: makeIdx > -1 ? String(row[makeIdx] || '') : '',
+                             faCaliber: calIdx > -1 ? String(row[calIdx] || '') : '',
+                             faSerial: serialIdx > -1 ? String(row[serialIdx] || '') : '',
+                             licenseValidity: validIdx > -1 ? String(row[validIdx] || '') : ''
+                         };
+                     }
+                 }
+             }
+        }
+    }
+
+    // Return empty structure if Consolidated Plan is missing/empty
+    if (!planSheet) return { employees: [], planMap: {}, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap, securityDetails: securityDetailsMap };
     
     const HEADER_ROW = PLAN_HEADER_ROW;
     const lastRow = planSheet.getLastRow();
     const numRowsToRead = lastRow - HEADER_ROW;
     const numColumns = planSheet.getLastColumn();
+
     if (numRowsToRead <= 0 || numColumns < (PLAN_FIXED_COLUMNS + 3)) { 
-        return { employees: [], planMap: {}, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap };
+        return { employees: [], planMap: {}, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap, securityDetails: securityDetailsMap };
     }
 
+    // Use getDisplayValues here as well for consistency
     const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - PLAN_HEADER_ROW + 1, numColumns).getDisplayValues();
     const headers = planValues[0];
     const dataRows = planValues.slice(1);
@@ -919,7 +1004,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const startDayOfMonth = shift === '1stHalf' ? 1 : 16;
     const endDayOfMonth = new Date(year, month + 1, 0).getDate();
     const loopLimit = PLAN_MAX_DAYS_IN_HALF;
-    
+
     latestDataRows.forEach((row, index) => {
         const id = cleanPersonnelId(row[personnelIdIndex]);
         if (id) {
@@ -951,12 +1036,14 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const regularEmployees = employees.filter(e => e.position !== 'RELIEVER' || e.area !== 'RELIEVER');
     const relieverEmployees = employees.filter(e => e.position === 'RELIEVER' && e.area === 'RELIEVER');
 
+    // Return merged data
     return { 
         employees: regularEmployees, 
         relieverPersonnelList: relieverEmployees, 
         planMap, 
         lockedIds: Object.keys(lockedIdRefMap), 
-        lockedIdRefMap: lockedIdRefMap 
+        lockedIdRefMap: lockedIdRefMap,
+        securityDetails: securityDetailsMap // Pass the security details map to frontend
     };
 }
 
@@ -1044,7 +1131,7 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
 // 7. SAVING & WRITING OPERATIONS
 // ============================================================================
 
-function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, attendanceChanges, year, month, shift, group) {
+function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, attendanceChanges, securityDetails, year, month, shift, group) {
     if (!sfcRef) throw new Error("SFC Ref# is required.");
     ensureContractSheets(sfcRef, year, month, shift);
     
@@ -1052,6 +1139,37 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     
     const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     const lockedIds = Object.keys(lockedIdRefMap);
+
+    // --- SECURITY LOGIC: Merge Time of Shift into Attendance Changes for DAY 1 ---
+    if (securityDetails && securityDetails.length > 0) {
+        const startDayOfMonth = shift === '1stHalf' ? 1 : 16;
+        const dayKey = `${year}-${month + 1}-${startDayOfMonth}`; // Day 1 of the shift
+        
+        securityDetails.forEach(sec => {
+            if (sec.timeOfShift && sec.id && !lockedIds.includes(String(sec.id))) {
+                // Check if already in attendanceChanges to avoid overwrite if manual edit exist (optional logic, but here we enforce Time of Shift)
+                const existingChangeIndex = attendanceChanges.findIndex(ac => 
+                    String(ac.personnelId) === String(sec.id) && 
+                    ac.dayKey === dayKey && 
+                    ac.shift === shift
+                );
+
+                if (existingChangeIndex > -1) {
+                    attendanceChanges[existingChangeIndex].status = sec.timeOfShift;
+                } else {
+                    attendanceChanges.push({
+                        personnelId: sec.id,
+                        dayKey: dayKey,
+                        shift: shift,
+                        status: sec.timeOfShift
+                    });
+                }
+            }
+        });
+        
+        // SAVE TO SECURITY SHEET
+        saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss);
+    }
 
     const finalEmployeeChanges = employeeChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.id || change.oldPersonnelId);
@@ -1090,6 +1208,109 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     }
     
     logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift);
+}
+
+function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss) {
+    if (!securityDetails || securityDetails.length === 0) return;
+
+    const sheet = getOrCreateSecurityPlanSheet(ss);
+    const lastRow = sheet.getLastRow();
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    // Map headers to indices
+    const sfcIdx = headers.indexOf('CONTRACT #');
+    const monthIdx = headers.indexOf('MONTH');
+    const yearIdx = headers.indexOf('YEAR');
+    const shiftIdx = headers.indexOf('PERIOD / SHIFT');
+    const idIdx = headers.indexOf('Personnel ID');
+    
+    // Data columns
+    const nameIdx = headers.indexOf('Personnel Name');
+    const timeIdx = headers.indexOf('Time of Shift');
+    const faTypeIdx = headers.indexOf('Firearm Type');
+    const faMakeIdx = headers.indexOf('Firearm Make');
+    const faCalIdx = headers.indexOf('Firearm Caliber');
+    const faSerialIdx = headers.indexOf('Firearm Serial');
+    const validIdx = headers.indexOf('License Validity');
+
+    const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
+    const targetYear = String(year);
+
+    // 1. Get Existing Data to create a map (Upsert Logic)
+    let existingData = [];
+    if (lastRow > 1) {
+        existingData = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    }
+
+    const rowMap = new Map(); 
+    existingData.forEach((row, index) => {
+        const rSfc = String(row[sfcIdx]).trim();
+        const rMonth = String(row[monthIdx]).trim();
+        const rYear = String(row[yearIdx]).trim();
+        const rShift = String(row[shiftIdx]).trim();
+        const rId = String(row[idIdx]).trim();
+
+        if (rSfc === sfcRef && rMonth === targetMonthShort && rYear === targetYear && rShift === shift) {
+            rowMap.set(rId, index);
+        }
+    });
+
+    const rowsToAppend = [];
+    const updates = []; 
+
+    securityDetails.forEach(detail => {
+        const id = String(detail.id).trim();
+        if (!id) return;
+
+        // FORCE UPPERCASE CONVERSION HERE
+        const valName = String(detail.name || '').toUpperCase().trim();
+        const valTime = String(detail.timeOfShift || '').trim(); // Time is standardized, no need to uppercase
+        const valType = String(detail.faType || '').toUpperCase().trim();
+        const valMake = String(detail.faMake || '').toUpperCase().trim();
+        const valCal = String(detail.faCaliber || '').toUpperCase().trim();
+        const valSerial = String(detail.faSerial || '').toUpperCase().trim();
+        const valValid = String(detail.licenseValidity || '').trim();
+
+        if (rowMap.has(id)) {
+            // Update Existing Row
+            const rowIndex = rowMap.get(id) + 2; 
+            updates.push({ r: rowIndex, c: nameIdx + 1, v: valName });
+            updates.push({ r: rowIndex, c: timeIdx + 1, v: valTime });
+            updates.push({ r: rowIndex, c: faTypeIdx + 1, v: valType });
+            updates.push({ r: rowIndex, c: faMakeIdx + 1, v: valMake });
+            updates.push({ r: rowIndex, c: faCalIdx + 1, v: valCal });
+            updates.push({ r: rowIndex, c: faSerialIdx + 1, v: valSerial });
+            updates.push({ r: rowIndex, c: validIdx + 1, v: valValid });
+        } else {
+            // Append New Row
+            const newRow = new Array(headers.length).fill('');
+            newRow[sfcIdx] = sfcRef;
+            newRow[monthIdx] = targetMonthShort;
+            newRow[yearIdx] = targetYear;
+            newRow[shiftIdx] = shift;
+            newRow[idIdx] = id;
+            newRow[nameIdx] = valName;
+            newRow[timeIdx] = valTime;
+            newRow[faTypeIdx] = valType;
+            newRow[faMakeIdx] = valMake;
+            newRow[faCalIdx] = valCal;
+            newRow[faSerialIdx] = valSerial;
+            newRow[validIdx] = valValid;
+            rowsToAppend.push(newRow);
+        }
+    });
+
+    // Apply Updates
+    if (updates.length > 0) {
+        updates.forEach(u => {
+            sheet.getRange(u.r, u.c).setValue(u.v);
+        });
+    }
+
+    // Apply Appends
+    if (rowsToAppend.length > 0) {
+        sheet.getRange(lastRow + 1, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
+    }
 }
 
 function saveAttendancePlanBulk(sfcRef, contractInfo, changes, relieverChanges, regularEmployeeInfoChanges, year, month, shift, group, deletionList, ss) {
