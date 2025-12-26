@@ -1023,9 +1023,6 @@ function handlePreviousPlanData(data) {
     const currentShift = document.getElementById('shift-period-select').value;
     const daysInCurrentMonth = getDaysInMonth(currentYear, currentMonth);
 
-    const startDayOfMonth = currentShift === '1stHalf' ? 1 : 16;
-    const endDayOfMonth = currentShift === '1stHalf' ? 15 : daysInCurrentMonth;
-    
     // NEW: Create a set of existing employee IDs in the current saved roster
     const existingEmployeeIds = new Set(currentContract.employees.map(emp => emp.id));
     let newEmployeesAdded = 0;
@@ -1058,10 +1055,7 @@ function handlePreviousPlanData(data) {
         newEmployeesAdded++; 
     });
 
-    // NOTE: Inalis ang Steps 4 at 5 (DOW Pattern logic). Ang schedule ay mananatiling BLANK.
-    // Walang schedule changes na ia-apply sa pendingAttendanceChanges.
-
-    // 6. Re-render the grid
+    // 6. Re-render the grid (Security or Standard)
     renderAttendancePlan();
     checkPlanSheetLockState(); 
     showNotification(`Successfully copied ${newEmployeesAdded} new employees into the roster. (Skipped ${employeesSkipped} existing employees). Please input the schedule manually. Click "Save All Changes" to save this new plan.`, true);
@@ -1815,7 +1809,30 @@ function handleAttendanceData(data) {
     // --- TABLE BODY ---
     const tbody = table.createTBody();
 
+    // 1. Get existing saved employees
     let rowsToRender = currentContract.employees.slice() || [];
+
+    // 2. [UPDATED] Merge pending NEW employees (galing sa Copy Previous Plan o Manual Add)
+    Object.keys(pendingEmployeeInfoChanges).forEach(stableKey => {
+         const change = pendingEmployeeInfoChanges[stableKey];
+         const isUnsavedNewRow = change.originalEmployeeId === '';
+         
+         if (isUnsavedNewRow) {
+             // Check kung wala pa sa listahan para iwas duplicate
+             if (!rowsToRender.some(e => e.id === change.id || e.id === stableKey)) {
+                 rowsToRender.push({
+                     no: 0, 
+                     id: change.id, 
+                     name: change.name, 
+                     position: change.position, // Ito ang magiging Designation
+                     area: change.area,         // Ito ang magiging Location
+                     isNew: true,
+                 });
+             }
+         }
+    });
+
+    // 3. Sort alphabetically by Name
     rowsToRender.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
     const maxRenderedRows = Math.max(currentContract?.headCount || 0, rowsToRender.length);
@@ -1826,26 +1843,27 @@ function handleAttendanceData(data) {
         const pendingInfo = pendingEmployeeInfoChanges[stableLookupKey];
         const isMarkedForDeletion = pendingInfo && pendingInfo.isDeleted;
         
+        // Prioritize pending data (for copied values) over saved data
         const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
         const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         const displayPos = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
         const displayArea = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
 
-        // CHECK IF ROW IS SAVED
-        const isSavedRow = (employee.id && employee.id !== '');
+        // CHECK IF ROW IS SAVED (Real ID exists and not isNew)
+        const isSavedRow = (employee.id && employee.id !== '' && !employee.isNew);
 
-        // LOGIC FOR DISABLING FIELDS [UPDATED]
+        // LOGIC FOR DISABLING FIELDS
         const isNamePresent = displayName && displayName.trim() !== '';
         
-        // 1. Basic Fields (Designation, Location): Disabled ONLY if Saved/Locked. Always enabled otherwise.
+        // Basic Fields (Designation, Location): Disabled ONLY if Saved. Enabled for Copied/New rows.
         const isBasicFieldDisabled = isSavedRow; 
         const basicDisabledClass = isBasicFieldDisabled ? 'bg-gray-100 cursor-not-allowed text-gray-400' : 'bg-transparent';
 
-        // 2. Strict Fields (Shift, Firearms, Validity): Disabled if Saved OR No Name.
+        // Strict Fields (Shift, Firearms, Validity): Disabled if Saved OR No Name.
         const isStrictFieldDisabled = isSavedRow || !isNamePresent;
         const strictDisabledClass = isStrictFieldDisabled ? 'bg-gray-100 cursor-not-allowed text-gray-400' : 'bg-transparent';
 
-        // NEW: Get Security Details
+        // Get Security Details (Only for saved rows mostly, copied rows usually won't have this yet)
         const secDetails = (currentContract.securityDetails && displayId) 
             ? currentContract.securityDetails[displayId.toString().trim()] 
             : null;
@@ -1888,7 +1906,7 @@ function handleAttendanceData(data) {
         }
         td.appendChild(inputName);
 
-        // 3. Designation (Basic Field - Enabled even if no name)
+        // 3. Designation (Basic Field - Mapped from Position)
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputPos = document.createElement('input');
@@ -1906,7 +1924,7 @@ function handleAttendanceData(data) {
         }
         td.appendChild(inputPos);
 
-        // 4. Place of Duty (Basic Field - Enabled even if no name)
+        // 4. Place of Duty (Basic Field - Mapped from Area)
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputArea = document.createElement('input');
@@ -1924,7 +1942,8 @@ function handleAttendanceData(data) {
         }
         td.appendChild(inputArea);
 
-        // 5. Time of Shift (Strict Field - Disabled if no name)
+        // 5. Time of Shift (Strict Field)
+        // NOTE: For copied employees, this will be blank/default initially as per requirement
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         
@@ -1960,7 +1979,7 @@ function handleAttendanceData(data) {
         }
         td.appendChild(selectShift);
 
-        // Helper to create populated inputs (Updated for Strict Fields)
+        // Helper to create populated inputs
         const createSecInput = (placeholder, field, val, listId) => {
              const inp = document.createElement('input'); 
              inp.type = 'text'; 
@@ -1999,7 +2018,6 @@ function handleAttendanceData(data) {
         inputValid.className = 'w-full p-1 bg-transparent text-center text-xs outline-none security-date-input cursor-pointer'; 
         inputValid.readOnly = true; 
         
-        // Strict Disable for Datepicker
         if (isStrictFieldDisabled) {
              inputValid.disabled = true;
              inputValid.classList.add('bg-gray-100', 'cursor-not-allowed');
