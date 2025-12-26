@@ -1878,7 +1878,7 @@ function handleAttendanceData(data) {
         }
         td.appendChild(inputName);
 
-        // 3. Designation
+        // 3. Designation (Modified with Datalist)
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputPos = document.createElement('input');
@@ -1886,6 +1886,7 @@ function handleAttendanceData(data) {
         inputPos.value = displayPos; 
         inputPos.dataset.field = 'position'; 
         inputPos.dataset.oldPersonnelId = stableLookupKey;
+        inputPos.setAttribute('list', 'security-designation-list'); // NEW DATALIST
         
         if (isSavedRow) {
             inputPos.readOnly = true;
@@ -1896,7 +1897,7 @@ function handleAttendanceData(data) {
         }
         td.appendChild(inputPos);
 
-        // 4. Place of Duty
+        // 4. Place of Duty (Modified with Datalist)
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputArea = document.createElement('input');
@@ -1904,6 +1905,7 @@ function handleAttendanceData(data) {
         inputArea.value = displayArea; 
         inputArea.dataset.field = 'area'; 
         inputArea.dataset.oldPersonnelId = stableLookupKey;
+        inputArea.setAttribute('list', 'security-place-list'); // NEW DATALIST
         
         if (isSavedRow) {
             inputArea.readOnly = true;
@@ -1949,32 +1951,33 @@ function handleAttendanceData(data) {
         }
         td.appendChild(selectShift);
 
-        // Helper to create populated inputs
-        const createSecInput = (placeholder, field, val) => {
+        // Helper to create populated inputs with DATALISTS (Updated)
+        const createSecInput = (placeholder, field, val, listId) => {
              const inp = document.createElement('input'); 
              inp.type = 'text'; 
              inp.placeholder = placeholder; 
              inp.dataset.securityField = field; 
-             inp.className = 'w-full p-1 bg-transparent text-center text-xs uppercase outline-none'; 
+             inp.className = 'w-full p-1 bg-transparent text-center text-xs uppercase outline-none focus:ring-1 focus:ring-blue-400'; 
              if (val) inp.value = val;
+             if (listId) inp.setAttribute('list', listId); // ATTACH DATALIST
              return inp;
         };
 
-        // 6. FA Type
+        // 6. FA Type (Datalist Added)
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
-        td.appendChild(createSecInput('PISTOL', 'faType', secDetails?.faType));
+        td.appendChild(createSecInput('PISTOL', 'faType', secDetails?.faType, 'security-type-list'));
 
-        // 7. FA Make
+        // 7. FA Make (Datalist Added)
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
-        td.appendChild(createSecInput('', 'faMake', secDetails?.faMake));
+        td.appendChild(createSecInput('', 'faMake', secDetails?.faMake, 'security-make-list'));
 
-        // 8. FA Caliber
+        // 8. FA Caliber (Datalist Added)
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
-        td.appendChild(createSecInput('', 'faCaliber', secDetails?.faCaliber));
+        td.appendChild(createSecInput('', 'faCaliber', secDetails?.faCaliber, 'security-caliber-list'));
 
-        // 9. FA Serial
+        // 9. FA Serial (Datalist Added)
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
-        td.appendChild(createSecInput('', 'faSerial', secDetails?.faSerial));
+        td.appendChild(createSecInput('', 'faSerial', secDetails?.faSerial, 'security-serial-list'));
 
         // 10. Validity of License
         td = tr.insertCell();
@@ -1999,6 +2002,35 @@ function handleAttendanceData(data) {
     });
 
     renderRelieverTable();
+}
+
+function fetchSecuritySuggestions() {
+    google.script.run
+        .withSuccessHandler(populateSecurityDatalists)
+        .withFailureHandler(handleError)
+        .getSecurityFieldSuggestions();
+}
+
+function populateSecurityDatalists(data) {
+    const populate = (id, items) => {
+        const list = document.getElementById(id);
+        if(!list) return;
+        list.innerHTML = '';
+        items.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item;
+            list.appendChild(opt);
+        });
+    };
+
+    populate('security-designation-list', data.designations);
+    populate('security-place-list', data.places);
+    populate('security-type-list', data.types);
+    populate('security-make-list', data.makes);
+    populate('security-caliber-list', data.calibers);
+    populate('security-serial-list', data.serials);
+    
+    console.log("Security datalists populated.");
 }
 
   // NEW FUNCTION: Apply Schedule Pattern to a specific grid row
@@ -4992,6 +5024,7 @@ function triggerCrossContractCheck(rowElement, personnelName, fieldType) {
     // *****************************************************************
     // *** NEW: Fetch Print Field Master Data on load ***
     fetchPrintFieldMasterData();
+    fetchSecuritySuggestions();
     // *****************************************************************
     
     // NEW: Attach Bulk Delete Modal Listeners
