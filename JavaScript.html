@@ -1812,13 +1812,12 @@ function handleAttendanceData(data) {
     // 1. Get existing saved employees
     let rowsToRender = currentContract.employees.slice() || [];
 
-    // 2. [UPDATED] Merge pending NEW employees (galing sa Copy Previous Plan o Manual Add)
+    // 2. Merge pending NEW employees
     Object.keys(pendingEmployeeInfoChanges).forEach(stableKey => {
          const change = pendingEmployeeInfoChanges[stableKey];
          const isUnsavedNewRow = change.originalEmployeeId === '';
          
          if (isUnsavedNewRow) {
-             // Check kung wala pa sa listahan para iwas duplicate
              if (!rowsToRender.some(e => e.id === change.id || e.id === stableKey)) {
                  rowsToRender.push({
                      no: 0, 
@@ -1855,15 +1854,17 @@ function handleAttendanceData(data) {
         // LOGIC FOR DISABLING FIELDS
         const isNamePresent = displayName && displayName.trim() !== '';
         
-        // Basic Fields (Designation, Location): Disabled ONLY if Saved. Enabled for Copied/New rows.
+        // Basic Fields (Designation, Location): Disabled ONLY if Saved.
         const isBasicFieldDisabled = isSavedRow; 
         const basicDisabledClass = isBasicFieldDisabled ? 'bg-gray-100 cursor-not-allowed text-gray-400' : 'bg-transparent';
 
-        // Strict Fields (Shift, Firearms, Validity): Disabled if Saved OR No Name.
-        const isStrictFieldDisabled = isSavedRow || !isNamePresent;
+        // *** UPDATED LOGIC HERE ***
+        // Strict Fields (Shift, Firearms, Validity): Disabled ONLY if NO NAME is present.
+        // Even if saved, these remain editable as long as there is a name.
+        const isStrictFieldDisabled = !isNamePresent;
         const strictDisabledClass = isStrictFieldDisabled ? 'bg-gray-100 cursor-not-allowed text-gray-400' : 'bg-transparent';
 
-        // Get Security Details (Only for saved rows mostly, copied rows usually won't have this yet)
+        // Get Security Details
         const secDetails = (currentContract.securityDetails && displayId) 
             ? currentContract.securityDetails[displayId.toString().trim()] 
             : null;
@@ -1942,8 +1943,7 @@ function handleAttendanceData(data) {
         }
         td.appendChild(inputArea);
 
-        // 5. Time of Shift (Strict Field)
-        // NOTE: For copied employees, this will be blank/default initially as per requirement
+        // 5. Time of Shift (Strict Field - EDITABLE even if saved)
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         
@@ -1977,9 +1977,11 @@ function handleAttendanceData(data) {
                 selectShift.appendChild(opt);
             }
         }
+        // *** NEW LISTENER: Trigger dirty state check ***
+        selectShift.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
         td.appendChild(selectShift);
 
-        // Helper to create populated inputs
+        // Helper to create populated inputs with Listeners
         const createSecInput = (placeholder, field, val, listId) => {
              const inp = document.createElement('input'); 
              inp.type = 'text'; 
@@ -1989,6 +1991,9 @@ function handleAttendanceData(data) {
              inp.className = `w-full p-1 text-center text-xs uppercase outline-none ${strictDisabledClass} ${!isStrictFieldDisabled ? 'focus:ring-1 focus:ring-blue-400' : ''}`; 
              if (val) inp.value = val;
              if (listId) inp.setAttribute('list', listId); 
+             
+             // *** NEW LISTENER: Trigger dirty state check ***
+             inp.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
              return inp;
         };
 
@@ -2023,6 +2028,10 @@ function handleAttendanceData(data) {
              inputValid.classList.add('bg-gray-100', 'cursor-not-allowed');
         }
         if (secDetails?.licenseValidity) inputValid.value = secDetails.licenseValidity;
+        
+        // *** NEW LISTENER: Trigger dirty state check ***
+        inputValid.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
+        
         td.appendChild(inputValid);
     }
 
@@ -2036,6 +2045,22 @@ function handleAttendanceData(data) {
     });
 
     renderRelieverTable();
+}
+
+function handleSecurityInputDirty(event, employee) {
+    const stableKey = event.target.closest('tr').dataset.stableKey;
+
+    if (!pendingEmployeeInfoChanges[stableKey]) {
+         pendingEmployeeInfoChanges[stableKey] = {
+             id: employee.id,
+             name: employee.name,
+             position: employee.position,
+             area: employee.area,
+             isNew: false,
+             originalEmployeeId: employee.id,
+             isSecurityUpdate: true 
+         };
+    }
 }
 
 function fetchSecuritySuggestions() {
@@ -4605,9 +4630,20 @@ function handleBulkDeleteConfirm() {
 
 // --- NEW HELPER: Get Row Schedule Status ---
 function getRowScheduleStatus(row, currentShift) {
-    let hasActualSchedule = false;
+    const idInput = row.querySelector('[data-field="id"]');
+    const personnelId = (idInput?.value || '').trim();
     
-    // UPDATED LOGIC: Loop through column index (1-16)
+    if (!personnelId) return { id: null, isPrintable: false };
+    const isSecurityRow = row.querySelector('[data-security-field="timeOfShift"]') !== null;
+
+    if (isSecurityRow) {
+        const timeShiftInput = row.querySelector('[data-security-field="timeOfShift"]');
+        const hasTimeShift = timeShiftInput && timeShiftInput.value.trim() !== '';
+        
+        return { id: personnelId, isPrintable: hasTimeShift };
+    } 
+    
+    // --- STANDARD PLAN LOGIC (Existing) ---
     const startColIndex = 1;
     const endColIndex = 16;
     const year = currentPlanningDate.getFullYear();
@@ -4615,37 +4651,21 @@ function getRowScheduleStatus(row, currentShift) {
     const startDayOfMonth = currentShift === '1stHalf' ? 1 : 16;
     const daysInMonth = getDaysInMonth(year, month);
     
-
-    const idInput = row.querySelector('[data-field="id"]');
-    const personnelId = (idInput?.value || '').trim();
+    let hasActualSchedule = false;
     const originalId = row.dataset.stableKey.startsWith('TEMP_') ? '' : row.dataset.stableKey;
 
-    if (!personnelId) return { id: null, isPrintable: false };
-
     // Find the cell elements in the row
-    const cellElements = row.querySelectorAll('.cell-container');
-    
+    // Note: Adjust logic kung paano naha-handle ang columns sa Standard Plan
     for(let colIndex = startColIndex; colIndex <= endColIndex; colIndex++) {
         const d = startDayOfMonth + colIndex - 1; 
         if (d > daysInMonth) continue; 
-        
-        // **NEW FIX: Stop 1st Half at 15**
         if (currentShift === '1stHalf' && d > 15) continue; 
 
         const dayKey = `${year}-${month + 1}-${d}`;
         const originalKey = `${originalId}_${dayKey}_${currentShift}`;
         
-        // Find the cell that corresponds to this column index (index 0 maps to colIndex 1)
-        // Note: The structure of the table in renderAttendancePlan ensures the first date column is the 6th TD (index 5), 
-        // which corresponds to the 1st day/column index (colIndex=1 in this loop). 
-        // We need to adjust: cellElements[colIndex - 1] to access the schedule cell.
-        const cellIndexInRow = colIndex + 5 - 1; // 5 fixed columns + colIndex - 1 (since colIndex is 1-based)
-        const cell = row.cells[cellIndexInRow]; 
-        
-        if (!cell || !cell.classList.contains('cell-container')) continue;
-
+        // Hanapin ang status sa pending changes o sa saved map
         let status = pendingAttendanceChanges[`${personnelId}_${dayKey}_${currentShift}`];
-        
         if (status === undefined) {
              status = currentContract.planMap[originalKey] || '';
         }
@@ -4660,7 +4680,6 @@ function getRowScheduleStatus(row, currentShift) {
 
     return { id: personnelId, isPrintable: hasActualSchedule };
 }
-
 // --- NEW FUNCTION: Check Plan Sheet Global Lock State (Disables Print Button) ---
 function checkPlanSheetLockState() {
     if (!currentContract) {
