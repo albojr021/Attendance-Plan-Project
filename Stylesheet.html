@@ -228,6 +228,26 @@
     
     @media print {
 
+        body {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        td.shift-colored-cell {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            background-blend-mode: multiply; 
+        }
+
+        td.shift-colored-cell select {
+            background-color: transparent !important;
+            background: transparent !important;
+            border: none !important;
+            -webkit-appearance: none;
+            appearance: none;
+            font-weight: bold;
+        }
+
         table.security-print-table th,
         table.security-print-table td,
         table.security-print-table input,
