@@ -302,18 +302,29 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
         <p class="text-gray-700 mb-4">Please complete the required details before proceeding to print.</p>
         
         <div class="mb-6 space-y-3">
-            <label for="sub-property-input" class="block text-sm font-medium text-gray-700 mb-1">Sub Property Name (Required):</label>
-            <input type="text" id="sub-property-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., TOWER 1, ANNEX BUILDING" required>
-        
+            <div id="standard-print-fields">
+                <label for="sub-property-input" class="block text-sm font-medium text-gray-700 mb-1">Sub Property Name (Required):</label>
+                <input type="text" id="sub-property-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., TOWER 1, ANNEX BUILDING">
+                
+                <label for="remarks-input" class="block text-sm font-medium text-gray-700 mb-1 mt-3">Remarks: (Optional)</label>
+                <textarea id="remarks-input" list="remarks-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., SCHEDULE FOR TEMPORARY PERSONNEL ONLY"></textarea>
+            </div>
+
             <label for="section-input" class="block text-sm font-medium text-gray-700 mb-1">Section: (Required)</label>
             <input type="text" id="section-input" list="section-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., ADMINISTRATION, OPERATIONS" required>
 
             <label for="department-input" class="block text-sm font-medium text-gray-700 mb-1">Department: (Required)</label>
             <input type="text" id="department-input" list="department-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., SECURITY, ENGINEERING" required>
-            
-            <label for="remarks-input" class="block text-sm font-medium text-gray-700 mb-1">Remarks: (Optional)</label>
-            <textarea id="remarks-input" list="remarks-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., SCHEDULE FOR TEMPORARY PERSONNEL ONLY"></textarea>
+
+            <div id="security-print-fields" class="hidden">
+                 <label for="serial-no-input" class="block text-sm font-medium text-gray-700 mb-1 mt-3">Serial No.: (Required)</label>
+                 <input type="text" id="serial-no-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Enter Serial No.">
+
+                 <label for="to-input" class="block text-sm font-medium text-gray-700 mb-1 mt-3">To: (Required)</label>
+                 <input type="text" id="to-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Addressee (e.g., ALL SECURITY GUARDS)">
+            </div>
         </div>
+
         <h4 class="text-lg font-bold mb-3 text-gray-800 border-t pt-4">Signatories (Name & Designation Validation Applies)</h4>
 
         <div class="grid grid-cols-2 gap-4 mb-4">
