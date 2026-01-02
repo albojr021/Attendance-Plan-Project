@@ -2212,66 +2212,69 @@ function showPersonnelWarning(rowElement, message) {
     }
 }
 
+  function updateSecurityRowState(row, nameValue) {
+    // Check if Security Service
+    if (!currentContract || currentContract.serviceType !== 'SECURITY SERVICES') return;
+
+    const isEmpty = nameValue.trim() === '';
+
+    // Group A: Strict Fields (Shift, Firearms, Validity) -> Clear AND Disable if empty
+    const strictInputs = row.querySelectorAll('[data-security-field]');
+    strictInputs.forEach(inp => {
+        if (isEmpty) {
+            inp.value = '';
+            inp.disabled = true;
+            inp.classList.add('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
+            inp.classList.remove('bg-transparent', 'focus:ring-2', 'focus:ring-blue-500', 'focus:ring-1', 'focus:ring-blue-400');
+        } else {
+            inp.disabled = false;
+            inp.classList.remove('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
+            inp.classList.add('bg-transparent', inp.tagName === 'SELECT' ? 'focus:ring-blue-500' : 'focus:ring-1', inp.tagName === 'SELECT' ? 'focus:ring-blue-500' : 'focus:ring-blue-400');
+        }
+    });
+
+    // Group B: Basic Fields (Designation, Location) -> Clear if empty but keep enabled (as per original logic)
+    const basicInputs = row.querySelectorAll('[data-field="position"], [data-field="area"]');
+    basicInputs.forEach(inp => {
+         if (isEmpty) {
+             inp.value = ''; 
+             inp.disabled = false; // Keep enabled for manual input
+             inp.classList.remove('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
+             inp.classList.add('bg-transparent', 'focus:ring-2', 'focus:ring-blue-500');
+         } else {
+             inp.disabled = false;
+             inp.classList.remove('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
+             inp.classList.add('bg-transparent', 'focus:ring-2', 'focus:ring-blue-500');
+         }
+    });
+    
+    // Datepicker specific handling
+    const dateInput = row.querySelector('.security-date-input');
+    if (dateInput) {
+         if (isEmpty) {
+             dateInput.disabled = true;
+             dateInput.classList.add('bg-gray-100', 'cursor-not-allowed');
+         } else {
+             dateInput.disabled = false;
+             dateInput.classList.remove('bg-gray-100', 'cursor-not-allowed');
+             // Re-bind datepicker logic if needed
+             $(dateInput).datepicker({ dateFormat: 'mm/dd/yy', changeMonth: true, changeYear: true });
+         }
+    }
+}
+
   // --- EMPLOYEE INFO HANDLERS (Manual Save) ---
   function handlePersonnelInfoChange(event, employee) {
     const input = event.target;
     const field = input.dataset.field;
     const oldPersonnelKey = input.dataset.oldPersonnelId; 
     let newValue = input.value;
-    
-    // --- SECURITY SERVICES AUTO-CLEAR/DISABLE LOGIC ---
     const row = input.closest('tr');
     
-    // Check if we are in Security Mode and editing the Name field
+    // --- SECURITY SERVICES AUTO-CLEAR/DISABLE LOGIC (UPDATED) ---
     if (currentContract && currentContract.serviceType === 'SECURITY SERVICES' && field === 'name') {
-        const isEmpty = newValue.trim() === '';
-        
-        // Group A: Strict Fields (Shift, Firearms, Validity) -> Clear AND Disable if empty
-        const strictInputs = row.querySelectorAll('[data-security-field]');
-        strictInputs.forEach(inp => {
-            if (isEmpty) {
-                inp.value = '';
-                inp.disabled = true;
-                inp.classList.add('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
-                inp.classList.remove('bg-transparent', 'focus:ring-2', 'focus:ring-blue-500', 'focus:ring-1', 'focus:ring-blue-400');
-            } else {
-                inp.disabled = false;
-                inp.classList.remove('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
-                inp.classList.add('bg-transparent', inp.tagName === 'SELECT' ? 'focus:ring-blue-500' : 'focus:ring-1', inp.tagName === 'SELECT' ? 'focus:ring-blue-500' : 'focus:ring-blue-400');
-            }
-        });
-
-        // Group B: Basic Fields (Designation, Location) -> Clear but KEEP ENABLED if empty
-        const basicInputs = row.querySelectorAll('[data-field="position"], [data-field="area"]');
-        basicInputs.forEach(inp => {
-             if (isEmpty) {
-                 inp.value = ''; // Clear value
-                 // Do NOT disable. Keep enabled for autofill or manual input.
-                 inp.disabled = false;
-                 inp.classList.remove('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
-                 inp.classList.add('bg-transparent', 'focus:ring-2', 'focus:ring-blue-500');
-             } else {
-                 // Ensure they are enabled if name is added
-                 inp.disabled = false;
-                 inp.classList.remove('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
-                 inp.classList.add('bg-transparent', 'focus:ring-2', 'focus:ring-blue-500');
-             }
-        });
-        
-        // Datepicker handling
-        const dateInput = row.querySelector('.security-date-input');
-        if (dateInput) {
-             if (isEmpty) {
-                 dateInput.disabled = true;
-                 dateInput.classList.add('bg-gray-100', 'cursor-not-allowed');
-             } else {
-                 dateInput.disabled = false;
-                 dateInput.classList.remove('bg-gray-100', 'cursor-not-allowed');
-                 $(dateInput).datepicker({ dateFormat: 'mm/dd/yy', changeMonth: true, changeYear: true });
-             }
-        }
+        updateSecurityRowState(row, newValue);
     }
-    // --- END SECURITY LOGIC ---
 
     let pendingChange = pendingEmployeeInfoChanges[oldPersonnelKey] || {
         id: employee.id, 
@@ -2316,6 +2319,7 @@ function showPersonnelWarning(rowElement, message) {
             showNotification(`FATAL: Cannot use Personnel ID/Name. Employee is BLACKLISTED! ${blacklistCheckResult.reason}`, false);
             const oldState = currentContract.employees.find(e => e.id === employee.id) || employee;
             input.value = oldState[field] || ''; 
+            if (field === 'name') updateSecurityRowState(row, input.value);
             pendingChange[field] = input.value;
             showPersonnelWarning(row, null); 
             return; 
@@ -2335,6 +2339,7 @@ function showPersonnelWarning(rowElement, message) {
             if (!is201Employee) { 
                 showNotification(`FATAL: Personnel ${field.toUpperCase()} "${newValue}" not found in the 201 Master File.`, false);
                 input.value = employee[field] || ''; 
+                if (field === 'name') updateSecurityRowState(row, input.value);
                 pendingChange[field] = employee[field] || ''; 
                 const allPendingBlank = !pendingChange.id.trim() && !pendingChange.name.trim() && !pendingChange.position.trim() && !pendingChange.area.trim();
                 if (allPendingBlank) delete pendingEmployeeInfoChanges[oldPersonnelKey];
@@ -5281,6 +5286,8 @@ function triggerCrossContractCheck(rowElement, personnelName, fieldType) {
                 if (nameInput) nameInput.value = '';
                 if (posInput && !posInput.readOnly) posInput.value = ''; // Don't clear if read-only (Reliever)
                 if (areaInput && !areaInput.readOnly) areaInput.value = '';
+
+                updateSecurityRowState(rowElement, '');
 
                 // Remove from Pending Changes State
                 const stableKey = rowElement.dataset.stableKey;
