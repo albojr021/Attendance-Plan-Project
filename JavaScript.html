@@ -104,7 +104,9 @@
       subProperty: '',
       section: '',
       department: '',
-      remarks: ''
+      remarks: '',
+      serialNo: '', // NEW
+      to: ''        // NEW
   };
   // *****************************************************************
 
@@ -3512,68 +3514,82 @@ function toggleSelectAllPrint(event) {
   // --- NEW PRINT LOGIC (UPDATED FLOW) ---
   
 function openPrintSetupModal() {
-    
-    // UPDATED: Populate Name and Designation/Position (Existing code)
-    document.getElementById('signatory-prepared-by').value = selectedSignatories.preparedBy.name;
-    document.getElementById('signatory-prepared-by-designation').value = selectedSignatories.preparedBy.designation;
+      const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
 
-    document.getElementById('signatory-approved-by').value = selectedSignatories.approvedBy.name;
-    document.getElementById('signatory-approved-by-designation').value = selectedSignatories.approvedBy.designation;
-    
-    for(let i = 0; i < 5; i++) {
-        const inputName = document.getElementById(`signatory-checked-by-${i}`);
-        const inputDesignation = document.getElementById(`signatory-checked-by-${i}-designation`);
-        
-        if(inputName) inputName.value = selectedSignatories.checkedBy[i].name;
-        if(inputDesignation) inputDesignation.value = selectedSignatories.checkedBy[i].designation;
-    }
-    
-    // *****************************************************************
-    // --- NEW: Populate Print Fields and Attach Listeners ---
-    // *****************************************************************
-    const subPropertyInput = document.getElementById('sub-property-input');
-    const sectionInput = document.getElementById('section-input');
-    const departmentInput = document.getElementById('department-input');
-    const remarksInput = document.getElementById('remarks-input');
-    
-    // Populate with current state
-    subPropertyInput.value = selectedPrintFields.subProperty;
-    sectionInput.value = selectedPrintFields.section;
-    departmentInput.value = selectedPrintFields.department;
-    remarksInput.value = selectedPrintFields.remarks;
+      // Toggle Fields Visibility
+      const standardFields = document.getElementById('standard-print-fields');
+      const securityFields = document.getElementById('security-print-fields');
 
-    // Attach listeners for state updates (only on change/input for simplicity)
-    subPropertyInput.oninput = (e) => handlePrintFieldInputChange(e, 'subProperty');
-    sectionInput.oninput = (e) => handlePrintFieldInputChange(e, 'section');
-    departmentInput.oninput = (e) => handlePrintFieldInputChange(e, 'department');
-    remarksInput.oninput = (e) => handlePrintFieldInputChange(e, 'remarks');
-    
-    // Attach filter for remarks (since it uses a datalist)
-    remarksInput.addEventListener('input', filterDatalistOptions);
+      if (isSecurity) {
+          standardFields.classList.add('hidden');
+          securityFields.classList.remove('hidden');
+      } else {
+          standardFields.classList.remove('hidden');
+          securityFields.classList.add('hidden');
+      }
 
-    document.getElementById('print-setup-modal').classList.remove('hidden'); 
-    document.getElementById('sub-property-input').focus();
-}
+      // Populate Name and Designation/Position (Existing code)
+      document.getElementById('signatory-prepared-by').value = selectedSignatories.preparedBy.name;
+      document.getElementById('signatory-prepared-by-designation').value = selectedSignatories.preparedBy.designation;
+
+      document.getElementById('signatory-approved-by').value = selectedSignatories.approvedBy.name;
+      document.getElementById('signatory-approved-by-designation').value = selectedSignatories.approvedBy.designation;
+      
+      for(let i = 0; i < 5; i++) {
+          const inputName = document.getElementById(`signatory-checked-by-${i}`);
+          const inputDesignation = document.getElementById(`signatory-checked-by-${i}-designation`);
+          
+          if(inputName) inputName.value = selectedSignatories.checkedBy[i].name;
+          if(inputDesignation) inputDesignation.value = selectedSignatories.checkedBy[i].designation;
+      }
+      
+      // Populate Print Fields
+      const subPropertyInput = document.getElementById('sub-property-input');
+      const sectionInput = document.getElementById('section-input');
+      const departmentInput = document.getElementById('department-input');
+      const remarksInput = document.getElementById('remarks-input');
+      const serialNoInput = document.getElementById('serial-no-input'); // NEW
+      const toInput = document.getElementById('to-input');             // NEW
+      
+      subPropertyInput.value = selectedPrintFields.subProperty;
+      sectionInput.value = selectedPrintFields.section;
+      departmentInput.value = selectedPrintFields.department;
+      remarksInput.value = selectedPrintFields.remarks;
+      serialNoInput.value = selectedPrintFields.serialNo; // NEW
+      toInput.value = selectedPrintFields.to;             // NEW
+
+      // Attach listeners
+      subPropertyInput.oninput = (e) => handlePrintFieldInputChange(e, 'subProperty');
+      sectionInput.oninput = (e) => handlePrintFieldInputChange(e, 'section');
+      departmentInput.oninput = (e) => handlePrintFieldInputChange(e, 'department');
+      remarksInput.oninput = (e) => handlePrintFieldInputChange(e, 'remarks');
+      serialNoInput.oninput = (e) => handlePrintFieldInputChange(e, 'serialNo'); // NEW
+      toInput.oninput = (e) => handlePrintFieldInputChange(e, 'to');             // NEW
+      
+      remarksInput.addEventListener('input', filterDatalistOptions);
+
+      document.getElementById('print-setup-modal').classList.remove('hidden'); 
+      
+      // Focus on the first visible input
+      if (isSecurity) {
+           sectionInput.focus();
+      } else {
+           subPropertyInput.focus();
+      }
+  }
 
 // NEW: Handle Print Field Input Change (Validation and State Update)
 function handlePrintFieldInputChange(event, field) {
-    // 1. Kunin ang value at gawing uppercase
     let newValue = event.target.value.toUpperCase(); 
-    
-    // FIX: Force the input element's value to the newly uppercased value for immediate visual feedback
     event.target.value = newValue; 
 
-    // Update the state immediately
-    if (field === 'subProperty') {
-        selectedPrintFields.subProperty = newValue.trim();
-    } else if (field === 'section') {
-        selectedPrintFields.section = newValue.trim();
-    } else if (field === 'department') {
-        selectedPrintFields.department = newValue.trim();
-    } else if (field === 'remarks') {
-        selectedPrintFields.remarks = newValue.trim(); // Optional
-    }
-}
+    if (field === 'subProperty') selectedPrintFields.subProperty = newValue.trim();
+    else if (field === 'section') selectedPrintFields.section = newValue.trim();
+    else if (field === 'department') selectedPrintFields.department = newValue.trim();
+    else if (field === 'remarks') selectedPrintFields.remarks = newValue.trim();
+    else if (field === 'serialNo') selectedPrintFields.serialNo = newValue.trim(); // NEW
+    else if (field === 'to') selectedPrintFields.to = newValue.trim();             // NEW
+  }
 // *****************************************************************
 
 function hidePrintSetupModal() {
@@ -3582,42 +3598,67 @@ function hidePrintSetupModal() {
 
 
 function handlePrintSetupConfirm(event) {
-    // GATHER ALL FIELDS
-    const subProperty = document.getElementById('sub-property-input').value.trim();
-    const section = document.getElementById('section-input').value.trim();
-    const department = document.getElementById('department-input').value.trim();
-    const remarks = document.getElementById('remarks-input').value.trim();
-    
-    // 1. VALIDATION
-    if (!subProperty) {
-        showNotification('Sub Property is required before printing.', false);
-        return;
-    }
-    if (!section) {
-        showNotification('Section is required before printing.', false);
-        return;
-    }
-    if (!department) {
-        showNotification('Department is required before printing.', false);
-        return;
-    }
-    
-    // 2. SAVE STATE (Already done by oninput, but ensure final trim/check)
-    selectedPrintFields.subProperty = subProperty;
-    selectedPrintFields.section = section;
-    selectedPrintFields.department = department;
-    selectedPrintFields.remarks = remarks; // Optional
+      const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
 
-    const signatoryError = validateAllSignatories();
-    if (signatoryError) {
-        showNotification(`Signatory Error: ${signatoryError}`, false);
-        return;
-    }
-    
-    hidePrintSetupModal();
-    // PASS ALL REQUIRED FIELDS
-    triggerPrintPreparation(subProperty, section, department, remarks, bulkPrintSelected); 
-}
+      const section = document.getElementById('section-input').value.trim();
+      const department = document.getElementById('department-input').value.trim();
+      
+      // Validation Common Fields
+      if (!section) {
+          showNotification('Section is required before printing.', false);
+          return;
+      }
+      if (!department) {
+          showNotification('Department is required before printing.', false);
+          return;
+      }
+
+      // Service Specific Validation
+      let subProperty = '';
+      let remarks = '';
+      let serialNo = '';
+      let toField = '';
+
+      if (isSecurity) {
+           serialNo = document.getElementById('serial-no-input').value.trim();
+           toField = document.getElementById('to-input').value.trim();
+
+           if (!serialNo) {
+               showNotification('Serial No. is required for Security Plan.', false);
+               return;
+           }
+           if (!toField) {
+               showNotification('To (Addressee) is required for Security Plan.', false);
+               return;
+           }
+      } else {
+           subProperty = document.getElementById('sub-property-input').value.trim();
+           remarks = document.getElementById('remarks-input').value.trim();
+
+           if (!subProperty) {
+               showNotification('Sub Property is required before printing.', false);
+               return;
+           }
+      }
+      
+      // Save State
+      selectedPrintFields.subProperty = subProperty;
+      selectedPrintFields.section = section;
+      selectedPrintFields.department = department;
+      selectedPrintFields.remarks = remarks;
+      selectedPrintFields.serialNo = serialNo;
+      selectedPrintFields.to = toField;
+
+      const signatoryError = validateAllSignatories();
+      if (signatoryError) {
+          showNotification(`Signatory Error: ${signatoryError}`, false);
+          return;
+      }
+      
+      hidePrintSetupModal();
+      // Pass all fields (some might be empty depending on type)
+      triggerPrintPreparation(selectedPrintFields, bulkPrintSelected); 
+  }
 
 // MODIFIED: This function now calls the print selection modal first.
 function handlePrintPlan() {
@@ -3631,13 +3672,13 @@ function handlePrintPlan() {
 }
 
 // MODIFIED: Accepts all new fields (section, department, remarks)
-function triggerPrintPreparation(subProperty, section, department, remarks, selectedPrintIds) { 
+function triggerPrintPreparation(printFields, selectedPrintIds) { 
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
         return;
     }
     
-    // 1. Validation Logic (Existing)
+    // 1. Validation Logic
     const activeRows = document.querySelectorAll('#attendance-table-container tbody tr');
     const printedPersonnelIds = [];
     
@@ -3649,12 +3690,19 @@ function triggerPrintPreparation(subProperty, section, department, remarks, sele
         if (selectedPrintIds.includes(id)) {
             const isLocked = !!lockedIdRefMap[stableKey];
             let hasActualSchedule = false;
-            row.querySelectorAll('.cell-container').forEach(cell => {
-                 const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-                 if (status !== '' && status !== 'NA' && status !== 'DELETED' && status !== 'LOCKED') {
-                     hasActualSchedule = true;
-                 }
-            });
+
+            // Simple check if Security Row has Time Shift
+            if (currentContract.serviceType === 'SECURITY SERVICES') {
+                 const timeShift = row.querySelector('[data-security-field="timeOfShift"]')?.value;
+                 if (timeShift) hasActualSchedule = true;
+            } else {
+                row.querySelectorAll('.cell-container').forEach(cell => {
+                     const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                     if (status !== '' && status !== 'NA' && status !== 'DELETED' && status !== 'LOCKED') {
+                         hasActualSchedule = true;
+                     }
+                });
+            }
 
             if (id && PERSONNEL_ID_REGEX.test(id) && hasActualSchedule && !isLocked) {
                 printedPersonnelIds.push(id);
@@ -3682,8 +3730,6 @@ function triggerPrintPreparation(subProperty, section, department, remarks, sele
         kindOfSfc: currentContract.kindOfSfc || ''
     };
 
-    const printFields = { subProperty, section, department, remarks };
-
     toggleLoading(true, 'Fetching Supporting Documents & Generating Print Ref...');
 
     const contractGroupId = currentContract.id;
@@ -3696,19 +3742,20 @@ function triggerPrintPreparation(subProperty, section, department, remarks, sele
                     toggleLoading(false);
                     const { refNum, printGroup } = response;
                     
+                    // Call the main triggerPrint function with all data
                     triggerPrint(refNum, printGroup, printFields, selectedSignatories, dynamicallyHiddenRows, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift, printedPersonnelIds, relatedContracts); 
                 })
                 .withFailureHandler((error) => {
                     handleError(error);
                 })
-                .logPrintAction(subProperty, currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
+                .logPrintAction(printFields.subProperty || 'SECURITY', currentContract.sfcRef, contractInfo, currentYear, currentMonth, currentShift); 
 
         })
         .withFailureHandler((error) => {
             handleError(error);
         })
         .fetchSupportingContracts(contractGroupId);
-}
+  }
 
 // MODIFIED: Accepts printFields object instead of separate subProperty string
 function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds, relatedContracts = []) { 
@@ -3763,7 +3810,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             </div>`;
     }
 
-    // --- Print Ref Display (Existing) ---
+    // --- Print Ref Display ---
     let printRefElement = document.getElementById('print-ref-display');
     if (!printRefElement) {
         printRefElement = document.createElement('div');
@@ -3773,8 +3820,38 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     }
     printRefElement.textContent = refNum; 
     
-    // --- Header Injection (Existing) ---
-    const printDetailsUnifiedHtml = `
+    // --- HEADER INJECTION LOGIC ---
+    let headerHtml = '';
+
+    if (contractInfo.serviceType === 'SECURITY SERVICES') {
+        // *** CUSTOM SECURITY HEADER ***
+        headerHtml = `
+        <div id="print-details-unified-container" class="print-only-container" style="display: block !important;">
+            <div style="width: 100%; text-align: left;">
+                <div class="flex"><p class="label" style="min-width: 80px;">Company Name:</p><p class="value font-bold">${contractInfo.payor}</p></div>
+                <div class="flex"><p class="label" style="min-width: 80px;">Department:</p><p class="value">${printFields.department}</p></div>
+                <div class="flex"><p class="label" style="min-width: 80px;">Section:</p><p class="value">${printFields.section}</p></div>
+                <div class="flex"><p class="label" style="min-width: 80px;">Plan Period:</p><p class="value">${planPeriodDisplay}</p></div>
+                <div class="flex"><p class="label" style="min-width: 80px;">Serial Number:</p><p class="value font-bold">${printFields.serialNo}</p></div>
+                <div class="flex"><p class="label" style="min-width: 80px;">Subject:</p><p class="value font-bold">Duty Detail Order</p></div>
+                <div class="flex"><p class="label" style="min-width: 80px;">To:</p><p class="value">${printFields.to}</p></div>
+            </div>
+
+            <div style="margin-top: 5px; margin-bottom: 10px; margin-left: 10px; font-size: 0.55rem; color: black; line-height: 1.2;">
+                <p><strong>1. References:</strong></p>
+                <div style="padding-left: 15px;">
+                    <p>a. Section 4, Rule VII of them 2013 Revised Implementing Rules and Regulations of RA 11917, as amended and,</p>
+                    <p>b. RA 10591, Comprehensive Firearms and Ammunition and Regulation Act</p>
+                </div>
+                <p style="margin-top: 5px;"><strong>2. Purpose:</strong> Post Security Services Duties</p>
+                <p style="margin-top: 5px;"><strong>3. Inclusive Dates:</strong> ${planPeriodDisplay}</p>
+                <p style="margin-top: 5px;"><strong>4.</strong> The Following named Security Guards (SGs) are detailed to render security service duties on place/s indicated in the table below:</p>
+            </div>
+        </div>
+        `;
+    } else {
+        // *** STANDARD HEADER ***
+        headerHtml = `
         <div id="print-details-unified-container" class="print-only-container">
             <div class="print-details-col left-col">
                 <div class="flex"><p class="label">Company Name</p><p class="value">${contractInfo.payor}</p></div>
@@ -3788,10 +3865,11 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
                 <div class="flex"><p class="label">Prop / Grp. Code</p><p class="value">${contractInfo.propOrGrpCode}</p></div>
                 <div class="flex"><p class="label">Sector</p><p class="value">${contractInfo.sector}</p></div>
                 <div class="flex"><p class="label">Service Type</p><p class="value">${contractInfo.serviceType}</p></div>
-                ${printFields.remarks.trim() !== '' ? `<div class="flex"><p class="label">Remarks</p><p class="value">${printFields.remarks}</p></div>` : ``}
+                ${printFields.remarks && printFields.remarks.trim() !== '' ? `<div class="flex"><p class="label">Remarks</p><p class="value">${printFields.remarks}</p></div>` : ``}
             </div>
         </div>
-    `;
+        `;
+    }
 
     // --- Signatories Injection (Existing) ---
     const signatoriesOnlyHtml = `
@@ -3812,13 +3890,10 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         </div>
     `;
 
-    // ***************************************************************
-    // --- 5. NEW: SUPPORTING DOCUMENTS HTML CONSTRUCTION ---
-    // ***************************************************************
+    // --- Supporting Documents HTML Construction ---
     let supportingDocsHtml = '';
     
     if (relatedContracts && relatedContracts.length > 0) {
-        // Table Rows Construction
         const tableRows = relatedContracts.map(item => `
             <tr>
                 <td>${item.grpId}</td>
@@ -3854,20 +3929,18 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             </div>
         `;
     }
-    // ***************************************************************
 
-    
     // --- Injection Steps ---
     const contractDetailsGrid = document.getElementById('contract-details-grid');
     
     // Remove old elements if exists
-    ['print-sub-property-container', 'print-signatories-container', 'print-supporting-docs-container'].forEach(id => {
+    ['print-details-unified-container', 'print-signatories-container', 'print-supporting-docs-container'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.remove();
     });
 
     if (contractDetailsGrid) {
-        contractDetailsGrid.insertAdjacentHTML('afterend', printDetailsUnifiedHtml);
+        contractDetailsGrid.insertAdjacentHTML('afterend', headerHtml);
         contractDetailsGrid.classList.add('print-hidden'); 
     } 
 
@@ -3878,7 +3951,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     if (supportingDocsHtml) {
         document.body.insertAdjacentHTML('beforeend', supportingDocsHtml);
     }
-    
 
     // --- Modal Confirmation & Restore Logic ---
     const setupModalAndPrint = () => {
@@ -3903,7 +3975,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             const elementsToRemove = [
                 'print-details-unified-container', 
                 'print-signatories-container', 
-                'print-supporting-docs-container' // Remove the extra page container
+                'print-supporting-docs-container' 
             ];
             
             elementsToRemove.forEach(id => {
@@ -3935,7 +4007,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
                     showNotification(`Warning: Failed to record print log/lock (Ref# ${refNum}). Error: ${error.message}`, false);
                     restoreUI();
                 })
-                .recordPrintLogEntry(refNum, printGroup, printFields.subProperty, printFields, signatories, currentContract.sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
+                .recordPrintLogEntry(refNum, printGroup, printFields.subProperty, printFields, signatories, sfcRef, contractInfo, year, month, shift, printedPersonnelIds); 
         };
 
         const handleCancel = () => {
