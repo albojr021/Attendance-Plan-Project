@@ -1825,16 +1825,44 @@ function handleAttendanceData(data) {
                      no: 0, 
                      id: change.id, 
                      name: change.name, 
-                     position: change.position, // Ito ang magiging Designation
-                     area: change.area,         // Ito ang magiging Location
+                     position: change.position, 
+                     area: change.area,         
                      isNew: true,
                  });
              }
          }
     });
 
-    // 3. Sort alphabetically by Name
-    rowsToRender.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    // --- SORTING LOGIC (Shift Priority -> Alphabetical) ---
+    rowsToRender.sort((a, b) => {
+        const idA = (pendingEmployeeInfoChanges[a.id]?.id || a.id || '').toString().trim();
+        const idB = (pendingEmployeeInfoChanges[b.id]?.id || b.id || '').toString().trim();
+
+        const secDetailsA = (currentContract.securityDetails && idA) ? currentContract.securityDetails[idA] : null;
+        const secDetailsB = (currentContract.securityDetails && idB) ? currentContract.securityDetails[idB] : null;
+
+        const shiftA = (secDetailsA && secDetailsA.timeOfShift) ? secDetailsA.timeOfShift.trim() : 'ZZZZ';
+        const shiftB = (secDetailsB && secDetailsB.timeOfShift) ? secDetailsB.timeOfShift.trim() : 'ZZZZ';
+
+        if (shiftA < shiftB) return -1;
+        if (shiftA > shiftB) return 1;
+
+        const nameA = (a.name || '').toUpperCase();
+        const nameB = (b.name || '').toUpperCase();
+        return nameA.localeCompare(nameB);
+    });
+
+    // --- COLOR PALETTE FOR SHIFT ---
+    const shiftColors = [
+        '#e0f2fe', // Light Blue
+        '#dcfce7', // Light Green
+        '#fff7ed', // Light Orange
+        '#f3e8ff', // Light Purple
+        '#fae8ff', // Light Pink
+        '#f1f5f9'  // Light Gray
+    ];
+    let colorMap = {}; 
+    let colorIndex = 0;
 
     const maxRenderedRows = Math.max(currentContract?.headCount || 0, rowsToRender.length);
 
@@ -1844,52 +1872,57 @@ function handleAttendanceData(data) {
         const pendingInfo = pendingEmployeeInfoChanges[stableLookupKey];
         const isMarkedForDeletion = pendingInfo && pendingInfo.isDeleted;
         
-        // Prioritize pending data (for copied values) over saved data
         const displayId = (pendingInfo && pendingInfo.id) ? pendingInfo.id : employee.id;
         const displayName = (pendingInfo && pendingInfo.name) ? pendingInfo.name : employee.name;
         const displayPos = (pendingInfo && pendingInfo.position) ? pendingInfo.position : employee.position;
         const displayArea = (pendingInfo && pendingInfo.area) ? pendingInfo.area : employee.area;
 
-        // CHECK IF ROW IS SAVED (Real ID exists and not isNew)
         const isSavedRow = (employee.id && employee.id !== '' && !employee.isNew);
-
-        // --- NEW: LOCKING LOGIC START ---
         const lockedRefNum = lockedIdRefMap[employee.id]; 
         const isPrintLocked = !!lockedRefNum && !isMarkedForDeletion; 
-        // --- NEW: LOCKING LOGIC END ---
 
-        // LOGIC FOR DISABLING FIELDS
-        const isNamePresent = displayName && displayName.trim() !== '';
-        
-        // Basic Fields (Designation, Location): Disabled if Saved OR LOCKED
-        const isBasicFieldDisabled = isSavedRow || isPrintLocked; 
-        const basicDisabledClass = isBasicFieldDisabled ? 'bg-gray-100 cursor-not-allowed text-gray-400' : 'bg-transparent';
-
-        // Strict Fields (Shift, Firearms, Validity): Disabled if No Name OR LOCKED
-        const isStrictFieldDisabled = !isNamePresent || isPrintLocked;
-        const strictDisabledClass = isStrictFieldDisabled ? 'bg-gray-100 cursor-not-allowed text-gray-400' : 'bg-transparent';
-
-        // Get Security Details
+        // Get Security Details & Determine Color
         const secDetails = (currentContract.securityDetails && displayId) 
             ? currentContract.securityDetails[displayId.toString().trim()] 
             : null;
 
+        let cellBackgroundColor = 'transparent';
+        const currentShiftTime = (secDetails && secDetails.timeOfShift) ? secDetails.timeOfShift.trim() : '';
+
+        if (currentShiftTime && currentShiftTime !== '') {
+            if (!colorMap.hasOwnProperty(currentShiftTime)) {
+                colorMap[currentShiftTime] = shiftColors[colorIndex % shiftColors.length];
+                colorIndex++;
+            }
+            cellBackgroundColor = colorMap[currentShiftTime];
+        }
+
         const tr = tbody.insertRow();
         tr.dataset.stableKey = stableLookupKey;
+        
+        // Removed row-wide background color application
         if (isMarkedForDeletion) {
             tr.classList.add('bg-red-200', 'line-through');
         } else if (isPrintLocked) { 
             tr.classList.add('bg-gray-300', 'opacity-80', 'locked-row'); 
         }
 
+        // Logic for fields
+        const isNamePresent = displayName && displayName.trim() !== '';
+        const isBasicFieldDisabled = isSavedRow || isPrintLocked; 
+        const basicDisabledClass = isBasicFieldDisabled ? 'cursor-not-allowed text-gray-500' : '';
+        const isStrictFieldDisabled = !isNamePresent || isPrintLocked;
+        const strictDisabledClass = isStrictFieldDisabled ? 'cursor-not-allowed text-gray-400' : '';
+
         // 1. NO.
         let td = tr.insertCell();
-        td.className = 'text-center p-2 border border-gray-400 font-semibold bg-gray-50';
+        td.className = 'text-center p-2 border border-gray-400 font-semibold';
         td.textContent = i + 1;
 
         // 2. Name
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400 relative';
+
         const inputId = document.createElement('input'); 
         inputId.type = 'hidden'; 
         inputId.value = displayId; 
@@ -1907,9 +1940,9 @@ function handleAttendanceData(data) {
         
         if (isSavedRow) {
             inputName.readOnly = true;
-            inputName.className = 'w-full p-1 bg-gray-100 text-gray-600 cursor-not-allowed outline-none personnel-info-input uppercase font-bold';
+            inputName.className = 'w-full p-1 bg-transparent text-gray-800 cursor-not-allowed outline-none personnel-info-input uppercase font-bold';
         } else {
-            inputName.className = 'w-full p-1 bg-transparent focus:ring-2 focus:ring-blue-500 outline-none personnel-info-input uppercase font-bold text-gray-800';
+            inputName.className = 'w-full p-1 bg-transparent focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none personnel-info-input uppercase font-bold text-gray-800';
             inputName.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
             inputName.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
             inputName.addEventListener('input', filterDatalistOptions);
@@ -1917,20 +1950,16 @@ function handleAttendanceData(data) {
         td.appendChild(inputName);
 
         if (isPrintLocked) {
-            const refParts = lockedRefNum.split('-');
-            let groupPart = 'N/A';
-            if (refParts.length >= 5) {
-                groupPart = refParts[refParts.length - 1]; // P1
-            }
-            
-            const lockTag = document.createElement('span');
-            lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 right-1 print-hidden';
-            lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
-            lockTag.textContent = `REF ${groupPart}`;
-            td.appendChild(lockTag);
+             const refParts = lockedRefNum.split('-');
+             let groupPart = 'N/A';
+             if (refParts.length >= 5) groupPart = refParts[refParts.length - 1];
+             const lockTag = document.createElement('span');
+             lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 right-1 print-hidden';
+             lockTag.textContent = `REF ${groupPart}`;
+             td.appendChild(lockTag);
         }
 
-        // 3. Designation (Basic Field - Mapped from Position)
+        // 3. Designation
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputPos = document.createElement('input');
@@ -1939,16 +1968,12 @@ function handleAttendanceData(data) {
         inputPos.dataset.field = 'position'; 
         inputPos.dataset.oldPersonnelId = stableLookupKey;
         inputPos.setAttribute('list', 'security-designation-list');
-        
         inputPos.disabled = isBasicFieldDisabled; 
-        inputPos.className = `w-full p-1 outline-none personnel-info-input text-center uppercase ${basicDisabledClass} ${!isBasicFieldDisabled ? 'focus:ring-2 focus:ring-blue-500' : ''}`;
-        
-        if (!isSavedRow) {
-             inputPos.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
-        }
+        inputPos.className = `w-full p-1 outline-none personnel-info-input text-center uppercase bg-transparent ${basicDisabledClass} ${!isBasicFieldDisabled ? 'focus:bg-white focus:ring-2 focus:ring-blue-500' : ''}`;
+        if (!isSavedRow) inputPos.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
         td.appendChild(inputPos);
 
-        // 4. Place of Duty (Basic Field - Mapped from Area)
+        // 4. Place of Duty
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputArea = document.createElement('input');
@@ -1957,22 +1982,24 @@ function handleAttendanceData(data) {
         inputArea.dataset.field = 'area'; 
         inputArea.dataset.oldPersonnelId = stableLookupKey;
         inputArea.setAttribute('list', 'security-place-list'); 
-        
         inputArea.disabled = isBasicFieldDisabled; 
-        inputArea.className = `w-full p-1 outline-none personnel-info-input text-center uppercase ${basicDisabledClass} ${!isBasicFieldDisabled ? 'focus:ring-2 focus:ring-blue-500' : ''}`;
-
-        if (!isSavedRow) {
-            inputArea.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
-        }
+        inputArea.className = `w-full p-1 outline-none personnel-info-input text-center uppercase bg-transparent ${basicDisabledClass} ${!isBasicFieldDisabled ? 'focus:bg-white focus:ring-2 focus:ring-blue-500' : ''}`;
+        if (!isSavedRow) inputArea.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
         td.appendChild(inputArea);
 
-        // 5. Time of Shift (Strict Field - EDITABLE even if saved)
+        // 5. Time of Shift (ONLY THIS CELL IS COLORED)
         td = tr.insertCell();
-        td.className = 'p-1 border border-gray-400';
+        td.className = 'p-1 border border-gray-400 relative';
         
+        if (currentShiftTime) {
+            td.style.setProperty('background-color', cellBackgroundColor, 'important');
+            td.classList.add('shift-colored-cell');
+        }
+
         const selectShift = document.createElement('select');
         selectShift.disabled = isStrictFieldDisabled; 
-        selectShift.className = `w-full text-xs p-1 border border-gray-300 rounded focus:ring-blue-500 text-center font-semibold h-8 ${isStrictFieldDisabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`;
+        selectShift.className = `w-full text-xs p-1 border border-gray-300 rounded focus:ring-blue-500 text-center font-semibold h-8 bg-transparent ${isStrictFieldDisabled ? 'cursor-not-allowed opacity-50' : ''}`;
+        selectShift.style.backgroundColor = 'transparent';
         selectShift.dataset.securityField = 'timeOfShift';
 
         const defOpt = document.createElement('option');
@@ -1992,30 +2019,25 @@ function handleAttendanceData(data) {
                 const opt = document.createElement('option');
                 opt.value = shiftStr;
                 opt.text = shiftStr;
-                
                 if (secDetails && secDetails.timeOfShift && secDetails.timeOfShift.trim() === shiftStr) {
                     opt.selected = true;
                 }
-                
                 selectShift.appendChild(opt);
             }
         }
-        // *** NEW LISTENER: Trigger dirty state check ***
         selectShift.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
         td.appendChild(selectShift);
 
-        // Helper to create populated inputs with Listeners
+        // Helper for other inputs
         const createSecInput = (placeholder, field, val, listId) => {
              const inp = document.createElement('input'); 
              inp.type = 'text'; 
              inp.placeholder = placeholder; 
              inp.dataset.securityField = field; 
              inp.disabled = isStrictFieldDisabled; 
-             inp.className = `w-full p-1 text-center text-xs uppercase outline-none ${strictDisabledClass} ${!isStrictFieldDisabled ? 'focus:ring-1 focus:ring-blue-400' : ''}`; 
+             inp.className = `w-full p-1 text-center text-xs uppercase outline-none bg-transparent ${strictDisabledClass} ${!isStrictFieldDisabled ? 'focus:bg-white focus:ring-1 focus:ring-blue-400' : ''}`; 
              if (val) inp.value = val;
              if (listId) inp.setAttribute('list', listId); 
-             
-             // *** NEW LISTENER: Trigger dirty state check ***
              inp.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
              return inp;
         };
@@ -2036,7 +2058,7 @@ function handleAttendanceData(data) {
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
         td.appendChild(createSecInput('', 'faSerial', secDetails?.faSerial, 'security-serial-list'));
 
-        // 10. Validity of License
+        // 10. Validity
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputValid = document.createElement('input');
@@ -2045,22 +2067,18 @@ function handleAttendanceData(data) {
         inputValid.dataset.securityField = 'licenseValidity';
         inputValid.className = 'w-full p-1 bg-transparent text-center text-xs outline-none security-date-input cursor-pointer'; 
         inputValid.readOnly = true; 
-        
         if (isStrictFieldDisabled) {
              inputValid.disabled = true;
-             inputValid.classList.add('bg-gray-100', 'cursor-not-allowed');
+             inputValid.classList.add('cursor-not-allowed', 'opacity-50');
         }
         if (secDetails?.licenseValidity) inputValid.value = secDetails.licenseValidity;
-        
-        // *** NEW LISTENER: Trigger dirty state check ***
         inputValid.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
-        
         td.appendChild(inputValid);
     }
 
     tableContainer.appendChild(table);
 
-    // Re-initialize Datepicker only for enabled inputs
+    // Re-initialize Datepicker
     $('.security-date-input:not(:disabled)').datepicker({
         dateFormat: 'mm/dd/yy',
         changeMonth: true,
