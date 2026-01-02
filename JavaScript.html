@@ -1853,17 +1853,20 @@ function handleAttendanceData(data) {
         // CHECK IF ROW IS SAVED (Real ID exists and not isNew)
         const isSavedRow = (employee.id && employee.id !== '' && !employee.isNew);
 
+        // --- NEW: LOCKING LOGIC START ---
+        const lockedRefNum = lockedIdRefMap[employee.id]; 
+        const isPrintLocked = !!lockedRefNum && !isMarkedForDeletion; 
+        // --- NEW: LOCKING LOGIC END ---
+
         // LOGIC FOR DISABLING FIELDS
         const isNamePresent = displayName && displayName.trim() !== '';
         
-        // Basic Fields (Designation, Location): Disabled ONLY if Saved.
-        const isBasicFieldDisabled = isSavedRow; 
+        // Basic Fields (Designation, Location): Disabled if Saved OR LOCKED
+        const isBasicFieldDisabled = isSavedRow || isPrintLocked; 
         const basicDisabledClass = isBasicFieldDisabled ? 'bg-gray-100 cursor-not-allowed text-gray-400' : 'bg-transparent';
 
-        // *** UPDATED LOGIC HERE ***
-        // Strict Fields (Shift, Firearms, Validity): Disabled ONLY if NO NAME is present.
-        // Even if saved, these remain editable as long as there is a name.
-        const isStrictFieldDisabled = !isNamePresent;
+        // Strict Fields (Shift, Firearms, Validity): Disabled if No Name OR LOCKED
+        const isStrictFieldDisabled = !isNamePresent || isPrintLocked;
         const strictDisabledClass = isStrictFieldDisabled ? 'bg-gray-100 cursor-not-allowed text-gray-400' : 'bg-transparent';
 
         // Get Security Details
@@ -1873,7 +1876,11 @@ function handleAttendanceData(data) {
 
         const tr = tbody.insertRow();
         tr.dataset.stableKey = stableLookupKey;
-        if (isMarkedForDeletion) tr.classList.add('bg-red-200', 'line-through');
+        if (isMarkedForDeletion) {
+            tr.classList.add('bg-red-200', 'line-through');
+        } else if (isPrintLocked) { 
+            tr.classList.add('bg-gray-300', 'opacity-80', 'locked-row'); 
+        }
 
         // 1. NO.
         let td = tr.insertCell();
@@ -1908,6 +1915,20 @@ function handleAttendanceData(data) {
             inputName.addEventListener('input', filterDatalistOptions);
         }
         td.appendChild(inputName);
+
+        if (isPrintLocked) {
+            const refParts = lockedRefNum.split('-');
+            let groupPart = 'N/A';
+            if (refParts.length >= 5) {
+                groupPart = refParts[refParts.length - 1]; // P1
+            }
+            
+            const lockTag = document.createElement('span');
+            lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 right-1 print-hidden';
+            lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
+            lockTag.textContent = `REF ${groupPart}`;
+            td.appendChild(lockTag);
+        }
 
         // 3. Designation (Basic Field - Mapped from Position)
         td = tr.insertCell();
