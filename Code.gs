@@ -78,24 +78,18 @@ function getNextSequentialNumber(logSheet, sfcRef) {
         logSheet.getRange(2, 1, logSheet.getLastRow() - 1, 1).getDisplayValues() : [];
     
     let maxSequentialNumber = 0;
+
     logValues.forEach(row => {
         const logRefString = String(row[0] || '').trim();
         const parts = logRefString.split('-');
-        let currentSfc = '';
-        let sequentialPart = '0';
 
-        if (parts.length === 5) {
-            currentSfc = parts[0];
-            sequentialPart = parts[3];
-        } else if (parts.length === 6) {
-            currentSfc = parts[1];
-            sequentialPart = parts[4];
-        }
+        if (logRefString.includes(sfcRef) && parts.length >= 5) {
+            
+            const sequentialPart = parts[parts.length - 2]; 
 
-        if (currentSfc === sfcRef) { 
             const numericPart = parseInt(sequentialPart, 10);
             if (!isNaN(numericPart) && numericPart > maxSequentialNumber) {
-                maxSequentialNumber = numericPart;
+                 maxSequentialNumber = numericPart;
             }
         }
     });
