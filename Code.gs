@@ -83,11 +83,10 @@ function getNextSequentialNumber(logSheet, sfcRef) {
         const logRefString = String(row[0] || '').trim();
         const parts = logRefString.split('-');
 
-        if (logRefString.includes(sfcRef) && parts.length >= 5) {
-            
+        if (parts.length >= 5) {
             const sequentialPart = parts[parts.length - 2]; 
-
             const numericPart = parseInt(sequentialPart, 10);
+
             if (!isNaN(numericPart) && numericPart > maxSequentialNumber) {
                  maxSequentialNumber = numericPart;
             }
@@ -95,6 +94,7 @@ function getNextSequentialNumber(logSheet, sfcRef) {
     });
 
     const nextNumber = maxSequentialNumber + 1;
+
     if (nextNumber <= 9999) {
         return String(nextNumber).padStart(4, '0');
     }
