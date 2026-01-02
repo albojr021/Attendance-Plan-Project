@@ -228,6 +228,44 @@
     
     @media print {
 
+        table.security-print-table th,
+        table.security-print-table td,
+        table.security-print-table input,
+        table.security-print-table select,
+        table.security-print-table span {
+            font-size: 7pt !important;
+            line-height: 1.1 !important;
+        }
+
+        table.security-print-table input,
+        table.security-print-table select {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        color: #000 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: auto !important;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        -moz-appearance: none !important;
+        outline: none !important;
+        }
+
+        table.security-print-table input::placeholder {
+        color: transparent !important;
+        }
+
+        table.security-print-table td {
+        vertical-align: middle !important;
+        padding: 2px 4px !important;
+        }
+        
+        table.security-print-table thead th {
+            font-size: 7pt !important;
+            white-space: normal !important; 
+        }
+
         .page-break-before {
             page-break-before: always !important;
             break-before: page !important;
