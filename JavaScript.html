@@ -3150,6 +3150,9 @@ function continueSaveProcess(groupNumber) {
   function applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows, selectedPrintIds) {
     let printNumber = 1;
     const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
+    
+    // KUNIN ANG SERVICE TYPE
+    const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
 
     gridRows.forEach(row => {
         
@@ -3167,13 +3170,12 @@ function continueSaveProcess(groupNumber) {
              return;
         }
         
-        // --- NEW LOGIC: Check if ID is in the selectedPrintIds list ---
+        // --- Logic: Check if ID is in the selectedPrintIds list ---
         if (!selectedPrintIds.includes(displayId)) {
              row.classList.add('print-hidden');
-             dynamicallyHiddenRows.push(row); // Treat as hidden for this print
+             dynamicallyHiddenRows.push(row); 
              return;
         }
-        // --- END NEW LOGIC ---
 
         // B. Exclude rows that are already Locked 
         const stableKey = row.dataset.stableKey;
@@ -3185,28 +3187,45 @@ function continueSaveProcess(groupNumber) {
             return;
         }
         
-        // C. Check for NA/Blank Exclusion (This should be covered by the selection/validation flow now)
+        // C. Check for NA/Blank Exclusion (UPDATED FOR SECURITY)
         let hasActualSchedule = false;
 
-        row.querySelectorAll('.cell-container').forEach(cell => {
-            const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-            if (status !== '' && status !== 'NA' && status !== 'DELETED') { 
+        if (isSecurity) {
+            // *** SECURITY FIX: Check Time of Shift instead of Cells ***
+            const timeShiftInput = row.querySelector('[data-security-field="timeOfShift"]');
+            if (timeShiftInput && timeShiftInput.value.trim() !== '') {
                 hasActualSchedule = true;
             }
-        });
+        } else {
+            // *** STANDARD LOGIC: Check Cells ***
+            row.querySelectorAll('.cell-container').forEach(cell => {
+                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                if (status !== '' && status !== 'NA' && status !== 'DELETED') { 
+                    hasActualSchedule = true;
+                }
+            });
+        }
 
         if (!hasActualSchedule) { 
-            // Should not happen if pre-validated, but as a safeguard:
+            // Kung walang schedule, itago sa print
             row.classList.add('print-hidden');
             dynamicallyHiddenRows.push(row); 
             return;
         }
 
         // --- 2. Apply sequential numbering to rows NOT excluded ---
-        const noCellSpan = row.querySelector('.sticky-col:first-child > span:first-child');
+        const noCellSpan = row.querySelector('.sticky-col:first-child > span:first-child'); // Standard has span inside
+        // Security usually renders NO. directly in TD, but let's check structure
+        const firstTd = row.querySelector('td:first-child');
         
-        if (noCellSpan && !row.classList.contains('print-hidden')) {
-            noCellSpan.textContent = printNumber;
+        if (!row.classList.contains('print-hidden')) {
+            // Update numbering visuals
+            if (noCellSpan) {
+                noCellSpan.textContent = printNumber;
+            } else if (firstTd) {
+                // Fallback specifically for Security Table structure if strictly TD text
+                firstTd.textContent = printNumber;
+            }
             printNumber++;
         }
     });
