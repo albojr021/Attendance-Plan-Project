@@ -1189,37 +1189,6 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
     const lockedIds = Object.keys(lockedIdRefMap);
 
-    // --- SECURITY LOGIC: Merge Time of Shift into Attendance Changes for DAY 1 ---
-    if (securityDetails && securityDetails.length > 0) {
-        const startDayOfMonth = shift === '1stHalf' ? 1 : 16;
-        const dayKey = `${year}-${month + 1}-${startDayOfMonth}`; // Day 1 of the shift
-        
-        securityDetails.forEach(sec => {
-            if (sec.timeOfShift && sec.id && !lockedIds.includes(String(sec.id))) {
-                // Check if already in attendanceChanges to avoid overwrite if manual edit exist (optional logic, but here we enforce Time of Shift)
-                const existingChangeIndex = attendanceChanges.findIndex(ac => 
-                    String(ac.personnelId) === String(sec.id) && 
-                    ac.dayKey === dayKey && 
-                    ac.shift === shift
-                );
-
-                if (existingChangeIndex > -1) {
-                    attendanceChanges[existingChangeIndex].status = sec.timeOfShift;
-                } else {
-                    attendanceChanges.push({
-                        personnelId: sec.id,
-                        dayKey: dayKey,
-                        shift: shift,
-                        status: sec.timeOfShift
-                    });
-                }
-            }
-        });
-        
-        // SAVE TO SECURITY SHEET
-        saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss);
-    }
-
     const finalEmployeeChanges = employeeChanges.filter(change => {
         const idToCheck = cleanPersonnelId(change.id || change.oldPersonnelId);
         if (lockedIds.includes(idToCheck) && !change.isDeleted) {
@@ -1244,10 +1213,40 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     const relieverDeletions = finalRelieverChanges.filter(c => c.isDeleted).map(c => c.oldPersonnelId);
     const deletionList = regularDeletions.concat(relieverDeletions);
 
+    if (securityDetails && securityDetails.length > 0) {
+        const startDayOfMonth = shift === '1stHalf' ? 1 : 16;
+        const dayKey = `${year}-${month + 1}-${startDayOfMonth}`; // Day 1 of the shift
+        
+        securityDetails.forEach(sec => {
+            if (sec.timeOfShift && sec.id && !lockedIds.includes(String(sec.id))) {
+                const existingChangeIndex = finalAttendanceChanges.findIndex(ac => 
+                    String(ac.personnelId) === String(sec.id) && 
+                    ac.dayKey === dayKey && 
+                    ac.shift === shift
+                );
+
+                if (existingChangeIndex > -1) {
+                    finalAttendanceChanges[existingChangeIndex].status = sec.timeOfShift;
+                } else {
+                    finalAttendanceChanges.push({
+                        personnelId: sec.id,
+                        dayKey: dayKey,
+                        shift: shift,
+                        status: sec.timeOfShift
+                    });
+                }
+            }
+        });
+    }
+
+    if ((securityDetails && securityDetails.length > 0) || deletionList.length > 0) {
+        saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss, deletionList);
+    }
+
     const regularEmployeeInfoChanges = finalEmployeeChanges.filter(c => !c.isDeleted);
     
-    if (regularEmployeeInfoChanges.length > 0) {
-        saveEmployeeInfoBulk(sfcRef, regularEmployeeInfoChanges, ss);
+    if (regularEmployeeInfoChanges.length > 0 || deletionList.length > 0) {
+        saveEmployeeInfoBulk(sfcRef, regularEmployeeInfoChanges, ss, deletionList);
     }
     
     const newRelieverEntries = finalRelieverChanges.filter(c => !c.isDeleted);
@@ -1259,11 +1258,13 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     logUserActionAfterUnlock(sfcRef, finalEmployeeChanges, finalAttendanceChanges, Session.getActiveUser().getEmail(), year, month, shift);
 }
 
-function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss) {
-    if (!securityDetails || securityDetails.length === 0) return;
-
+function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss, deletionList) {
     const sheet = getOrCreateSecurityPlanSheet(ss);
     const lastRow = sheet.getLastRow();
+    
+    // Kung walang securityDetails na isa-save at walang buburahin, return na.
+    if ((!securityDetails || securityDetails.length === 0) && (!deletionList || deletionList.length === 0)) return;
+
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
     
     // Map headers to indices
@@ -1285,10 +1286,37 @@ function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss) {
     const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
     const targetYear = String(year);
 
-    // 1. Get Existing Data to create a map (Upsert Logic)
+    // --- LOGIC PARA SA PAGBUBURA (DELETION) ---
+    if (deletionList && deletionList.length > 0 && lastRow > 1) {
+        const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+        // Mag-loop backwards para hindi masira ang index habang nagbubura
+        for (let i = data.length - 1; i >= 0; i--) {
+            const row = data[i];
+            const rSfc = String(row[sfcIdx]).trim();
+            const rMonth = String(row[monthIdx]).trim();
+            const rYear = String(row[yearIdx]).trim();
+            const rShift = String(row[shiftIdx]).trim();
+            const rId = String(row[idIdx]).trim();
+
+            // Check kung match sa context (Contract/Period) at kung nasa deletionList ang ID
+            if (rSfc === sfcRef && rMonth === targetMonthShort && rYear === targetYear && rShift === shift) {
+                // Check kung ang ID ay kabilang sa dapat burahin (clean ID comparison)
+                if (deletionList.some(delId => String(delId).trim() === rId)) {
+                    sheet.deleteRow(i + 2); // +2 dahil sa header at 0-based index
+                }
+            }
+        }
+    }
+    // --- END DELETION LOGIC ---
+
+    // Kung walang securityDetails na i-uupdate/add, tapos na tayo.
+    if (!securityDetails || securityDetails.length === 0) return;
+
+    // Refresh lastRow after deletion
+    const currentLastRow = sheet.getLastRow();
     let existingData = [];
-    if (lastRow > 1) {
-        existingData = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    if (currentLastRow > 1) {
+        existingData = sheet.getRange(2, 1, currentLastRow - 1, sheet.getLastColumn()).getValues();
     }
 
     const rowMap = new Map(); 
@@ -1300,7 +1328,7 @@ function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss) {
         const rId = String(row[idIdx]).trim();
 
         if (rSfc === sfcRef && rMonth === targetMonthShort && rYear === targetYear && rShift === shift) {
-            rowMap.set(rId, index);
+             rowMap.set(rId, index);
         }
     });
 
@@ -1310,10 +1338,12 @@ function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss) {
     securityDetails.forEach(detail => {
         const id = String(detail.id).trim();
         if (!id) return;
+        
+        // Skip kung nasa deletion list (just in case nakalusot sa filter)
+        if (deletionList && deletionList.some(delId => String(delId).trim() === id)) return;
 
-        // FORCE UPPERCASE CONVERSION HERE
         const valName = String(detail.name || '').toUpperCase().trim();
-        const valTime = String(detail.timeOfShift || '').trim(); // Time is standardized, no need to uppercase
+        const valTime = String(detail.timeOfShift || '').trim();
         const valType = String(detail.faType || '').toUpperCase().trim();
         const valMake = String(detail.faMake || '').toUpperCase().trim();
         const valCal = String(detail.faCaliber || '').toUpperCase().trim();
@@ -1358,7 +1388,7 @@ function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss) {
 
     // Apply Appends
     if (rowsToAppend.length > 0) {
-        sheet.getRange(lastRow + 1, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
+        sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
     }
 }
 
@@ -1653,15 +1683,41 @@ function updatePlanSheetReferenceBulk(refNum, printGroup, sfcRef, year, month, s
     }
 }
 
-function saveEmployeeInfoBulk(sfcRef, changes, ss) {
+function saveEmployeeInfoBulk(sfcRef, changes, ss, deletionList) {
     const empSheet = getOrCreateConsolidatedEmployeeMasterSheet(ss);
+    let numRows = empSheet.getLastRow();
     
-    const numRows = empSheet.getLastRow();
-    const startRow = numRows > 0 ? numRows : 1; 
-    
+    // --- LOGIC PARA SA PAGBUBURA (DELETION) ---
+    if (deletionList && deletionList.length > 0 && numRows > 1) {
+        const values = empSheet.getDataRange().getValues();
+        const headers = values[0];
+        const contractRefIndex = headers.indexOf('CONTRACT #');
+        const personnelIdIndex = headers.indexOf('Personnel ID');
+
+        // Loop backwards
+        for (let i = values.length - 1; i >= 1; i--) { // Start from last row down to 1 (skip header)
+            const row = values[i];
+            const rowSfc = String(row[contractRefIndex] || '').trim();
+            const rowId = String(row[personnelIdIndex] || '').trim();
+
+            if (rowSfc === sfcRef) {
+                // Check if ID is in deletion list
+                if (deletionList.some(delId => String(delId).trim() === rowId)) {
+                    empSheet.deleteRow(i + 1); // +1 dahil 0-based ang array index pero 1-based ang sheet row
+                }
+            }
+        }
+        // Refresh numRows after deletion
+        numRows = empSheet.getLastRow();
+    }
+    // --- END DELETION LOGIC ---
+
+    // Kung walang changes na idadagdag, return na.
+    if (!changes || changes.length === 0) return;
+
+    // ... (Existing Append Logic) ...
     const values = empSheet.getDataRange().getValues();
     const headers = values[0];
-    
     const contractRefIndex = headers.indexOf('CONTRACT #');
     const personnelIdIndex = headers.indexOf('Personnel ID');
     const nameIndex = headers.indexOf('Personnel Name');
@@ -1678,12 +1734,12 @@ function saveEmployeeInfoBulk(sfcRef, changes, ss) {
     }
 
     const rowsToAppend = [];
-
     changes.forEach((data) => {
         if (data.isDeleted) return; 
 
         const newId = String(data.id || '').trim();
         
+        // Idagdag lang kung wala pa sa sheet
         if (newId && !existingIds.has(newId)) {
             const newRow = [];
             for(let k=0; k<headers.length; k++) newRow.push('');
