@@ -5,6 +5,7 @@
 const SPREADSHEET_ID = '1qheN_KURc-sOKSngpzVxLvfkkc8StzGv-1gMvGJZdsc'; // Source Contracts
 const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; // Target Database
 const FILE_201_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM'; // 201 File Master
+const PDF_FOLDER_ID = '1_CfNZlLDfWW5UBxRDubbDxeN5vZdtNs2';
 
 // Sheet Names
 const CONTRACTS_SHEET_NAME = 'RefSeries';
@@ -107,6 +108,93 @@ function getDynamicSheetName(sfcRef, type, year, month, shift) {
         return EMPLOYEE_MASTER_SHEET_NAME;
     }
     return `${safeRef} - AttendancePlan`; 
+}
+
+function savePrintToPdfAndLog(htmlContent, fileName, sfcRef, year, month, shift, personnelIds) {
+  try {
+    if (!PDF_FOLDER_ID || PDF_FOLDER_ID === 'PAKI_ILAGAY_DITO_ANG_IYONG_GOOGLE_DRIVE_FOLDER_ID') {
+      throw new Error("CONFIGURATION ERROR: Paki-set ang PDF_FOLDER_ID sa Code.gs.");
+    }
+
+    // 1. Create PDF Blob
+    const blob = Utilities.newBlob(htmlContent, MimeType.HTML, fileName).getAs(MimeType.PDF);
+    
+    // 2. Save to Drive
+    const folder = DriveApp.getFolderById(PDF_FOLDER_ID);
+    const file = folder.createFile(blob);
+    const fileUrl = file.getUrl(); // Ito ang link na kailangan natin
+
+    // 3. Log the Link to the Sheet
+    updateLinkFileColumn(sfcRef, year, month, shift, personnelIds, fileUrl);
+
+    return { success: true, url: fileUrl, message: 'PDF Saved and Linked successfully.' };
+
+  } catch (e) {
+    Logger.log(`[savePrintToPdfAndLog] ERROR: ${e.message}`);
+    return { success: false, message: `Failed to save PDF: ${e.message}` };
+  }
+}
+
+function updateLinkFileColumn(sfcRef, year, month, shift, personnelIds, fileUrl) {
+    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
+    
+    if (!planSheet) return;
+
+    const HEADER_ROW = PLAN_HEADER_ROW;
+    const lastRow = planSheet.getLastRow();
+    
+    // Kunin ang mga headers para mahanap ang index ng 'LINK FILE'
+    const headers = planSheet.getRange(HEADER_ROW, 1, 1, planSheet.getLastColumn()).getValues()[0];
+    
+    const sfcIdx = headers.indexOf('CONTRACT #');
+    const monthIdx = headers.indexOf('MONTH');
+    const yearIdx = headers.indexOf('YEAR');
+    const shiftIdx = headers.indexOf('PERIOD / SHIFT');
+    const idIdx = headers.indexOf('Personnel ID');
+    const linkFileIdx = headers.indexOf('LINK FILE'); // Ito ang bagong column
+
+    if (linkFileIdx === -1) {
+        throw new Error("Column 'LINK FILE' not found. Please add it manually to the sheet or regenerate headers.");
+    }
+
+    const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
+    const targetYear = String(year);
+
+    // Get Data (Optimization: Pwede ring gumamit ng TextFinder para mas mabilis kung sobrang daming data, pero loop muna for safety)
+    const dataRange = planSheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, planSheet.getLastColumn());
+    const values = dataRange.getValues();
+    const updates = [];
+
+    values.forEach((row, rIndex) => {
+        const rSfc = String(row[sfcIdx]).trim();
+        const rMonth = String(row[monthIdx]).trim();
+        const rYear = String(row[yearIdx]).trim();
+        const rShift = String(row[shiftIdx]).trim();
+        const rId = cleanPersonnelId(row[idIdx]);
+
+        // Check if row matches the criteria and the personnel ID is in the list
+        if (rSfc === sfcRef && 
+            rMonth === targetMonthShort && 
+            rYear === targetYear && 
+            rShift === shift && 
+            personnelIds.includes(rId)) {
+            
+            // Push update: rIndex + HEADER_ROW + 1 (dahil 0-based ang array at may header)
+            updates.push({
+                row: rIndex + HEADER_ROW + 1,
+                col: linkFileIdx + 1,
+                val: fileUrl
+            });
+        }
+    });
+
+    // Batch Update
+    if (updates.length > 0) {
+        updates.forEach(u => {
+            planSheet.getRange(u.row, u.col).setValue(u.val);
+        });
+    }
 }
 
 // ============================================================================
@@ -278,6 +366,7 @@ function createContractSheets(sfcRef, year, month, shift) {
         for (let d = 1; d <= PLAN_MAX_DAYS_IN_HALF; d++) {
             base.push(`DAY${d}`);
         }
+        base.push('LINK FILE');
         return base;
     };
     
