@@ -1950,13 +1950,25 @@ function handleAttendanceData(data) {
         td.appendChild(inputName);
 
         if (isPrintLocked) {
-             const refParts = lockedRefNum.split('-');
-             let groupPart = 'N/A';
-             if (refParts.length >= 5) groupPart = refParts[refParts.length - 1];
-             const lockTag = document.createElement('span');
-             lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 right-1 print-hidden';
-             lockTag.textContent = `REF ${groupPart}`;
-             td.appendChild(lockTag);
+            
+            const refParts = lockedRefNum.split('-');
+            let randomPart = 'N/A';
+            let groupPart = 'N/A';
+
+            if (refParts.length === 6) {
+                randomPart = refParts[4]; // 0001
+                groupPart = refParts[5];  // P1
+            } else if (refParts.length === 5) {
+                randomPart = refParts[3];
+                groupPart = refParts[4];
+            }
+            
+            // Keep the Lock Tag (REF XXXX)
+            const lockTag = document.createElement('span');
+            lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 left-1 print-hidden';
+            lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
+            lockTag.textContent = `REF ${randomPart} (${groupPart})`;
+            td.appendChild(lockTag);
         }
 
         // 3. Designation
