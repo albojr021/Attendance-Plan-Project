@@ -112,8 +112,8 @@ function getDynamicSheetName(sfcRef, type, year, month, shift) {
 
 function savePrintToPdfAndLog(htmlContent, fileName, sfcRef, year, month, shift, personnelIds) {
   try {
-    if (!PDF_FOLDER_ID || PDF_FOLDER_ID === 'PAKI_ILAGAY_DITO_ANG_IYONG_GOOGLE_DRIVE_FOLDER_ID') {
-      throw new Error("CONFIGURATION ERROR: Paki-set ang PDF_FOLDER_ID sa Code.gs.");
+    if (!PDF_FOLDER_ID || PDF_FOLDER_ID === 'GOOGLE_DRIVE_FOLDER_ID') {
+      throw new Error("CONFIGURATION ERROR: Set The PDF_FOLDER_ID in Code.gs.");
     }
 
     // 1. Create PDF Blob
@@ -122,7 +122,7 @@ function savePrintToPdfAndLog(htmlContent, fileName, sfcRef, year, month, shift,
     // 2. Save to Drive
     const folder = DriveApp.getFolderById(PDF_FOLDER_ID);
     const file = folder.createFile(blob);
-    const fileUrl = file.getUrl(); // Ito ang link na kailangan natin
+    const fileUrl = file.getUrl(); 
 
     // 3. Log the Link to the Sheet
     updateLinkFileColumn(sfcRef, year, month, shift, personnelIds, fileUrl);
@@ -144,7 +144,6 @@ function updateLinkFileColumn(sfcRef, year, month, shift, personnelIds, fileUrl)
     const HEADER_ROW = PLAN_HEADER_ROW;
     const lastRow = planSheet.getLastRow();
     
-    // Kunin ang mga headers para mahanap ang index ng 'LINK FILE'
     const headers = planSheet.getRange(HEADER_ROW, 1, 1, planSheet.getLastColumn()).getValues()[0];
     
     const sfcIdx = headers.indexOf('CONTRACT #');
@@ -152,7 +151,7 @@ function updateLinkFileColumn(sfcRef, year, month, shift, personnelIds, fileUrl)
     const yearIdx = headers.indexOf('YEAR');
     const shiftIdx = headers.indexOf('PERIOD / SHIFT');
     const idIdx = headers.indexOf('Personnel ID');
-    const linkFileIdx = headers.indexOf('LINK FILE'); // Ito ang bagong column
+    const linkFileIdx = headers.indexOf('LINK FILE');
 
     if (linkFileIdx === -1) {
         throw new Error("Column 'LINK FILE' not found. Please add it manually to the sheet or regenerate headers.");
@@ -161,7 +160,7 @@ function updateLinkFileColumn(sfcRef, year, month, shift, personnelIds, fileUrl)
     const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
     const targetYear = String(year);
 
-    // Get Data (Optimization: Pwede ring gumamit ng TextFinder para mas mabilis kung sobrang daming data, pero loop muna for safety)
+    // Get Data 
     const dataRange = planSheet.getRange(HEADER_ROW + 1, 1, lastRow - HEADER_ROW, planSheet.getLastColumn());
     const values = dataRange.getValues();
     const updates = [];
@@ -937,86 +936,6 @@ function getSortedPlanSheets(sfcRef, ss) {
     return [{ name: PLAN_SHEET_NAME, date: new Date(2000, 0, 1) }];
 }
 
-function getEmployeeSchedulePattern(sfcRef, personnelId) {
-    if (!sfcRef || !personnelId) return {};
-    const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    const cleanId = cleanPersonnelId(personnelId);
-    const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
-    if (!planSheet || planSheet.getLastRow() < PLAN_HEADER_ROW) return {};
-    const lastRow = planSheet.getLastRow();
-    const numColumns = planSheet.getLastColumn();
-    if (lastRow - PLAN_HEADER_ROW <= 0 || numColumns < (PLAN_FIXED_COLUMNS + 3)) return {};
-
-    const planValues = planSheet.getRange(PLAN_HEADER_ROW, 1, lastRow - PLAN_HEADER_ROW + 1, numColumns).getDisplayValues();
-    const headers = planValues[0];
-    const dataRows = planValues.slice(1);
-    
-    const personnelIdIndex = headers.indexOf('Personnel ID');
-    const shiftIndex = headers.indexOf('PERIOD / SHIFT');
-    const sfcRefIndex = headers.indexOf('CONTRACT #');
-    const day1Index = headers.indexOf('DAY1');
-    const saveVersionIndex = headers.indexOf('SAVE VERSION'); 
-    
-    if (personnelIdIndex === -1 || shiftIndex === -1 || sfcRefIndex === -1 || day1Index === -1) return {};
-    
-    let targetRow = null;
-    let latestVersion = 0;
-    let latestDate = new Date(0);
-
-    dataRows.forEach(row => {
-        const currentId = cleanPersonnelId(row[personnelIdIndex]);
-        const currentSfc = String(row[sfcRefIndex] || '').trim();
-        
-        if (currentId === cleanId && currentSfc === sfcRef) {
-            const saveVersionString = String(row[saveVersionIndex] || '').trim(); 
-            const versionParts = saveVersionString.split('-');
-            const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
-            const monthShort = String(row[headers.indexOf('MONTH')] || '').trim();
-            const yearNum = parseInt(row[headers.indexOf('YEAR')] || '0', 10);
-            
-            let planDate = new Date(0);
-            if (monthShort && yearNum) {
-                planDate = new Date(`${monthShort} 1, ${yearNum}`);
-            }
-            
-            if (version > latestVersion || (version === latestVersion && planDate.getTime() > latestDate.getTime())) {
-                latestVersion = version;
-                latestDate = planDate;
-                targetRow = row;
-            }
-        }
-    });
-
-    if (!targetRow) return {};
-    const dayPatternMap = {};
-    const targetMonthShort = String(targetRow[headers.indexOf('MONTH')] || '').trim();
-    const targetYear = parseInt(targetRow[headers.indexOf('YEAR')] || '0', 10);
-    if (!targetMonthShort || !targetYear) return {};
-    
-    const targetMonth = new Date(`${targetMonthShort} 1, ${targetYear}`).getMonth();
-    const targetShift = String(targetRow[shiftIndex] || '').trim();
-    const loopLimit = PLAN_MAX_DAYS_IN_HALF; 
-    const startDayOfMonth = targetShift === '1stHalf' ? 1 : 16;
-    const endDayOfMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
-
-    for (let d = 1; d <= loopLimit; d++) { 
-        const dayHeader = `DAY${d}`;
-        const dayColIndex = headers.indexOf(dayHeader);
-        if (dayColIndex === -1) continue; 
-        const status = String(targetRow[dayColIndex] || '').trim();
-        const actualDay = startDayOfMonth + d - 1;
-        if (actualDay > endDayOfMonth) continue; 
-        const currentDate = new Date(targetYear, targetMonth, actualDay);
-        if (currentDate.getMonth() !== targetMonth) continue; 
-        const dayOfWeek = currentDate.getDay(); 
-        const dayKey = dayOfWeek.toString();
-        if (status && status !== 'NA') {
-             dayPatternMap[dayKey] = status;
-        }
-    }
-    return dayPatternMap;
-}
-
 function getAttendancePlan(sfcRef, year, month, shift) {
     if (!sfcRef) throw new Error("SFC Ref# is required.");
     const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
@@ -1351,7 +1270,6 @@ function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss, d
     const sheet = getOrCreateSecurityPlanSheet(ss);
     const lastRow = sheet.getLastRow();
     
-    // Kung walang securityDetails na isa-save at walang buburahin, return na.
     if ((!securityDetails || securityDetails.length === 0) && (!deletionList || deletionList.length === 0)) return;
 
     const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -1375,10 +1293,8 @@ function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss, d
     const targetMonthShort = new Date(year, month, 1).toLocaleString('en-US', { month: 'short' });
     const targetYear = String(year);
 
-    // --- LOGIC PARA SA PAGBUBURA (DELETION) ---
     if (deletionList && deletionList.length > 0 && lastRow > 1) {
         const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-        // Mag-loop backwards para hindi masira ang index habang nagbubura
         for (let i = data.length - 1; i >= 0; i--) {
             const row = data[i];
             const rSfc = String(row[sfcIdx]).trim();
@@ -1387,18 +1303,14 @@ function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss, d
             const rShift = String(row[shiftIdx]).trim();
             const rId = String(row[idIdx]).trim();
 
-            // Check kung match sa context (Contract/Period) at kung nasa deletionList ang ID
             if (rSfc === sfcRef && rMonth === targetMonthShort && rYear === targetYear && rShift === shift) {
-                // Check kung ang ID ay kabilang sa dapat burahin (clean ID comparison)
                 if (deletionList.some(delId => String(delId).trim() === rId)) {
                     sheet.deleteRow(i + 2); // +2 dahil sa header at 0-based index
                 }
             }
         }
     }
-    // --- END DELETION LOGIC ---
 
-    // Kung walang securityDetails na i-uupdate/add, tapos na tayo.
     if (!securityDetails || securityDetails.length === 0) return;
 
     // Refresh lastRow after deletion
@@ -1428,7 +1340,6 @@ function saveSecurityPlanBulk(sfcRef, securityDetails, year, month, shift, ss, d
         const id = String(detail.id).trim();
         if (!id) return;
         
-        // Skip kung nasa deletion list (just in case nakalusot sa filter)
         if (deletionList && deletionList.some(delId => String(delId).trim() === id)) return;
 
         const valName = String(detail.name || '').toUpperCase().trim();
@@ -1776,7 +1687,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, ss, deletionList) {
     const empSheet = getOrCreateConsolidatedEmployeeMasterSheet(ss);
     let numRows = empSheet.getLastRow();
     
-    // --- LOGIC PARA SA PAGBUBURA (DELETION) ---
     if (deletionList && deletionList.length > 0 && numRows > 1) {
         const values = empSheet.getDataRange().getValues();
         const headers = values[0];
@@ -1799,12 +1709,9 @@ function saveEmployeeInfoBulk(sfcRef, changes, ss, deletionList) {
         // Refresh numRows after deletion
         numRows = empSheet.getLastRow();
     }
-    // --- END DELETION LOGIC ---
 
-    // Kung walang changes na idadagdag, return na.
     if (!changes || changes.length === 0) return;
 
-    // ... (Existing Append Logic) ...
     const values = empSheet.getDataRange().getValues();
     const headers = values[0];
     const contractRefIndex = headers.indexOf('CONTRACT #');
@@ -1828,7 +1735,6 @@ function saveEmployeeInfoBulk(sfcRef, changes, ss, deletionList) {
 
         const newId = String(data.id || '').trim();
         
-        // Idagdag lang kung wala pa sa sheet
         if (newId && !existingIds.has(newId)) {
             const newRow = [];
             for(let k=0; k<headers.length; k++) newRow.push('');
