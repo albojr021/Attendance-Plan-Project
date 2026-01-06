@@ -227,7 +227,6 @@
     }
     
     @media print {
-
         body {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -292,11 +291,11 @@
             display: block !important;
         }
         
-        /* Table Styles para sa Supporting Docs */
+        /* Table Styles for Supporting Docs */
         .supporting-docs-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 10pt; /* Mas maliit na font para magkasya */
+            font-size: 10pt; 
             margin-top: 10px;
         }
         .supporting-docs-table th, .supporting-docs-table td {
@@ -352,7 +351,7 @@
 
         .reliever-title-for-print { 
         display: block !important;
-        font-size: 8pt !important; // Binago mula 10pt patungong 8pt
+        font-size: 8pt !important;
         font-weight: bold !important;
         margin-top: 10px !important; 
         margin-bottom: 2px !important;
@@ -363,7 +362,7 @@
 
         .reliever-print-wrapper {
         display: block !important;
-        width: 500px !important; /* Kabuuang lapad ng 5 personnel columns */
+        width: 500px !important;
         overflow: hidden !important; 
         margin-top: 0 !important;
         padding-top: 0 !important;
@@ -391,7 +390,7 @@
         .reliever-print-wrapper td:nth-child(5), .reliever-print-wrapper th:nth-child(5) { width: 100px !important; } /* Area Posting */
 
         #print-signatories-container {
-          display: block !important; /* CRITICAL FIX: Ensure visibility */
+          display: block !important; 
           position: static !important; 
           bottom: auto !important; 
           left: auto !important; 
@@ -404,17 +403,13 @@
           z-index: auto !important;
         }
         
-        /* ************************************************* */
-        /* --- NEW FIX: Force white background on info columns to remove bleed --- */
-        /* ************************************************* */
+        /* --- Force white background on info columns to remove bleed --- */
         .attendance-grid td:nth-child(-n+5) { 
              background-color: transparent !important;
              box-shadow: none !important;
              -webkit-print-color-adjust: exact;
              print-color-adjust: exact;
         }
-        /* ************************************************* */
-        
         
         /* --- REMOVE OLD PRINT FIELD CONTAINER STYLES --- */
         #print-sub-property-container, 
@@ -422,10 +417,9 @@
              display: none !important; 
         }
 
-        /* --- NEW UNIFIED PRINT DETAILS STYLES --- */
+        /* --- UNIFIED PRINT DETAILS STYLES --- */
         #print-details-unified-container {
           display: grid !important; 
-          /* NEW: 3 parts for Left Col, 3 parts for Spacer, 2 parts for Right Col (Total 8 parts) */
           grid-template-columns: 3fr 3fr 2fr !important; 
           gap: 0 !important; /* Use the spacer column instead of gap */
           border: none !important; 
@@ -433,8 +427,6 @@
           margin-bottom: 5px !important; 
           background-color: transparent !important; 
           break-inside: avoid; 
-          
-          /* CRITICAL CHANGE (from last step): Align items to the start (top) */
           align-items: flex-start !important; 
         }
 
@@ -442,8 +434,6 @@
           display: flex !important;
           flex-direction: column !important;
           gap: 1px !important; 
-          
-          /* Pilitin ang right column na magsimula sa pinakataas ng grid area */
           align-self: flex-start !important; 
         }
         
@@ -455,8 +445,6 @@
         #print-details-unified-container .print-details-col.right-col {
           grid-column: 3 / span 1 !important; /* Start at line 3, spans 1 column (skipping the 3fr spacer) */
         }
-        /* END NEW GRID ASSIGNMENT */
-
 
         #print-details-unified-container p.label,
         #print-details-unified-container p.value { 
@@ -471,25 +459,24 @@
         #print-details-unified-container p.label { 
             font-weight: bold !important; 
             color: black !important; 
-            min-width: 100px; /* Mas malaking min-width for labels */
+            min-width: 100px; 
             margin-right: 5px; 
         }
         
-        /* --- UPDATED SIGNATORY LAYOUT (FLEXBOX) --- */
+        /* --- SIGNATORY LAYOUT (FLEXBOX) --- */
         .print-signatories {
-            display: flex !important; /* Flexbox para dynamic */
-            justify-content: space-evenly !important; /* Pantay na spacing at centering */
-            align-items: flex-start !important; /* Pantay ang alignment sa taas */
-            flex-wrap: nowrap !important; /* Huwag ibaba sa next line */
+            display: flex !important;
+            justify-content: space-evenly !important; 
+            align-items: flex-start !important;
+            flex-wrap: nowrap !important;
             width: 100% !important;
             margin-top: 10px;
         }
 
-        /* Siguraduhin na may tamang spacing ang bawat signatory block */
         .print-signatories > div, 
         .print-signatories .checked-by-col {
-            flex: 0 1 auto; /* Hayaan ang content na mag-dictate ng width */
-            min-width: 120px; /* Minimum width para hindi magdikit-dikit masyado */
+            flex: 0 1 auto;
+            min-width: 120px; 
             padding: 0 5px;
             text-align: center;
         }
@@ -663,13 +650,12 @@
         body::after { content: none !important; }
     }
       tr.line-through.bg-red-200 { 
-        /* Force opacity back to 1 for better visibility of the line-through and text */
         opacity: 1 !important; 
-        background-color: #fecaca !important; /* Slightly lighter red background */
+        background-color: #fecaca !important; 
         -webkit-print-color-adjust: exact; 
         print-color-adjust: exact;
       }
-      /* Ensure inputs and spans in deleted rows retain the deletion style */
+
       tr.line-through.bg-red-200 .personnel-info-input,
       tr.line-through.bg-red-200 .sticky-col span {
         text-decoration: line-through !important;
