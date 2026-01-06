@@ -1,17 +1,14 @@
 <script>
-  // NEW: Include jQuery first (Select2 dependency)
+  // Include jQuery first (Select2 dependency)
   document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"><\/script>');
-  // NEW: Include Select2
   document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"><\/script>');
   
-  // *** NEW: Include jQuery UI (for Datepicker) ***
+  // Include jQuery UI (for Datepicker)
   document.write('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css">');
   document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"><\/script>');
-  // ****************************************
   
-  // *** NEW: Custom style para itago ang calendar view ***
+  // Custom style
   document.write('<style>');
-  // CRITICAL: Itago ang calendar table at tiyakin na centered ang button pane
   document.write('.ui-month-year-only .ui-datepicker-calendar { display: none !important; }');
   document.write('.ui-month-year-only .ui-datepicker-buttonpane { text-align: center; }');
   document.write('</style>');
@@ -20,26 +17,15 @@
   let contractList = [];
   let currentContract = null;
   const CONTRACT_ID_CACHE_KEY = 'current_contract_id'; 
-  
-  // *** NEW: Global state for Employee Master Data ***
-  let employeeMasterList = []; 
-  // NEW: Global state for Signatory Master Data
-  // UPDATED: Now stores objects {name: string, designation: string}
-  let signatoryMasterList = [];
-
+  let employeeMasterList = []; // Global state for Employee Master Data
+  let signatoryMasterList = []; // Global state for Signatory Master Data
   let all201PersonnelList = [];  // Full list of employees from 201 (blacklisted or not)
   let blacklistedEmployeeList = []; // Only blacklisted employees for quick lookup
+  let savedRelieverList = [];
+  let currentGroup = 'S1'; // Global state for Save Group Number, Default is S1
 
- let savedRelieverList = [];
-  
-  // *** NEW: Global state for Save Group Number (Read-only input value) ***
-  // UPDATED: Default is S1
-  let currentGroup = 'S1'; 
-  // -----------------------------------------------------------
-
-  // *** DATE NAVIGATION VARIABLE ***
+  // DATE NAVIGATION VARIABLE
   let currentPlanningDate = new Date(); 
-  // Ang status codes
   const fixedStatusCodes = ['RD', 'RH', 'SH', '', 'NA']; 
   const shiftPeriods = [
     { key: '1stHalf', label: '1st Half (1st to 15th)' },
@@ -47,43 +33,30 @@
   ];
   const maxDays = 31; 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  // *** FIXED STATUS OPTIONS PARA SA FLOATING DROPDOWN ***
-  let selectedCellData = {}; 
 
-  // *** NEW: Global state for Bulk Selection ***
+  let selectedCellData = {}; // FIXED STATUS OPTIONS PARA SA FLOATING DROPDOWN 
+
+  // Global state for Bulk Selection
   let isBulkSelectionMode = false;
   let bulkSelectedCells = []; 
-  // --- NEW DRAG STATE VARIABLES ---
+  //  NEW DRAG STATE VARIABLES
   let isDragging = false;
   let dragStartCell = null;
   let dragEndCell = null;
   let cellsFromCurrentDrag = []; 
-  // ---------------------------------------------
   
-  // *** NEW: Global state for tracking ng changes ***
+  // NEW: Global state for tracking of changes
   let pendingAttendanceChanges = {}; 
   let pendingEmployeeInfoChanges = {}; 
   let pendingRelieverChanges = {};
   
-  // NEW: Global state for locked ID map {ID: Ref#}
-  let lockedIdRefMap = {};
-  
-  // --- NEW GLOBAL STATE FOR PRINT LOCKING ---
-  let isPlanSheetFullyLocked = false;
-  
-  // *** NEW: Global state for Bulk Print Selection ***
-  let bulkPrintSelected = [];
-  // ---------------------------------------------
-  
-  // *** UPDATED GLOBAL STATE FOR BULK UNLOCK SELECTION ***
-  // STORES UNIQUE REFERENCE NUMBER STRINGS, not employee objects
-  let bulkUnlockSelected = []; 
-  
-  // *** NEW GLOBAL STATE FOR BULK DELETE SELECTION ***
-  let bulkDeleteSelected = []; 
+  let lockedIdRefMap = {}; // Global state for locked ID map {ID: Ref#}
+  let isPlanSheetFullyLocked = false; // GLOBAL STATE FOR PRINT LOCKING
+  let bulkPrintSelected = []; // Global state for Bulk Print Selection
+  let bulkUnlockSelected = []; // GLOBAL STATE FOR BULK UNLOCK SELECTION 
+  let bulkDeleteSelected = []; // GLOBAL STATE FOR BULK DELETE SELECTION
 
-  // *** NEW GLOBAL STATE FOR SIGNATORIES ***
-  // UPDATED: Now stores {name: '', designation: ''} objects for preparedBy, approvedBy, and checkedBy array
+  // GLOBAL STATE FOR SIGNATORIES
   let selectedSignatories = {
       preparedBy: { name: '', designation: '' },
       checkedBy: [ 
@@ -96,43 +69,35 @@
       approvedBy: { name: '', designation: '' }
   };
   
-  // *****************************************************************
-  // *** NEW GLOBAL STATE FOR PRINT FIELDS ***
-  // *****************************************************************
+  // GLOBAL STATE FOR PRINT FIELDS
   let printFieldMasterData = { sections: [], departments: [], remarks: [] }; 
   let selectedPrintFields = {
       subProperty: '',
       section: '',
       department: '',
       remarks: '',
-      serialNo: '', // NEW
-      to: ''        // NEW
+      serialNo: '', 
+      to: ''   
   };
-  // *****************************************************************
 
   const fixedStatusOptions = [
     { value: 'RD', label: 'Rest Day (RD)', color: 'status-rd text-red-700' },
     { value: 'RH', label: 'Regular Holiday (RH)', color: 'status-rh text-blue-700' },
     { value: 'SH', label: 'Special Holiday (SH)', color: 'status-sh text-yellow-700' },
     { value: '', label: 'Clear/Blank (Work Schedule)', color: 'bg-gray-200 text-gray-700' },
-    // NEW: Not Applicable / Excluded Status
     { value: 'NA', label: 'Not Applicable (NA) / Excluded', color: 'status-na text-gray-500' },
   ];
   
-  // NEW: Global variable para sa validation (HH:MM-HH:MM) - HINDI NA GANOONG KA-STRICT DAHIL SA TYPE="TIME"
-  const TIME_FORMAT_REGEX = /^([01]?[0-9]|2[0-3]):[0-5][0-9]-([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-  // NEW: Regex for Personnel Info validation
-  const PERSONNEL_ID_REGEX = /^[0-9]+$/; // Only numbers
-  // FIX: Nagdagdag ng DASH (-) sa allowed characters
+  const TIME_FORMAT_REGEX = /^([01]?[0-9]|2[0-3]):[0-5][0-9]-([01]?[0-9]|2[0-3]):[0-5][0-9]$/; // Global variable para sa validation (HH:MM-HH:MM)
+  const PERSONNEL_ID_REGEX = /^[0-9]+$/; // Only numbers, Regex for Personnel Info validation
   const SAFE_TEXT_REGEX = /^[A-Z0-9\s.,-]+$/; 
   
-  // *** NEW REGEX FOR SIGNATORY NAMES (Letters, Space, Dash, Comma, Period only) ***
+  // NEW REGEX FOR SIGNATORY NAMES (Letters, Space, Dash, Comma, Period only)
   const SIGNATORY_REGEX = /^[A-Z\s.,-]+$/; 
   const SAFE_NAME_REGEX = /[^A-Z\s.,-]/g; 
   
-  // ---------------------------------------------
 
-  // --- NEW: Time Option Generator for Dropdowns ---
+  // Time Option Generator for Dropdowns 
   function generateTimeOptions() {
       const times = [];
       for (let h = 0; h < 24; h++) {
@@ -146,7 +111,7 @@
   }
   const TIME_OPTIONS = generateTimeOptions();
 
-  // --- NEW HELPER: Normalize Name for Comparison (Removes all non-alphanumeric) ---
+  // Normalize Name for Comparison (Removes all non-alphanumeric)
   function normalizeNameForComparison(name) {
       if (!name) return '';
       
@@ -160,23 +125,20 @@
       
       return sortedWords;
   }
-  // --- END HELPER ---
   
-  // --- NEW FUNCTION: Fetch and Populate Master Employee Data ---
+  // Fetch and Populate Master Employee Data
   function fetchEmployeeMasterData(sfcRef) {
-    // UPDATED: Calls the new function that returns all necessary lists
     google.script.run
          .withSuccessHandler(populateDataLists)
          .withFailureHandler(handleError)
-         .getEmployeeMasterDataForUI(sfcRef); // << NEW SERVER FUNCTION
+         .getEmployeeMasterDataForUI(sfcRef);
 }
 
-  // *** NEW HELPER: Client-side Blacklist Check (UPDATED FOR NAME NORMALIZATION) ***
+  // Client-side Blacklist Check (UPDATED FOR NAME NORMALIZATION)
 function checkIsBlacklisted(id, name) {
     const cleanId = (id || '').trim();
     const cleanName = (name || '').trim().toUpperCase(); 
 
-    // --- NEW: I-normalize ang input name para sa robust comparison ---
     const normalizedName = normalizeNameForComparison(cleanName);
     
     // Check by ID
@@ -186,15 +148,13 @@ function checkIsBlacklisted(id, name) {
         return { isBlacklisted: true, reason: `Personnel ID ${cleanId} is BLACKLISTED.`, originalName: blacklistEntry.name };
     }
     
-    // Check by Name (Gumagamit ng normalized comparison)
+    // Check by Name 
     const isBlacklistedByName = blacklistedEmployeeList.some(e => {
-        // Kailangang i-normalize ang naka-save na pangalan bago i-compare
         const storedNameNormalized = normalizeNameForComparison(e.name);
         return storedNameNormalized === normalizedName;
     });
     
     if (isBlacklistedByName && normalizedName.length > 0) {
-        // Hanapin ang specific entry para sa logging/reporting
         const blacklistEntry = blacklistedEmployeeList.find(e => normalizeNameForComparison(e.name) === normalizedName);
         return { isBlacklisted: true, reason: `Personnel Name "${cleanName}" is BLACKLISTED (Linked ID: ${blacklistEntry.id}).`, originalId: blacklistEntry.id };
     }
@@ -202,7 +162,7 @@ function checkIsBlacklisted(id, name) {
     return { isBlacklisted: false, reason: '' };
 }
   
-  // UPDATED: Logic for Name/ID Datalist Population
+  // Logic for Name/ID Datalist Population
   function populateDataLists(data) {
     employeeMasterList = data.datalist;             // Non-blacklisted for datalist suggestions
     blacklistedEmployeeList = data.blacklisted;     // Blacklist for real-time validation
@@ -246,11 +206,8 @@ function checkIsBlacklisted(id, name) {
       
     console.log(`Datalists populated with ${employeeMasterList.length} employees. (${uniquePositions.size} positions, ${uniqueAreas.size} areas)`);
 }
-  // --- END NEW DATALIST FUNCTIONS ---
   
-  // *****************************************************************
-  // *** NEW PRINT FIELD MASTER DATA FUNCTIONS ***
-  // *****************************************************************
+  // PRINT FIELD MASTER DATA FUNCTIONS 
   function fetchPrintFieldMasterData() {
        google.script.run
             .withSuccessHandler(populatePrintFieldDatalists)
@@ -278,10 +235,8 @@ function checkIsBlacklisted(id, name) {
 
     console.log(`Print Field datalists populated with ${data.sections.length} sections, ${data.departments.length} departments, and ${data.remarks.length} remarks.`);
   }
-  // *****************************************************************
   
-  
-  // *** NEW FUNCTIONS: Fetch and Populate Signatory Master Data ***
+  // Fetch and Populate Signatory Master Data
   function fetchSignatoryMasterData() {
        google.script.run
             .withSuccessHandler(populateSignatoryDataLists)
@@ -289,7 +244,7 @@ function checkIsBlacklisted(id, name) {
             .getSignatoryMasterData(); 
   }
 
-  // UPDATED: Now expects a list of {name, designation} objects
+  // Now expects a list of {name, designation} objects
   function populateSignatoryDataLists(masterList) {
       signatoryMasterList = masterList;
       const signatoryList = document.getElementById('signatory-master-list');
@@ -299,17 +254,13 @@ function checkIsBlacklisted(id, name) {
       signatoryMasterList.forEach(item => {
           const option = document.createElement('option');
           option.value = item.name;
-          // Gamitin ang designation para sa mas madaling hanapin
           option.textContent = `${item.name} (${item.designation})`;
           signatoryList.appendChild(option);
       });
 
       console.log(`Signatory datalist populated with ${masterList.length} names/designations for Checked/Approved By.`);
   }
-  // *** END NEW SIGNATORY FETCH FUNCTIONS ***
 
-
-  // --- NEW FUNCTION: KUNIN ANG ACTIVE IDS SA GRID PARA SA VALIDATION (FIXED LOGIC) ---
 function isDuplicateId(newId, originalStableKey, currentNo) {
     const trimmedNewId = newId.trim();
     if (!trimmedNewId) return false;
@@ -356,9 +307,7 @@ function isDuplicateId(newId, originalStableKey, currentNo) {
     
     return duplicateFound;
 }
-// --- END DUPLICATE ID FUNCTION ---
 
-// *** UPDATED FUNCTION: KUNIN ANG ACTIVE NAMES SA GRID PARA SA VALIDATION (FIXED LOGIC) ***
 function isDuplicateName(newName, originalStableKey, currentNo) {
     const normalizedNewName = normalizeNameForComparison(newName); 
     if (!normalizedNewName) return false;
@@ -409,9 +358,7 @@ function isDuplicateName(newName, originalStableKey, currentNo) {
     
     return duplicateFound;
 }
-  // --- END DUPLICATE NAME FUNCTION ---
   
-  // --- HELPER FUNCTION: KUNIN ANG ACTIVE EMPLOYEES SA GRID ---
   function getActiveEmployeesInGrid() {
     const activeEmployees = [];
     
@@ -460,11 +407,9 @@ function isDuplicateName(newName, originalStableKey, currentNo) {
 
     return activeEmployees;
   }
-  // --- END HELPER FUNCTION ---
 
-// NEW HELPER: Get Employee Details from Master List
+// Get Employee Details from Master List
 function getEmployeeDetails(id) {
-    // Note: Assuming employeeMasterList is fully populated with {id, name, position, area}
     return employeeMasterList.find(e => e.id === id);
 }
 
@@ -534,7 +479,7 @@ function filterDatalistOptions(event) {
     }
 }
 
-// --- NEW FUNCTION: TRIGGERS ASYNCHRONOUS BLACKLIST CHECK FOR A ROW (NEWLY ADDED) ---
+// TRIGGERS ASYNCHRONOUS BLACKLIST CHECK FOR A ROW
 function triggerBlacklistCheck(rowElement, personnelId, personnelName) {
     const currentId = (personnelId || '').trim();
     const currentName = (personnelName || '').trim();
@@ -571,9 +516,7 @@ function triggerBlacklistCheck(rowElement, personnelId, personnelName) {
         })
         .checkBlacklistByIdOrName(currentId, currentName); 
 }
-// --- END NEW FUNCTION ---
 
-// --- NEW FUNCTION: Kumuha ng Listahan ng Locked Reference Numbers na may Employee Details ---
 function getLockedRefNumsList() {
     const lockedRefMap = lockedIdRefMap; // {ID: Ref#}
     const refMap = {}; // {Ref#: {count: N, isSelected: boolean, employees: []}}
@@ -619,10 +562,9 @@ function getLockedRefNumsList() {
 }
 
 
-// --- UPDATED FUNCTION: Open Unlock Selection Modal ---
+// Open Unlock Selection Modal
 function openUnlockSelectionModal() {
     const lockedRefNums = getLockedRefNumsList();
-    // CRITICAL: Updated Container ID (from index.html)
     const listContainer = document.getElementById('locked-ref-list-container'); 
     const modal = document.getElementById('unlock-selection-modal');
     const selectAllCheckbox = document.getElementById('select-all-unlock');
@@ -679,7 +621,7 @@ function openUnlockSelectionModal() {
             listItem.classList.toggle('bg-gray-50', !isChecked);
             listItem.classList.toggle('border-gray-200', !isChecked);
             
-            // *** BAGONG LOGIC: Awtomatikong i-expand/i-collapse ***
+            // Awtomatikong i-expand/i-collapse
             if (employeeList && toggleSvg) {
                 if (isChecked) {
                     employeeList.classList.remove('hidden');
@@ -730,7 +672,7 @@ function openUnlockSelectionModal() {
     modal.classList.remove('hidden');
 }
 
-// --- NEW FUNCTION: Select All Logic (UPDATED FOR REF#) ---
+// Select All Logic (UPDATED FOR REF#)
 function toggleSelectAll(event) {
     const isChecked = event.target.checked;
     const checkboxes = document.querySelectorAll('#locked-ref-list-container .unlock-checkbox');
@@ -818,7 +760,7 @@ function handleBulkUnlockRequest() {
     const currentShift = document.getElementById('shift-period-select').value;
     const sfcRef = currentContract?.sfcRef;
 
-    // CRITICAL: We pass the array of selected Reference Number strings
+    // We pass the array of selected Reference Number strings
     const selectedRefNums = bulkUnlockSelected; 
 
     if (!sfcRef || selectedRefNums.length === 0) {
@@ -831,8 +773,6 @@ function handleBulkUnlockRequest() {
     
     bulkUnlockSelected = []; // Clear selection after sending
 
-    // CRITICAL: Update the server call signature
-    // The server (Code.gs) will now handle expanding these Reference Numbers to all associated IDs.
     google.script.run
         .withSuccessHandler((response) => {
             showNotification(response.message, response.success);
@@ -846,8 +786,7 @@ function handleBulkUnlockRequest() {
 
 
   // --- UI HANDLERS ---
-
-  // NEW: Function to control the full-screen overlay and button blocking
+  // Function to control the full-screen overlay and button blocking
   function toggleUiLock(isLocked, message = 'Processing...') {
     const overlay = document.getElementById('full-screen-overlay');
     const overlayMessage = document.getElementById('overlay-message');
@@ -856,7 +795,6 @@ function handleBulkUnlockRequest() {
     if (isLocked) {
         overlayMessage.textContent = message;
         overlay.classList.remove('hidden');
-        // Keep the old loading alert for compatibility/status (hide if not 'Loading initial data')
         if (!message.toLowerCase().includes('loading')) {
              loadingAlert.classList.add('hidden');
         }
@@ -866,7 +804,7 @@ function handleBulkUnlockRequest() {
     }
   }
 
-  // UPDATED: Renaming and refactoring the old toggleLoading to use the new UiLock for synchronous tasks.
+  // Renaming and refactoring the old toggleLoading to use the new UiLock for synchronous tasks.
   function toggleLoading(isLoading, message = 'Loading initial data from Google Sheet...') {
     const loadingAlert = document.getElementById('loading-alert');
     
@@ -907,7 +845,7 @@ function handleBulkUnlockRequest() {
     toggleLoading(false); // Make sure to unlock the UI
   }
   
-  // --- NEW: RELOAD PLAN HELPER ---
+  // RELOAD PLAN HELPER 
   function reloadPlanAndCheckExistence() {
       if (currentContract && currentContract.sfcRef) {
           document.getElementById('planning-area').classList.add('hidden'); 
@@ -917,7 +855,7 @@ function handleBulkUnlockRequest() {
       }
   }
 
-  // *** NEW FUNCTION: Fetch the next sequential Group Number and update UI ***
+  // Fetch the next sequential Group Number and update UI 
   // NOTE: This function is now only used by the Save flow to get the batch number.
   function fetchNextGroupNumberAndSetUI() {
     const sfcRef = currentContract?.sfcRef;
@@ -925,12 +863,9 @@ function handleBulkUnlockRequest() {
     const currentMonth = currentPlanningDate.getMonth();
     const currentShift = document.getElementById('shift-period-select').value;
     
-    // We no longer rely on the Group Input UI here.
-    
     google.script.run
         .withSuccessHandler((nextGroup) => {
             currentGroup = nextGroup; // Update internal variable for debugging/state (e.g. S1, S2)
-            // Proceed to save with the determined Save Group Number
             continueSaveProcess(nextGroup);
         })
         .withFailureHandler(handleSaveAllError) // Use the save handler for errors here
@@ -964,9 +899,8 @@ function handleBulkUnlockRequest() {
         shift: prevShift
     };
 }
-// --- END NEW HELPER ---
 
-// --- NEW FUNCTION: Main Handler for Copy Previous Plan ---
+// Main Handler for Copy Previous Plan 
 function copyPreviousPlan() {
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
@@ -978,8 +912,6 @@ function copyPreviousPlan() {
     showNotification('Cannot copy: The current period has unsaved changes (roster or schedule). Please click "Save All Changes to Sheets" or refresh the page to clear pending edits.', false);
     return;
 }
-    
-    // --- End Validation ---
 
     // 1. Determine Source Period
     const sourcePeriod = getPreviousPeriodDetails(
@@ -1007,7 +939,7 @@ function copyPreviousPlan() {
         );
 }
 
-// --- NEW FUNCTION: Handle Data from Previous Period (Applies changes to current period) ---
+// Handle Data from Previous Period (Applies changes to current period)
 function handlePreviousPlanData(data) {
     if (data.employees.length === 0) {
         showNotification('No saved plan found for the previous period to copy.', false);
@@ -1025,7 +957,7 @@ function handlePreviousPlanData(data) {
     const currentShift = document.getElementById('shift-period-select').value;
     const daysInCurrentMonth = getDaysInMonth(currentYear, currentMonth);
 
-    // NEW: Create a set of existing employee IDs in the current saved roster
+    // Create a set of existing employee IDs in the current saved roster
     const existingEmployeeIds = new Set(currentContract.employees.map(emp => emp.id));
     let newEmployeesAdded = 0;
     let employeesSkipped = 0;
@@ -1064,11 +996,7 @@ function handlePreviousPlanData(data) {
     toggleLoading(false);
 }
 
-// --- END DOW Helper (TINANGGAL ANG FUNCTION) ---
-// function getDOWPatternMap(planMap) { ... }
-
   // --- CONTRACT SELECTION & DATA FETCHING ---
-
   function handleContractList(contracts) {
     contractList = contracts;
     const select = document.getElementById('contract-select');
@@ -1144,31 +1072,20 @@ function handlePreviousPlanData(data) {
     shiftSelect.value = '1stHalf';
 
     document.getElementById('shift-period-select').addEventListener('change', reloadPlanAndCheckExistence);
-    // *** NEW: Listener for Save All Button ***
-    document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); 
+    document.getElementById('save-all-changes-btn').addEventListener('click', handleSaveAllChanges); // Listener for Save All Button
+    document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan); // Listener for Print Button (Calls new modal function)
+    document.getElementById('request-unlock-modal-btn').addEventListener('click', openUnlockSelectionModal); // Listener for Request Unlock Button (Modal Opener)
+    document.getElementById('open-bulk-delete-btn').addEventListener('click', openBulkDeleteModal); // Listener for Bulk Delete Button (Modal Opener)
 
-    
-    // *** NEW: Listener for Print Button (Calls new modal function) ***
-    document.getElementById('print-plan-btn').addEventListener('click', handlePrintPlan);
-    
-    // *** NEW: Listener for Request Unlock Button (Modal Opener) ***
-    document.getElementById('request-unlock-modal-btn').addEventListener('click', openUnlockSelectionModal);
-    
-    // *** NEW: Listener for Bulk Delete Button (Modal Opener) ***
-    document.getElementById('open-bulk-delete-btn').addEventListener('click', openBulkDeleteModal);
-
-    // *** NEW: Attach Bulk Listeners ***
+    // *** Attach Bulk Listeners ***
     document.getElementById('start-bulk-select-btn').addEventListener('click', startBulkSelectionMode);
     document.getElementById('bulk-cancel-btn').addEventListener('click', exitBulkSelectionMode);
     document.getElementById('bulk-save-btn').addEventListener('click', (event) => saveBulkSchedule(event, null));
     
-    // ** NEW: Group Number Input initialization **
-    // The previous 'group-number-input' has been removed from index.html (in next step's plan)
-    // The internal variable currentGroup is set to S1 by default above.
     currentGroup = 'S1'; 
   }
 
-  // NEW: I-create ang handler para sa Select2 change
+  // I-create ang handler para sa Select2 change
   function handleSelect2Change(event) {
       const selectedSfcRef = $('#contract-select').val(); 
       
@@ -1208,7 +1125,6 @@ function displayContractDetails(contract) {
     document.getElementById('agency').textContent = contract.agency;
     document.getElementById('service-type').textContent = contract.serviceType;
     document.getElementById('head-count').textContent = contract.headCount;
-    // NEW: Display new contract fields
     document.getElementById('prop-grp-code').textContent = contract.propOrGrpCode;
     document.getElementById('sector').textContent = contract.sector;
     
@@ -1218,7 +1134,7 @@ function displayContractDetails(contract) {
     document.getElementById('plan-action-area').classList.add('hidden'); 
 }
 
-// NEW: Function to check if the plan sheets already exist
+// Function to check if the plan sheets already exist
 function checkIfPlanExists(sfcRef) {
     toggleLoading(true, 'Checking plan sheet existence...');
     
@@ -1232,7 +1148,7 @@ function checkIfPlanExists(sfcRef) {
         .checkContractSheets(sfcRef, currentYear, currentMonth, currentShift); 
 }
 
-// --- NEW FUNCTION: Update the Plan Period display based on current date/shift ---
+// --- Update the Plan Period display based on current date/shift ---
   function updatePlanPeriodDisplay(year, month, shift) {
     const date = new Date(year, month, 1);
     const monthName = date.toLocaleString('en-US', { month: 'long' });
@@ -1248,9 +1164,8 @@ function checkIfPlanExists(sfcRef) {
 
     document.getElementById('plan-period-display').textContent = dateRange;
   }
-  // --- END NEW FUNCTION ---
   
-  // *** NEW HELPER: Update the Datepicker Input Field ***
+  // *** Update the Datepicker Input Field ***
   function updateDatePickerDisplay(year, month) {
     const date = new Date(year, month, 1);
     const monthYearText = date.toLocaleString('en-US', { month: 'long', year: 'numeric' });
@@ -1259,9 +1174,8 @@ function checkIfPlanExists(sfcRef) {
     const picker = $('#month-year-picker');
     picker.datepicker('setDate', date);
   }
-  // *** END NEW HELPER ***
 
-// NEW: Handles the response from checkContractSheets
+// Handles the response from checkContractSheets
 function handlePlanExistence(exists) {
     const sfcRef = currentContract ? currentContract.sfcRef : null;
 
@@ -1277,11 +1191,10 @@ function handlePlanExistence(exists) {
     document.getElementById('plan-status-text').textContent = 'Attendance Plan Status: Loading Consolidated Plan Data...';
     fetchAttendanceData(sfcRef); 
     
-    // NEW: Always set the Save Group to S1 by default when loading data
     currentGroup = 'S1'; 
 }
 
-// NEW WORKFLOW: Show blank Plan (No server call) - Now triggered after failed fetchAttendanceData
+// Show blank Plan (No server call) - Now triggered after failed fetchAttendanceData
 function showBlankPlan() {
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
@@ -1301,7 +1214,7 @@ function showBlankPlan() {
     pendingEmployeeInfoChanges = {}; 
     
     document.getElementById('planning-area').classList.remove('hidden'); 
-    showNotification('Ready to plan. No existing data found for this period. Changes will be saved as S1-1.0.', true); // UPDATED MESSAGE: S1-1.0
+    showNotification('Ready to plan. No existing data found for this period. Changes will be saved as S1-1.0.', true);
 
     renderAttendancePlan(); 
     toggleLoading(false);
@@ -1330,14 +1243,9 @@ function fetchAttendanceData(sfcRef) {
 
 
 function handleAttendanceData(data) {
-    // UPDATED: employees now holds ONLY regular employees
     currentContract.employees = data.employees; 
     currentContract.planMap = data.planMap;
-    
-    // NEW: Load Security Details if available
     currentContract.securityDetails = data.securityDetails || {}; 
-
-    // NEW: Store the saved relievers list
     savedRelieverList = data.relieverPersonnelList || []; 
     
     lockedIdRefMap = data.lockedIdRefMap || {}; 
@@ -1346,7 +1254,6 @@ function handleAttendanceData(data) {
     document.getElementById('planning-area').classList.remove('hidden'); 
     
     if (data.employees.length === 0) {
-        // If plan exists but has no data for the current period (first entry point)
         showBlankPlan();
         return;
     }
@@ -1359,8 +1266,7 @@ function handleAttendanceData(data) {
     checkPlanSheetLockState(); 
 }
 
-// --- DATE NAVIGATION ---
-
+  // --- DATE NAVIGATION ---
   function navigateMonth(direction) {
     currentPlanningDate.setMonth(currentPlanningDate.getMonth() + direction);
     currentPlanningDate.setDate(1); 
@@ -1391,7 +1297,6 @@ function handleAttendanceData(data) {
 
     updateDatePickerDisplay(year, month); 
 
-    // UPDATED LOGIC FOR DAY1-DAY16 COLUMN MAPPING
     const startColIndex = 1;
     const endColIndex = 16;
     const startDayOfMonth = selectedShift === '1stHalf' ? 1 : 16;
@@ -1409,7 +1314,7 @@ function handleAttendanceData(data) {
     const headerRow1 = thead.insertRow();
     const headerRow2 = thead.insertRow();
     
-    // UPDATED FIXED HEADERS (5 fixed employee info columns)
+    // FIXED HEADERS (5 fixed employee info columns)
     const empInfoHeader = ['No.', 'Personnel ID', 'Personnel Name', 'POSITION', 'AREA POSTING']; 
     
     // --- 1. Header Row 1 (Main Fixed Labels & Date/Month) ---
@@ -1438,15 +1343,13 @@ function handleAttendanceData(data) {
         headerRow2.appendChild(th);
     });
 
-
-    // Date/Day Headers (Starts at index 5)
-    // NEW: Loop through column index (1-16) and calculate the actual day (d)
+    // Loop through column index (1-16) and calculate the actual day (d)
     for (let colIndex = startColIndex; colIndex <= endColIndex; colIndex++) {
         const d = startDayOfMonth + colIndex - 1; // Actual Day of the Month
 
         if (d > daysInMonth) continue; // Skip if actual day exceeds max days in month (e.g., Nov 31)
         
-        // **NEW FIX: Stop 1st Half at 15**
+        // ** Stop 1st Half at 15 **
         if (selectedShift === '1stHalf' && d > 15) continue; 
         
         const dayOfMonth = new Date(year, month, d);
@@ -1496,7 +1399,7 @@ function handleAttendanceData(data) {
          }
     });
 
-    // NEW LOGIC: Sort rowsToRender alphabetically by name
+    // Sort rowsToRender alphabetically by name
     rowsToRender.sort((a, b) => {
         const nameA = (a.name || '').toUpperCase();
         const nameB = (b.name || '').toUpperCase();
@@ -1608,7 +1511,6 @@ function handleAttendanceData(data) {
             lockTag.textContent = `REF ${randomPart} (${groupPart})`;
             td.appendChild(lockTag);
         }
-        // --- END UNLOCK BUTTON ---
         
         // Personnel Name (Input) - Index 2
         td = tr.insertCell();
@@ -1652,7 +1554,6 @@ function handleAttendanceData(data) {
         td.appendChild(input);
         td.className = 'p-0 bg-white border-r border-b';
 
-
         // Add event listeners for Personnel Info updates
         if (!isSavedRow && !isPrintLocked && !isMarkedForDeletion) {
             tr.querySelectorAll('.personnel-info-input').forEach(infoInput => {
@@ -1671,18 +1572,17 @@ function handleAttendanceData(data) {
               }
         }
 
-
         // 2. Attendance Plan Cells (Dynamic Dates) - Starts at index 5
         const currentPersonnelId = displayId; 
         let hasScheduleForShift = false; 
         
-        // NEW LOGIC: Loop through column index (1-16) and calculate the actual day (d)
+        // Loop through column index (1-16) and calculate the actual day (d)
         for (let colIndex = startColIndex; colIndex <= endColIndex; colIndex++) {
             const d = startDayOfMonth + colIndex - 1; // Actual Day of the Month
 
             if (d > daysInMonth) continue; // Skip if actual day exceeds max days in month
             
-            // **NEW FIX: Stop 1st Half at 15**
+            // Stop 1st Half at 15
             if (selectedShift === '1stHalf' && d > 15) continue; 
             
             const dayKeyUnpadded = `${year}-${month + 1}-${d}`;
@@ -1742,7 +1642,7 @@ function handleAttendanceData(data) {
     renderRelieverTable();
   }
 
-  // --- NEW: SECURITY SERVICES GRID GENERATOR ---
+  // SECURITY SERVICES GRID
   function renderSecurityPlan() {
     const year = currentPlanningDate.getFullYear();
     const month = currentPlanningDate.getMonth();
@@ -2145,61 +2045,8 @@ function populateSecurityDatalists(data) {
     console.log("Security datalists populated.");
 }
 
-  // NEW FUNCTION: Apply Schedule Pattern to a specific grid row
-function applySchedulePatternToRow(rowElement, personnelId, patternMap) {
-    const currentShift = document.getElementById('shift-period-select').value;
-    const year = currentPlanningDate.getFullYear();
-    const month = currentPlanningDate.getMonth();
-    
-    const originalId = rowElement.dataset.stableKey.startsWith('TEMP_') ? '' : rowElement.dataset.stableKey;
-
-    // UPDATED LOGIC: Loop through column index (1-16)
-    const startColIndex = 1;
-    const endColIndex = 16;
-    const startDayOfMonth = currentShift === '1stHalf' ? 1 : 16;
-    const daysInMonth = getDaysInMonth(year, month);
-    
-    rowElement.querySelectorAll('.cell-container').forEach((cellElement, cellColIndex) => {
-        
-        // Calculate the actual day based on the cell's position relative to the 6th column (index 5)
-        const colIndex = cellColIndex + 1; // 1 to 16
-        const d = startDayOfMonth + colIndex - 1; 
-
-        if (d > daysInMonth) return; // Skip if actual day exceeds max days in month
-
-        // **NEW FIX: Stop 1st Half at 15**
-        if (currentShift === '1stHalf' && d > 15) return; 
-
-        const dayKey = `${year}-${month + 1}-${d}`; 
-        
-        const [y, m, day] = dayKey.split('-').map(Number);
-        const date = new Date(y, m - 1, day); 
-        const dayOfWeek = date.getDay(); 
-        
-        const newStatus = patternMap[dayOfWeek.toString()] || ''; 
-
-        const currentVisualStatus = cellElement.querySelector('.attendance-cell-bg').textContent.trim();
-        if (newStatus && currentVisualStatus === '') { 
-            const currentPlanKey = `${personnelId}_${dayKey}_${currentShift}`;
-            const originalPlanKey = `${originalId}_${dayKey}_${currentShift}`;
-
-            const originalStatus = currentContract.planMap[originalPlanKey] || '';
-
-            if (originalStatus !== newStatus) {
-                pendingAttendanceChanges[currentPlanKey] = newStatus; 
-            } else {
-                delete pendingAttendanceChanges[currentPlanKey];
-            }
-            
-            updateCellVisuals(cellElement, newStatus, dayKey);
-        }
-    });
-
-    checkPlanSheetLockState(); 
-}
-// --- END NEW FUNCTION ---
   
-  // --- NEW HELPER: Visually manage warning state for a personnel row ---
+  // Visually manage warning state for a personnel row
 function showPersonnelWarning(rowElement, message) {
     const warningClass = 'border-red-500 ring-4 ring-red-200';
     
@@ -2367,7 +2214,6 @@ function showPersonnelWarning(rowElement, message) {
         if (field === 'id' || field === 'name') showPersonnelWarning(row, null); 
 
     } // End of if (event.type === 'change') block
-    // --- END: REAL-TIME VALIDATION ---
 
     let isSaved = currentContract.employees.some(e => e.id === employee.id);
 
@@ -2385,9 +2231,7 @@ function showPersonnelWarning(rowElement, message) {
         row.querySelector('[data-field="id"]').value = masterRecord.id;
         row.querySelector('[data-field="name"]').value = masterRecord.name;
         
-        // --- UPDATED AUTO-FILL LOGIC ---
-        // Always auto-fill Position/Area from Master List if available, even for Security.
-        // User can still change it manually because fields are enabled.
+        // Always auto-fill Position/Area from Master List if available
         const posVal = masterRecord.position || '';
         const areaVal = masterRecord.area || '';
 
@@ -2399,7 +2243,7 @@ function showPersonnelWarning(rowElement, message) {
         pendingChange.position = posVal;
         pendingChange.area = areaVal;
         
-        // For Security: Ensure fields are visually enabled (remove gray/disabled state)
+        // For Security: Ensure fields are visually enabled
         if (currentContract.serviceType === 'SECURITY SERVICES') {
              const strictInputs = row.querySelectorAll('[data-security-field], [data-field="position"], [data-field="area"]');
              strictInputs.forEach(inp => {
@@ -2536,21 +2380,6 @@ function showPersonnelWarning(rowElement, message) {
                 checkPlanSheetLockState(); 
             }
     }
-
-    if (masterRecordFound && !isSaved && !pendingChange.isDeleted && !lockedIdRefMap[oldPersonnelKey]) {
-        const currentIdInInput = row.querySelector('[data-field="id"]').value.trim();
-        if (currentIdInInput === masterRecordFound.id) {
-             google.script.run
-                 .withSuccessHandler((patternMap) => {
-                     if (Object.keys(patternMap).length > 0) {
-                         applySchedulePatternToRow(row, masterRecordFound.id, patternMap);
-                         showNotification(`Schedule pattern auto-filled for ${masterRecordFound.name}.`, true);
-                     }
-                 })
-                 .withFailureHandler(handleError)
-                 .getEmployeeSchedulePattern(currentContract.sfcRef, masterRecordFound.id);
-        }
-    }
     
     // Signatory Autofill
     const preparedByNameInput = document.getElementById('signatory-prepared-by');
@@ -2594,7 +2423,6 @@ function showPersonnelWarning(rowElement, message) {
 }
 
   // --- ATTENDANCE PLAN HANDLERS (Manual Save) ---
-
   function updateCellVisuals(cell, status, dayKey) {
     const dayOfMonth = new Date(dayKey);
     const dayOfWeek = dayOfMonth.getDay(); 
@@ -2896,7 +2724,6 @@ function continueSaveProcess(groupNumber) {
     });
 
     // --- START: Validation and Data Assembly for RELIEVER EMPLOYEES ---
-    
     const finalRelieverChanges = [];
     const relieverStableKeys = Object.keys(pendingRelieverChanges);
     
@@ -2935,7 +2762,6 @@ function continueSaveProcess(groupNumber) {
              });
          }
     }
-    // --- END: RELIEVERS ---
 
     // --- START: SECURITY DATA GATHERING ---
     const securityDetails = [];
@@ -2972,11 +2798,8 @@ function continueSaveProcess(groupNumber) {
             }
         });
     }
-    // --- END: SECURITY DATA GATHERING ---
 
-    // =========================================================================
     // === NEW: STRICT SECURITY VALIDATION (Name, Designation, Location, Time) ===
-    // =========================================================================
     if (currentContract.serviceType === 'SECURITY SERVICES') {
         const securityRows = document.querySelectorAll('#attendance-table-container tbody tr');
         
@@ -3003,8 +2826,6 @@ function continueSaveProcess(groupNumber) {
                 if (!location) missingFields.push("Place of Duty (Location)");
                 if (!timeOfShift) missingFields.push("Time of Shift");
 
-                // Note: Firearm details and Validity are OPTIONAL, so we don't check them here.
-
                 if (missingFields.length > 0) {
                      const rowNo = row.querySelector('td:first-child')?.textContent.trim();
                      showNotification(`FATAL ERROR: Cannot save. Security Guard "${name}" (Row ${rowNo}) is missing required fields: ${missingFields.join(', ')}.`, false);
@@ -3014,11 +2835,8 @@ function continueSaveProcess(groupNumber) {
             }
         }
     }
-    // =========================================================================
-
 
     // === CRITICAL 3: FINAL CHECK FOR EMPTY ID/NAME ON ACTIVE ROWS (REGULAR TABLE ONLY) ===
-    // NOTE: We only run this if it's NOT Security Services to avoid conflict with hidden IDs
     if (currentContract.serviceType !== 'SECURITY SERVICES') {
         const allRows = document.querySelectorAll('#attendance-table-container tbody tr');
         
@@ -3074,9 +2892,7 @@ function continueSaveProcess(groupNumber) {
             return; 
         }
     }
-    // === END FINAL CHECK FOR EMPTY ID/NAME (REGULAR TABLE) ===
-
-    
+   
     // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (STRICT ALL-OR-NOTHING CHECK) ===
     const rowsToValidate = [];
     
@@ -3111,7 +2927,6 @@ function continueSaveProcess(groupNumber) {
     }
     // === END CRITICAL 2 CHECK ===
 
-    
     const attChanges = Object.keys(pendingAttendanceChanges).map(key => {
         const [personnelId, dayKey, shift] = key.split('_');
         return { personnelId, dayKey, shift, status: pendingAttendanceChanges[key] };
@@ -3142,7 +2957,6 @@ function continueSaveProcess(groupNumber) {
         .withFailureHandler(handleSaveAllError)
         .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, finalRelieverChanges, attChanges, securityDetails, currentYear, currentMonth, currentShift, groupNumber);
 }
-// *** END REFRACTORED SAVE FUNCTIONS ***
 
   function handleSaveAllSuccess(response) {
       showNotification('All changes saved successfully! Refreshing data...', true);
@@ -3202,7 +3016,6 @@ function continueSaveProcess(groupNumber) {
   }
   
   // --- NEW FUNCTION: Sequential Numbering and Hiding ---
-
   function applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows, selectedPrintIds) {
     let printNumber = 1;
     const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
@@ -3361,10 +3174,7 @@ function continueSaveProcess(groupNumber) {
       } else {
           selectedSignatories[fieldType].designation = newValue;
       }
-      
-      // NOTE: Walang validation sa Designation input, basta may laman ay pwedeng i-save.
   }
-  // --- END NEW FUNCTION ---
   
   // --- NEW FUNCTION: Validation check for all signatories ---
   function validateAllSignatories() {
@@ -3583,11 +3393,8 @@ function toggleSelectAllPrint(event) {
     
     updatePrintModalState(getPrintableEmployeesForModal().length);
 }
-// --- END NEW PRINT SELECTION FUNCTIONS ---
-
 
   // --- NEW PRINT LOGIC (UPDATED FLOW) ---
-  
 function openPrintSetupModal() {
       const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
 
@@ -3665,12 +3472,10 @@ function handlePrintFieldInputChange(event, field) {
     else if (field === 'serialNo') selectedPrintFields.serialNo = newValue.trim(); // NEW
     else if (field === 'to') selectedPrintFields.to = newValue.trim();             // NEW
   }
-// *****************************************************************
 
 function hidePrintSetupModal() {
     document.getElementById('print-setup-modal').classList.add('hidden');
 }
-
 
 function handlePrintSetupConfirm(event) {
       const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
@@ -4112,7 +3917,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     window.print();
 }
 
-
 // --- NEW HELPER: Get Cell Coordinates (Absolute row index, 0-based column index) ---
 function getCellCoordinates(cell) {
     if (!cell || !cell.classList.contains('cell-container')) return null;
@@ -4125,7 +3929,6 @@ function getCellCoordinates(cell) {
     
     return { R: rowIndex, C: colIndex };
 }
-// --- END NEW HELPER ---
 
 // --- NEW HELPER: Check if a Row is Active (Non-blank) ---
 function isRowActive(rowElement) {
@@ -4134,8 +3937,6 @@ function isRowActive(rowElement) {
     
     return (idInput?.value || '').trim() !== '' || (nameInput?.value || '').trim() !== '';
 }
-// --- END NEW HELPER ---
-
 
 // --- NEW FUNCTION: CRITICAL DRAG LOGIC (Additive) ---
 function visualizeAdditiveRange(startCell, endCell) {
@@ -4191,7 +3992,6 @@ function visualizeAdditiveRange(startCell, endCell) {
     const uniqueSelectedCount = new Set([...bulkSelectedCells, ...cellsFromCurrentDrag]).size;
     document.getElementById('bulk-cell-count').textContent = uniqueSelectedCount;
 }
-
 
 // --- NEW FUNCTION: Handle Drag Start ---
 function handleDragStart(event) {
@@ -4298,7 +4098,6 @@ function startBulkSelectionMode() {
     showNotification('Bulk Selection Mode: Click cells to toggle selection, or Drag to select a range.', true);
 }
 
-
 // Function to return to normal mode (called after save or cancel)
 function exitBulkSelectionMode() {
     isBulkSelectionMode = false;
@@ -4337,7 +4136,6 @@ function exitBulkSelectionMode() {
     showNotification('Bulk Selection Mode ended.', false);
 }
 
-
 function toggleCellSelection(cell) {
     const index = bulkSelectedCells.indexOf(cell);
     if (index > -1) {
@@ -4349,7 +4147,6 @@ function toggleCellSelection(cell) {
     }
     document.getElementById('bulk-cell-count').textContent = bulkSelectedCells.length;
 }
-
 
 function handleCellSelectionClick(event) {
     const targetCell = event.currentTarget || event; 
@@ -4376,7 +4173,6 @@ function handleCellSelectionClick(event) {
     
     toggleCellSelection(targetCell);
 }
-
 
 // Function to open the Bulk Modal
 function openBulkScheduleModal() {
@@ -4775,8 +4571,6 @@ function handleBulkDeleteConfirm() {
     renderRelieverTable(); // NEW: Trigger render for reliever table visibility
     checkPlanSheetLockState(); 
 }
-// --- END NEW BULK DELETE FUNCTIONS ---
-
 
 // --- NEW HELPER: Get Row Schedule Status ---
 function getRowScheduleStatus(row, currentShift) {
@@ -5477,7 +5271,6 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
 }
 
   // --- INITIALIZATION ---
-
   window.onload = function() {
     toggleLoading(true);
     google.script.run
@@ -5488,11 +5281,9 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
     document.getElementById('print-setup-confirm-btn').addEventListener('click', handlePrintSetupConfirm);
     document.getElementById('print-setup-cancel-btn').addEventListener('click', hidePrintSetupModal);
     
-    // *****************************************************************
     // *** NEW: Fetch Print Field Master Data on load ***
     fetchPrintFieldMasterData();
     fetchSecuritySuggestions();
-    // *****************************************************************
     
     // NEW: Attach Bulk Delete Modal Listeners
     document.getElementById('delete-modal-cancel-btn').addEventListener('click', () => {
@@ -5502,17 +5293,12 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
     });
     document.getElementById('delete-modal-confirm-btn').addEventListener('click', handleBulkDeleteConfirm);
     document.getElementById('open-bulk-delete-btn').addEventListener('click', openBulkDeleteModal);
-
-
-    // ************************ UPDATED SIGNATORY LISTENERS ************************
     
     // PREPARED BY (Name Input)
     const preparedByNameInput = document.getElementById('signatory-prepared-by');
     if (preparedByNameInput) {
         preparedByNameInput.addEventListener('input', (e) => handleSignatoryInputChange(e, 'preparedBy'));
         preparedByNameInput.addEventListener('change', (e) => handleSignatoryInputChange(e, 'preparedBy')); 
-        
-        // [BAGONG FIX] Idagdag ang filterDatalistOptions para lumabas ang suggestions
         preparedByNameInput.addEventListener('input', filterDatalistOptions); 
     }
     
@@ -5544,13 +5330,11 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
             inputDesignation.addEventListener('change', (e) => handleSignatoryDesignationChange(e, 'checkedBy', i));
         }
     }
-    // *****************************************************************************
     
     // ************************ NEW PRINT FIELD LISTENERS (FOR DATALIST FILTERING) ************************
     const remarksInput = document.getElementById('remarks-input');
     if (remarksInput) {
         remarksInput.addEventListener('input', filterDatalistOptions); 
     }
-    // ***************************************************************************************************
   }
 </script>
