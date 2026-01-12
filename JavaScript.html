@@ -3724,8 +3724,8 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         const formattedRefs = rawRefs.split('\n').map(line => `<p>${line}</p>`).join('');
         // *** CUSTOM SECURITY HEADER ***
         headerHtml = `
-        <div id="print-details-unified-container" class="print-only-container" style="display: block !important;">
-            <div style="width: 100%; text-align: left;">
+        <div id="print-details-unified-container" class="print-only-container">
+            <div class="print-details-col left-col">
                 <div class="flex"><p class="label" style="min-width: 80px;">Company Name:</p><p class="value font-bold">${contractInfo.payor}</p></div>
                 <div class="flex"><p class="label" style="min-width: 80px;">Department:</p><p class="value">${printFields.department}</p></div>
                 <div class="flex"><p class="label" style="min-width: 80px;">Section:</p><p class="value">${printFields.section}</p></div>
@@ -3734,15 +3734,20 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
                 <div class="flex"><p class="label" style="min-width: 80px;">Subject:</p><p class="value font-bold">Duty Detail Order</p></div>
                 <div class="flex"><p class="label" style="min-width: 80px;">To:</p><p class="value">${printFields.to}</p></div>
             </div>
-
-            <div style="margin-top: 5px; margin-bottom: 10px; margin-left: 10px; font-size: 0.55rem; color: black; line-height: 1.2;">
-                <p><strong>1. References:</strong></p>
-                <div style="padding-left: 15px;">
-                    ${formattedRefs} </div>
-                <p style="margin-top: 5px;"><strong>2. Purpose:</strong> Post Security Services Duties</p>
-                <p style="margin-top: 5px;"><strong>3. Inclusive Dates:</strong> ${planPeriodDisplay}</p>
-                <p style="margin-top: 5px;"><strong>4.</strong> The Following named Security Guards (SGs) are detailed to render security service duties on place/s indicated in the table below:</p>
+            <div class="print-details-col right-col">
+                <div class="flex"><p class="label">Prop / Grp. Code</p><p class="value">${contractInfo.propOrGrpCode}</p></div>
+                <div class="flex"><p class="label">Sector</p><p class="value">${contractInfo.sector}</p></div>
+                <div class="flex"><p class="label">Service Type</p><p class="value">${contractInfo.serviceType}</p></div>
             </div>
+        </div>
+
+        <div id="security-text-container" class="print-only-container" style="display: block !important; margin-top: 5px; margin-bottom: 10px; margin-left: 10px; font-size: 0.55rem; color: black; line-height: 1.2;">
+            <p><strong>1. References:</strong></p>
+            <div style="padding-left: 15px;">
+                ${formattedRefs} </div>
+            <p style="margin-top: 5px;"><strong>2. Purpose:</strong> Post Security Services Duties</p>
+            <p style="margin-top: 5px;"><strong>3. Inclusive Dates:</strong> ${planPeriodDisplay}</p>
+            <p style="margin-top: 5px;"><strong>4.</strong> The Following named Security Guards (SGs) are detailed to render security service duties on place/s indicated in the table below:</p>
         </div>
         `;
     } else {
@@ -3871,7 +3876,8 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             const elementsToRemove = [
                 'print-details-unified-container', 
                 'print-signatories-container', 
-                'print-supporting-docs-container' 
+                'print-supporting-docs-container',
+                'security-text-container' 
             ];
             
             elementsToRemove.forEach(id => {
@@ -5250,7 +5256,8 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
 
         /* D. HIDE UI ELEMENTS */
         #full-screen-overlay, #loading-alert, .print-hidden, #notification-area, 
-        #print-confirm-modal, #print-selection-modal, #print-setup-modal {
+        #print-confirm-modal, #print-selection-modal, #print-setup-modal, 
+        #ui-datepicker-div, .ui-datepicker { 
             display: none !important;
         }
     </style>
