@@ -1280,13 +1280,19 @@ function handleAttendanceData(data) {
 
   function renderAttendancePlan() {
     if (!currentContract) return;
+    const bulkSelectBtn = document.getElementById('start-bulk-select-btn');
 
     if (currentContract.serviceType === 'SECURITY SERVICES') {
+        if (bulkSelectBtn) {
+            bulkSelectBtn.classList.add('hidden');
+        }
         renderSecurityPlan();
     } else {
+        if (bulkSelectBtn) {
+            bulkSelectBtn.classList.remove('hidden');
+        }
         renderStandardPlan();
-    }
-    
+    } 
   }
 
   function renderStandardPlan() {
