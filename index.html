@@ -250,25 +250,58 @@ text-gray-700 mb-3">Select Contract Group ID:</p>
 
 <div id="floating-bulk-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
     <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg">
-        <h3 class="text-xl font-bold mb-4">Apply Bulk Schedule/Status</h3>
-        <p class="text-sm text-gray-600 mb-4">Applying status/schedule to <span id="bulk-cell-count" class="font-bold text-blue-600">0</span> selected cells.</p>
+        <h3 class="text-xl font-bold mb-4">Apply Bulk Details</h3>
+        <p class="text-sm text-gray-600 mb-4">Applying data to <span id="bulk-cell-count" class="font-bold text-blue-600">0</span> selected items.</p>
 
-        <div id="bulk-fixed-status-options-container" class="grid grid-cols-2 gap-2 mb-4">
+        <div id="standard-bulk-fields">
+            <div id="bulk-fixed-status-options-container" class="grid grid-cols-2 gap-2 mb-4">
+                </div>
+            <div class="border-t pt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Work Schedule (Start - End Time):</label>
+                <div class="flex space-x-2 items-center">
+                    <select id="bulk-start-time" class="w-full p-2 border rounded-lg focus:ring-blue-500"></select>
+                    <span class="text-lg font-bold">-</span>
+                    <select id="bulk-end-time" class="w-full p-2 border rounded-lg focus:ring-blue-500"></select>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Leave blank to clear schedule or use fixed status buttons.</p>
             </div>
+        </div>
 
-        <div class="border-t pt-4">
-            <label for="bulk-start-time" class="block text-sm font-medium text-gray-700 mb-1">Work Schedule (Start - End Time):</label>
-            <div class="flex space-x-2 items-center">
-                <select id="bulk-start-time" class="w-full p-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></select>
-                <span class="text-lg font-bold">-</span>
-                <select id="bulk-end-time" class="w-full p-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></select>
-            </div>
-            <p class="text-xs text-gray-500 mt-1">Leave blank to apply a fixed status (RD/RH/SH) or to clear schedule.</p>
+        <div id="security-bulk-fields" class="hidden space-y-3 border-t pt-2">
+             <p class="text-xs font-bold text-blue-600 uppercase tracking-wide">Security Details Update</p>
+             
+             <div>
+                <label class="block text-xs font-bold text-gray-700">Time of Shift:</label>
+                <select id="bulk-sec-time-shift" class="w-full p-2 border border-gray-300 rounded text-sm bg-gray-50 focus:ring-blue-500">
+                    </select>
+             </div>
+
+             <div class="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded border">
+                <div class="col-span-2 text-xs font-bold text-gray-500 uppercase border-b pb-1 mb-1">Firearm Nomenclature</div>
+                
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-500">Type</label>
+                    <input type="text" id="bulk-sec-fa-type" list="security-type-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. PISTOL">
+                </div>
+                 <div>
+                    <label class="block text-[10px] font-bold text-gray-500">Make</label>
+                    <input type="text" id="bulk-sec-fa-make" list="security-make-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. GLOCK">
+                </div>
+                 <div>
+                    <label class="block text-[10px] font-bold text-gray-500">Caliber</label>
+                    <input type="text" id="bulk-sec-fa-caliber" list="security-caliber-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. 9MM">
+                </div>
+                 <div>
+                    <label class="block text-[10px] font-bold text-gray-500">Serial No.</label>
+                    <input type="text" id="bulk-sec-fa-serial" list="security-serial-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="Serial #">
+                </div>
+             </div>
+             <p class="text-xs text-orange-600 italic mt-2">* Leave fields blank if you don't want to update them.</p>
         </div>
 
         <div class="flex justify-end space-x-3 mt-6">
             <button id="bulk-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-            <button id="bulk-save-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed">Apply Schedule</button>
+            <button id="bulk-save-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Apply Changes</button>
         </div>
     </div>
 </div>
