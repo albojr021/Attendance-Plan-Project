@@ -1280,19 +1280,17 @@ function handleAttendanceData(data) {
 
   function renderAttendancePlan() {
     if (!currentContract) return;
+
     const bulkSelectBtn = document.getElementById('start-bulk-select-btn');
+    if (bulkSelectBtn) {
+        bulkSelectBtn.classList.remove('hidden');
+    }
 
     if (currentContract.serviceType === 'SECURITY SERVICES') {
-        if (bulkSelectBtn) {
-            bulkSelectBtn.classList.add('hidden');
-        }
         renderSecurityPlan();
     } else {
-        if (bulkSelectBtn) {
-            bulkSelectBtn.classList.remove('hidden');
-        }
         renderStandardPlan();
-    } 
+    }
   }
 
   function renderStandardPlan() {
@@ -1909,7 +1907,7 @@ function handleAttendanceData(data) {
 
         // 5. Time of Shift (ONLY THIS CELL IS COLORED)
         td = tr.insertCell();
-        td.className = 'p-1 border border-gray-400 relative';
+        td.className = 'p-1 border border-gray-400 relative security-bulk-cell';
         
         if (currentShiftTime) {
             td.style.setProperty('background-color', cellBackgroundColor, 'important');
@@ -1963,19 +1961,19 @@ function handleAttendanceData(data) {
         };
 
         // 6. FA Type
-        td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
         td.appendChild(createSecInput('PISTOL', 'faType', secDetails?.faType, 'security-type-list'));
 
         // 7. FA Make
-        td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
         td.appendChild(createSecInput('', 'faMake', secDetails?.faMake, 'security-make-list'));
 
         // 8. FA Caliber
-        td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
         td.appendChild(createSecInput('', 'faCaliber', secDetails?.faCaliber, 'security-caliber-list'));
 
         // 9. FA Serial
-        td = tr.insertCell(); td.className = 'p-1 border border-gray-400';
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
         td.appendChild(createSecInput('', 'faSerial', secDetails?.faSerial, 'security-serial-list'));
 
         // 10. Validity
@@ -4094,28 +4092,38 @@ function handleDragEnd(event) {
 // Function to start the bulk selection process
 function startBulkSelectionMode() {
     if (isBulkSelectionMode) return; 
-
     isBulkSelectionMode = true;
     bulkSelectedCells = []; 
 
-    document.querySelectorAll('.cell-container').forEach(cell => {
-        cell.removeEventListener('click', handleCellClick);
+    const isSecurity = currentContract.serviceType === 'SECURITY SERVICES';
+
+    if (isSecurity) {
+        document.querySelectorAll('.security-bulk-cell input, .security-bulk-cell select').forEach(el => {
+            el.classList.add('pointer-events-none'); 
+        });
         
-        const row = cell.closest('tr');
-        const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
+        document.querySelectorAll('.security-bulk-cell').forEach(cell => {
+             cell.classList.add('cursor-crosshair');
+             cell.addEventListener('click', handleCellSelectionClick);
+        });
+    } else {
+        // STANDARD LOGIC
+        document.querySelectorAll('.cell-container').forEach(cell => {
+            cell.removeEventListener('click', handleCellClick);
+            const row = cell.closest('tr');
+            if (!row.classList.contains('line-through') && !row.classList.contains('locked-row')) {
+                cell.addEventListener('click', handleCellSelectionClick); 
+                cell.classList.add('cursor-crosshair'); 
+            }
+            cell.classList.remove('cell-selected'); 
+        });
         
-        if (!isCellLocked) {
-           cell.removeEventListener('click', handleCellSelectionClick); 
-           cell.classList.add('cursor-crosshair'); 
-        }
-        cell.classList.remove('cell-selected'); 
-    });
-    
-    const gridContainer = document.getElementById('attendance-grid');
-    if (gridContainer) {
-        gridContainer.addEventListener('mousedown', handleDragStart, false); 
+        // Drag Logic for Standard only
+        const gridContainer = document.getElementById('attendance-grid');
+        if (gridContainer) gridContainer.addEventListener('mousedown', handleDragStart, false); 
     }
     
+    // Update Button UI
     const bulkBtn = document.getElementById('start-bulk-select-btn');
     bulkBtn.textContent = 'Apply Selection';
     bulkBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
@@ -4123,34 +4131,43 @@ function startBulkSelectionMode() {
     bulkBtn.removeEventListener('click', startBulkSelectionMode); 
     bulkBtn.addEventListener('click', openBulkScheduleModal); 
 
-    showNotification('Bulk Selection Mode: Click cells to toggle selection, or Drag to select a range.', true);
+    showNotification('Bulk Selection Mode: Click cells/rows to select.', true);
 }
 
 // Function to return to normal mode (called after save or cancel)
 function exitBulkSelectionMode() {
     isBulkSelectionMode = false;
-    
-    document.querySelectorAll('.cell-container').forEach(cell => {
-        cell.removeEventListener('click', handleCellSelectionClick);
-        
-        const row = cell.closest('tr');
-        const isCellLocked = row.classList.contains('line-through') || row.classList.contains('locked-row');
-        if (!isCellLocked) {
-           cell.addEventListener('click', handleCellClick); 
-        }
-        cell.classList.remove('cell-selected', 'cursor-crosshair');
-    });
+    const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
+
+    if (isSecurity) {
+         // SECURITY CLEANUP: Re-enable inputs
+         document.querySelectorAll('.security-bulk-cell input, .security-bulk-cell select').forEach(el => {
+            el.classList.remove('pointer-events-none'); 
+        });
+         document.querySelectorAll('.security-bulk-cell').forEach(cell => {
+             cell.classList.remove('cursor-crosshair', 'cell-selected');
+             cell.removeEventListener('click', handleCellSelectionClick);
+        });
+    } else {
+        // STANDARD CLEANUP
+        document.querySelectorAll('.cell-container').forEach(cell => {
+            cell.removeEventListener('click', handleCellSelectionClick);
+            const row = cell.closest('tr');
+            if (!row.classList.contains('line-through') && !row.classList.contains('locked-row')) {
+               cell.addEventListener('click', handleCellClick); 
+            }
+            cell.classList.remove('cell-selected', 'cursor-crosshair');
+        });
+        const gridContainer = document.getElementById('attendance-grid');
+        if (gridContainer) gridContainer.removeEventListener('mousedown', handleDragStart, false); 
+        document.removeEventListener('mousemove', handleDragging);
+        document.removeEventListener('mouseup', handleDragEnd); 
+    }
     
     bulkSelectedCells = [];
     cellsFromCurrentDrag = []; 
     document.getElementById('bulk-cell-count').textContent = '0';
-    
-    const gridContainer = document.getElementById('attendance-grid');
-    if (gridContainer) {
-        gridContainer.removeEventListener('mousedown', handleDragStart, false); 
-    }
-    document.removeEventListener('mousemove', handleDragging);
-    document.removeEventListener('mouseup', handleDragEnd); 
+    document.getElementById('floating-bulk-modal').classList.add('hidden');
     
     const bulkBtn = document.getElementById('start-bulk-select-btn');
     bulkBtn.textContent = 'Start Bulk Select';
@@ -4158,8 +4175,6 @@ function exitBulkSelectionMode() {
     bulkBtn.classList.add('bg-yellow-600', 'hover:bg-yellow-700');
     bulkBtn.removeEventListener('click', openBulkScheduleModal); 
     bulkBtn.addEventListener('click', startBulkSelectionMode); 
-
-    document.getElementById('floating-bulk-modal').classList.add('hidden');
 
     showNotification('Bulk Selection Mode ended.', false);
 }
@@ -4205,113 +4220,195 @@ function handleCellSelectionClick(event) {
 // Function to open the Bulk Modal
 function openBulkScheduleModal() {
     if (bulkSelectedCells.length === 0) {
-        showNotification('Please select at least one cell first.', false);
+        showNotification('Please select at least one cell/row first.', false);
         return;
     }
     
     const modal = document.getElementById('floating-bulk-modal');
-    const inputStartTime = document.getElementById('bulk-start-time');
-    const inputEndTime = document.getElementById('bulk-end-time');
-    const fixedOptionsContainer = document.getElementById('bulk-fixed-status-options-container');
-
-    fixedOptionsContainer.innerHTML = '';
-    fixedStatusOptions.forEach(option => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = option.label;
-        button.value = option.value;
-        button.className = `w-full px-4 py-2 text-sm rounded-lg border hover:shadow-md transition duration-150 ${option.color} bg-opacity-50 border-gray-300`;
-        button.addEventListener('click', (e) => saveBulkSchedule(e, option.value)); 
-        fixedOptionsContainer.appendChild(button);
-    });
+    const isSecurity = currentContract.serviceType === 'SECURITY SERVICES';
     
-    inputStartTime.innerHTML = '<option value="">-- Start Time --</option>';
-    inputEndTime.innerHTML = '<option value="">-- End Time --</option>';
+    const stdFields = document.getElementById('standard-bulk-fields');
+    const secFields = document.getElementById('security-bulk-fields');
 
-    TIME_OPTIONS.forEach(time => {
-        let optionStart = document.createElement('option');
-        optionStart.value = time;
-        optionStart.textContent = time;
-        inputStartTime.appendChild(optionStart);
+    if (isSecurity) {
+        // SHOW SECURITY FIELDS
+        stdFields.classList.add('hidden');
+        secFields.classList.remove('hidden');
+
+        // Populate Security Time Dropdown
+        const timeSelect = document.getElementById('bulk-sec-time-shift');
+        timeSelect.innerHTML = '<option value="">-- No Change --</option>';
         
-        let optionEnd = document.createElement('option');
-        optionEnd.value = time;
-        optionEnd.textContent = time;
-        inputEndTime.appendChild(optionEnd);
-    });
-    
-    inputStartTime.value = '';
-    inputEndTime.value = '';
+        for (let h = 0; h < 24; h++) {
+            for (let m = 0; m < 60; m += 30) {
+                const startH = String(h).padStart(2, '0');
+                const startM = String(m).padStart(2, '0');
+                let endVal = (h + 12) % 24; 
+                let endH = endVal === 0 ? "24" : String(endVal).padStart(2, '0');
+                const shiftStr = `${startH}:${startM} - ${endH}:${startM}`;
+                const opt = document.createElement('option');
+                opt.value = shiftStr; opt.text = shiftStr;
+                timeSelect.appendChild(opt);
+            }
+        }
+        
+        // Clear other inputs
+        document.getElementById('bulk-sec-fa-type').value = '';
+        document.getElementById('bulk-sec-fa-make').value = '';
+        document.getElementById('bulk-sec-fa-caliber').value = '';
+        document.getElementById('bulk-sec-fa-serial').value = '';
+
+    } else {
+        // SHOW STANDARD FIELDS
+        stdFields.classList.remove('hidden');
+        secFields.classList.add('hidden');
+
+        // Populate Standard Time Options
+        const inputStartTime = document.getElementById('bulk-start-time');
+        const inputEndTime = document.getElementById('bulk-end-time');
+        const fixedOptionsContainer = document.getElementById('bulk-fixed-status-options-container');
+
+        fixedOptionsContainer.innerHTML = '';
+        fixedStatusOptions.forEach(option => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = option.label;
+            button.value = option.value;
+            button.className = `w-full px-4 py-2 text-sm rounded-lg border hover:shadow-md transition duration-150 ${option.color} bg-opacity-50 border-gray-300`;
+            button.addEventListener('click', (e) => saveBulkSchedule(e, option.value)); 
+            fixedOptionsContainer.appendChild(button);
+        });
+        
+        inputStartTime.innerHTML = '<option value="">-- Start Time --</option>';
+        inputEndTime.innerHTML = '<option value="">-- End Time --</option>';
+
+        TIME_OPTIONS.forEach(time => {
+            let optionStart = document.createElement('option');
+            optionStart.value = time; optionStart.textContent = time;
+            inputStartTime.appendChild(optionStart);
+            let optionEnd = document.createElement('option');
+            optionEnd.value = time; optionEnd.textContent = time;
+            inputEndTime.appendChild(optionEnd);
+        });
+        inputStartTime.value = ''; inputEndTime.value = '';
+    }
 
     document.getElementById('bulk-cell-count').textContent = bulkSelectedCells.length;
     modal.classList.remove('hidden');
-    document.getElementById('bulk-save-btn').disabled = bulkSelectedCells.length === 0;
+    document.getElementById('bulk-save-btn').disabled = false;
 }
 
 // Function to save the schedule to all selected cells
 function saveBulkSchedule(event, fixedStatusValue) {
     document.getElementById('floating-bulk-modal').classList.add('hidden');
-    
-    let finalStatus = '';
-    
-    if (event.type === 'click' && fixedStatusValue !== null) {
-        finalStatus = fixedStatusValue;
+    const isSecurity = currentContract.serviceType === 'SECURITY SERVICES';
+
+    if (isSecurity) {
+        // === SECURITY BULK SAVE LOGIC ===
+        const newTime = document.getElementById('bulk-sec-time-shift').value;
+        const newType = document.getElementById('bulk-sec-fa-type').value.toUpperCase().trim();
+        const newMake = document.getElementById('bulk-sec-fa-make').value.toUpperCase().trim();
+        const newCal = document.getElementById('bulk-sec-fa-caliber').value.toUpperCase().trim();
+        const newSerial = document.getElementById('bulk-sec-fa-serial').value.toUpperCase().trim();
+        
+        let appliedCount = 0;
+        const processedRows = new Set(); // To avoid double updates if multiple cells in same row selected
+
+        bulkSelectedCells.forEach(cell => {
+            const row = cell.closest('tr');
+            const stableKey = row.dataset.stableKey;
+            
+            if (processedRows.has(stableKey)) return;
+            if (row.classList.contains('line-through') || row.classList.contains('locked-row')) return;
+
+            // Update function
+            const setVal = (selector, val) => {
+                const input = row.querySelector(selector);
+                if (input && val !== '') { 
+                    input.value = val;
+                    // Trigger Change Event
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    
+                    // Update Time Shift Color immediately (Visual feedback)
+                    if (selector.includes('timeOfShift')) {
+                        const td = input.closest('td');
+                        const shiftColors = ['#e0f2fe', '#dcfce7', '#fff7ed', '#f3e8ff', '#fae8ff', '#f1f5f9'];
+                        // (Optional: Simple hardcoded color for now or reuse your color map logic)
+                        td.style.backgroundColor = '#dcfce7'; 
+                        td.classList.add('shift-colored-cell');
+                    }
+                }
+            };
+
+            setVal('[data-security-field="timeOfShift"]', newTime);
+            setVal('[data-security-field="faType"]', newType);
+            setVal('[data-security-field="faMake"]', newMake);
+            setVal('[data-security-field="faCaliber"]', newCal);
+            setVal('[data-security-field="faSerial"]', newSerial);
+
+            processedRows.add(stableKey);
+            appliedCount++;
+        });
+
+        showNotification(`Security details updated for ${appliedCount} guards. Click "Save All Changes" to save.`, true);
+
     } else {
-        const inputStartTime = document.getElementById('bulk-start-time').value.trim();
-        const inputEndTime = document.getElementById('bulk-end-time').value.trim();
-
-        if (inputStartTime && inputEndTime) {
-            finalStatus = `${inputStartTime}-${inputEndTime}`;
-        } else if (inputStartTime || inputEndTime) {
-             showNotification('Please select both start and end times, or use the fixed status buttons.', false); 
-             setTimeout(openBulkScheduleModal, 100); 
-             return;
+        // === STANDARD BULK SAVE LOGIC ===
+        let finalStatus = '';
+        
+        if (event.type === 'click' && fixedStatusValue !== null) {
+            finalStatus = fixedStatusValue;
         } else {
-            finalStatus = '';
+            const inputStartTime = document.getElementById('bulk-start-time').value.trim();
+            const inputEndTime = document.getElementById('bulk-end-time').value.trim();
+
+            if (inputStartTime && inputEndTime) {
+                finalStatus = `${inputStartTime}-${inputEndTime}`;
+            } else if (inputStartTime || inputEndTime) {
+                showNotification('Please select both start and end times, or use the fixed status buttons.', false); 
+                setTimeout(openBulkScheduleModal, 100); 
+                return;
+            } else {
+                finalStatus = '';
+            }
         }
+        
+        if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
+            if (finalStatus.length !== 11 || finalStatus.charAt(5) !== '-') {
+                showNotification('Invalid schedule format detected.', false);
+                setTimeout(openBulkScheduleModal, 100); 
+                return;
+            }
+        }
+        
+        let changesAppliedCount = 0;
+        bulkSelectedCells.forEach(cellElement => {
+            const row = cellElement.closest('tr');
+            const idInput = row.querySelector('[data-field="id"]');
+            const personnelId = (idInput?.value || '').trim();
+            const originalId = cellElement.dataset.originalId; 
+            const dayKey = cellElement.dataset.dayKey;
+            const shiftKey = cellElement.dataset.shiftKey;
+            
+            if (lockedIdRefMap[originalId]) return;
+            if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) return; 
+
+            const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
+            const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
+            const originalStatus = currentContract.planMap[originalPlanKey] || '';
+            
+            if (originalStatus !== finalStatus) {
+                pendingAttendanceChanges[currentPlanKey] = finalStatus; 
+            } else {
+                delete pendingAttendanceChanges[currentPlanKey];
+            }
+            updateCellVisuals(cellElement, finalStatus, dayKey);
+            changesAppliedCount++;
+        });
+        showNotification(`Bulk schedule applied to ${changesAppliedCount} cells. Click "Save All Changes" to save.`, true);
     }
-    
-    if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
-        if (finalStatus.length !== 11 || finalStatus.charAt(5) !== '-') {
-             showNotification('Invalid schedule format detected.', false);
-             setTimeout(openBulkScheduleModal, 100); 
-             return;
-        }
-    }
-    
-    let changesAppliedCount = 0;
 
-    bulkSelectedCells.forEach(cellElement => {
-        const row = cellElement.closest('tr');
-        const idInput = row.querySelector('[data-field="id"]');
-        const personnelId = (idInput?.value || '').trim();
-        
-        const originalId = cellElement.dataset.originalId; 
-        const dayKey = cellElement.dataset.dayKey;
-        const shiftKey = cellElement.dataset.shiftKey;
-        
-        if (lockedIdRefMap[originalId]) return;
-        
-        if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) return; 
-
-        const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
-        const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
-
-        const originalStatus = currentContract.planMap[originalPlanKey] || '';
-        
-        if (originalStatus !== finalStatus) {
-            pendingAttendanceChanges[currentPlanKey] = finalStatus; 
-        } else {
-            delete pendingAttendanceChanges[currentPlanKey];
-        }
-        
-        updateCellVisuals(cellElement, finalStatus, dayKey);
-        changesAppliedCount++;
-    });
-    
     exitBulkSelectionMode();
-    showNotification(`Bulk schedule applied to ${changesAppliedCount} cells. Click "Save All Changes" to save to Sheets.`, true);
-    
     checkPlanSheetLockState(); 
 }
 
