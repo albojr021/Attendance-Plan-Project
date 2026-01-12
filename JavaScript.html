@@ -3945,12 +3945,13 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
 
 // --- NEW HELPER: Get Cell Coordinates (Absolute row index, 0-based column index) ---
 function getCellCoordinates(cell) {
-    if (!cell || !cell.classList.contains('cell-container')) return null;
+    if (!cell) return null;
+    
+    if (!cell.classList.contains('cell-container') && !cell.classList.contains('security-bulk-cell')) return null;
     
     const row = cell.parentNode;
     const rowIndex = row.rowIndex; 
     
-    // Schedule columns start at index 5 (the 6th child)
     const colIndex = cell.cellIndex; 
     
     return { R: rowIndex, C: colIndex };
@@ -3979,14 +3980,17 @@ function visualizeAdditiveRange(startCell, endCell) {
     const C_min_target = Math.min(startCoords.C, endCoords.C);
     const C_max_target = Math.max(startCoords.C, endCoords.C);
     
-    // UPDATED: Schedule columns start at index 5
-    const DATE_COL_START_INDEX = 5; 
+    const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
+    const COL_START_INDEX = isSecurity ? 4 : 5; 
     
-    const C_min = Math.max(DATE_COL_START_INDEX, C_min_target);
-    const C_max = Math.max(DATE_COL_START_INDEX, C_max_target);
+    const C_min = Math.max(COL_START_INDEX, C_min_target);
+    const C_max = Math.max(COL_START_INDEX, C_max_target);
 
-    const allCells = Array.from(table.querySelectorAll('td.cell-container'));
+    // Select appropriate cells based on type
+    const cellSelector = isSecurity ? 'td.security-bulk-cell' : 'td.cell-container';
+    const allCells = Array.from(table.querySelectorAll(cellSelector));
 
+    // Clear previous drag selection NOT in main selection
     cellsFromCurrentDrag.forEach(cell => {
         if (!bulkSelectedCells.includes(cell)) {
              cell.classList.remove('cell-selected');
@@ -4010,7 +4014,6 @@ function visualizeAdditiveRange(startCell, endCell) {
 
         if (isInRange && !isLocked) {
              cell.classList.add('cell-selected'); 
-             
              cellsFromCurrentDrag.push(cell);
         }
     });
@@ -4023,7 +4026,8 @@ function visualizeAdditiveRange(startCell, endCell) {
 function handleDragStart(event) {
     if (!isBulkSelectionMode || event.button !== 0) return; 
 
-    const targetCell = event.target.closest('.cell-container');
+    // Allow dragging on both cell-container (Standard) and security-bulk-cell (Security)
+    const targetCell = event.target.closest('.cell-container, .security-bulk-cell');
     if (!targetCell) return;
     
     const row = targetCell.closest('tr');
@@ -4051,7 +4055,7 @@ function handleDragStart(event) {
 function handleDragging(event) {
     if (!isDragging) return;
     
-    const currentCell = event.target.closest('.cell-container');
+    const currentCell = event.target.closest('.cell-container, .security-bulk-cell');
     
     if (!currentCell || currentCell.closest('tr').classList.contains('line-through') || currentCell.closest('tr').classList.contains('locked-row')) {
         return;
@@ -4098,6 +4102,7 @@ function startBulkSelectionMode() {
     const isSecurity = currentContract.serviceType === 'SECURITY SERVICES';
 
     if (isSecurity) {
+        // SECURITY LOGIC
         document.querySelectorAll('.security-bulk-cell input, .security-bulk-cell select').forEach(el => {
             el.classList.add('pointer-events-none'); 
         });
@@ -4117,11 +4122,11 @@ function startBulkSelectionMode() {
             }
             cell.classList.remove('cell-selected'); 
         });
-        
-        // Drag Logic for Standard only
-        const gridContainer = document.getElementById('attendance-grid');
-        if (gridContainer) gridContainer.addEventListener('mousedown', handleDragStart, false); 
     }
+    
+    // ENABLE DRAG FOR BOTH MODES
+    const gridContainer = document.getElementById('attendance-grid');
+    if (gridContainer) gridContainer.addEventListener('mousedown', handleDragStart, false); 
     
     // Update Button UI
     const bulkBtn = document.getElementById('start-bulk-select-btn');
@@ -4131,7 +4136,7 @@ function startBulkSelectionMode() {
     bulkBtn.removeEventListener('click', startBulkSelectionMode); 
     bulkBtn.addEventListener('click', openBulkScheduleModal); 
 
-    showNotification('Bulk Selection Mode: Click cells/rows to select.', true);
+    showNotification('Bulk Selection Mode: Click or Drag to select cells/rows.', true);
 }
 
 // Function to return to normal mode (called after save or cancel)
@@ -4158,11 +4163,13 @@ function exitBulkSelectionMode() {
             }
             cell.classList.remove('cell-selected', 'cursor-crosshair');
         });
-        const gridContainer = document.getElementById('attendance-grid');
-        if (gridContainer) gridContainer.removeEventListener('mousedown', handleDragStart, false); 
-        document.removeEventListener('mousemove', handleDragging);
-        document.removeEventListener('mouseup', handleDragEnd); 
     }
+    
+    // CLEANUP DRAG LISTENERS FOR BOTH
+    const gridContainer = document.getElementById('attendance-grid');
+    if (gridContainer) gridContainer.removeEventListener('mousedown', handleDragStart, false); 
+    document.removeEventListener('mousemove', handleDragging);
+    document.removeEventListener('mouseup', handleDragEnd); 
     
     bulkSelectedCells = [];
     cellsFromCurrentDrag = []; 
