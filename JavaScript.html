@@ -71,13 +71,15 @@
   
   // GLOBAL STATE FOR PRINT FIELDS
   let printFieldMasterData = { sections: [], departments: [], remarks: [] }; 
+  const DEFAULT_SECURITY_REFERENCES = "a. Section 4, Rule VII of them 2013 Revised Implementing Rules and Regulations of RA 11917, as amended and,\nb. RA 10591, Comprehensive Firearms and Ammunition and Regulation Act";
   let selectedPrintFields = {
       subProperty: '',
       section: '',
       department: '',
       remarks: '',
       serialNo: '', 
-      to: ''   
+      to: '',
+      references: ''   
   };
 
   const fixedStatusOptions = [
@@ -3430,23 +3432,30 @@ function openPrintSetupModal() {
       const sectionInput = document.getElementById('section-input');
       const departmentInput = document.getElementById('department-input');
       const remarksInput = document.getElementById('remarks-input');
-      const serialNoInput = document.getElementById('serial-no-input'); // NEW
-      const toInput = document.getElementById('to-input');             // NEW
+      const serialNoInput = document.getElementById('serial-no-input'); 
+      const toInput = document.getElementById('to-input');
+      const referencesInput = document.getElementById('security-references-input');              
       
       subPropertyInput.value = selectedPrintFields.subProperty;
       sectionInput.value = selectedPrintFields.section;
       departmentInput.value = selectedPrintFields.department;
       remarksInput.value = selectedPrintFields.remarks;
-      serialNoInput.value = selectedPrintFields.serialNo; // NEW
-      toInput.value = selectedPrintFields.to;             // NEW
+      serialNoInput.value = selectedPrintFields.serialNo;
+      toInput.value = selectedPrintFields.to;
+
+      if (!selectedPrintFields.references) {
+          selectedPrintFields.references = DEFAULT_SECURITY_REFERENCES;
+      }
+      referencesInput.value = selectedPrintFields.references;             
 
       // Attach listeners
       subPropertyInput.oninput = (e) => handlePrintFieldInputChange(e, 'subProperty');
       sectionInput.oninput = (e) => handlePrintFieldInputChange(e, 'section');
       departmentInput.oninput = (e) => handlePrintFieldInputChange(e, 'department');
       remarksInput.oninput = (e) => handlePrintFieldInputChange(e, 'remarks');
-      serialNoInput.oninput = (e) => handlePrintFieldInputChange(e, 'serialNo'); // NEW
-      toInput.oninput = (e) => handlePrintFieldInputChange(e, 'to');             // NEW
+      serialNoInput.oninput = (e) => handlePrintFieldInputChange(e, 'serialNo'); 
+      toInput.oninput = (e) => handlePrintFieldInputChange(e, 'to');
+      referencesInput.oninput = (e) => handlePrintFieldInputChange(e, 'references');             
       
       remarksInput.addEventListener('input', filterDatalistOptions);
 
@@ -3462,6 +3471,11 @@ function openPrintSetupModal() {
 
 // NEW: Handle Print Field Input Change (Validation and State Update)
 function handlePrintFieldInputChange(event, field) {
+    if (field === 'references') {
+        selectedPrintFields.references = event.target.value;
+        return; 
+    }
+
     let newValue = event.target.value.toUpperCase(); 
     event.target.value = newValue; 
 
@@ -3469,8 +3483,8 @@ function handlePrintFieldInputChange(event, field) {
     else if (field === 'section') selectedPrintFields.section = newValue.trim();
     else if (field === 'department') selectedPrintFields.department = newValue.trim();
     else if (field === 'remarks') selectedPrintFields.remarks = newValue.trim();
-    else if (field === 'serialNo') selectedPrintFields.serialNo = newValue.trim(); // NEW
-    else if (field === 'to') selectedPrintFields.to = newValue.trim();             // NEW
+    else if (field === 'serialNo') selectedPrintFields.serialNo = newValue.trim(); 
+    else if (field === 'to') selectedPrintFields.to = newValue.trim();             
   }
 
 function hidePrintSetupModal() {
@@ -3528,6 +3542,7 @@ function handlePrintSetupConfirm(event) {
       selectedPrintFields.remarks = remarks;
       selectedPrintFields.serialNo = serialNo;
       selectedPrintFields.to = toField;
+      selectedPrintFields.references = document.getElementById('security-references-input').value;
 
       const signatoryError = validateAllSignatories();
       if (signatoryError) {
@@ -3704,6 +3719,9 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     let headerHtml = '';
 
     if (contractInfo.serviceType === 'SECURITY SERVICES') {
+
+        const rawRefs = printFields.references || DEFAULT_SECURITY_REFERENCES;
+        const formattedRefs = rawRefs.split('\n').map(line => `<p>${line}</p>`).join('');
         // *** CUSTOM SECURITY HEADER ***
         headerHtml = `
         <div id="print-details-unified-container" class="print-only-container" style="display: block !important;">
@@ -3720,9 +3738,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             <div style="margin-top: 5px; margin-bottom: 10px; margin-left: 10px; font-size: 0.55rem; color: black; line-height: 1.2;">
                 <p><strong>1. References:</strong></p>
                 <div style="padding-left: 15px;">
-                    <p>a. Section 4, Rule VII of them 2013 Revised Implementing Rules and Regulations of RA 11917, as amended and,</p>
-                    <p>b. RA 10591, Comprehensive Firearms and Ammunition and Regulation Act</p>
-                </div>
+                    ${formattedRefs} </div>
                 <p style="margin-top: 5px;"><strong>2. Purpose:</strong> Post Security Services Duties</p>
                 <p style="margin-top: 5px;"><strong>3. Inclusive Dates:</strong> ${planPeriodDisplay}</p>
                 <p style="margin-top: 5px;"><strong>4.</strong> The Following named Security Guards (SGs) are detailed to render security service duties on place/s indicated in the table below:</p>
