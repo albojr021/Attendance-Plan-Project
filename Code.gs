@@ -784,6 +784,35 @@ function getSecurityFieldSuggestions() {
     };
 }
 
+function getSupplierAddress(agencyName) {
+  if (!agencyName) return '';
+  
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('dvSupplierPayee');
+    
+    if (!sheet) return '';
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return '';
+
+    const data = sheet.getRange(2, 1, lastRow - 1, 7).getValues(); 
+
+    const targetAgency = String(agencyName).trim().toUpperCase();
+    
+    const foundRow = data.find(row => String(row[2]).trim().toUpperCase() === targetAgency);
+    
+    if (foundRow) {
+      return String(foundRow[6] || '').trim(); // Return Address from Col G
+    }
+    
+    return ''; // Return empty if not found
+  } catch (e) {
+    Logger.log(`[getSupplierAddress] Error: ${e.message}`);
+    return '';
+  }
+}
+
 // ============================================================================
 // 6. ATTENDANCE PLAN READ OPERATIONS
 // ============================================================================
