@@ -3500,7 +3500,8 @@ function handlePrintSetupConfirm(event) {
 
       const section = document.getElementById('section-input').value.trim();
       const department = document.getElementById('department-input').value.trim();
-      
+      const subProperty = document.getElementById('sub-property-input').value.trim();
+
       // Validation Common Fields
       if (!section) {
           showNotification('Section is required before printing.', false);
@@ -3510,9 +3511,12 @@ function handlePrintSetupConfirm(event) {
           showNotification('Department is required before printing.', false);
           return;
       }
+      if (!subProperty) {
+          showNotification('Sub Property is required before printing.', false);
+          return;
+      }
 
       // Service Specific Validation
-      let subProperty = '';
       let remarks = '';
       let serialNo = '';
       let toField = '';
@@ -3530,13 +3534,7 @@ function handlePrintSetupConfirm(event) {
                return;
            }
       } else {
-           subProperty = document.getElementById('sub-property-input').value.trim();
            remarks = document.getElementById('remarks-input').value.trim();
-
-           if (!subProperty) {
-               showNotification('Sub Property is required before printing.', false);
-               return;
-           }
       }
       
       // Save State
@@ -3555,7 +3553,6 @@ function handlePrintSetupConfirm(event) {
       }
       
       hidePrintSetupModal();
-      // Pass all fields (some might be empty depending on type)
       triggerPrintPreparation(selectedPrintFields, bulkPrintSelected); 
   }
 
@@ -3726,11 +3723,13 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
 
         const rawRefs = printFields.references || DEFAULT_SECURITY_REFERENCES;
         const formattedRefs = rawRefs.split('\n').map(line => `<p>${line}</p>`).join('');
+        
         // *** CUSTOM SECURITY HEADER ***
         headerHtml = `
         <div id="print-details-unified-container" class="print-only-container">
             <div class="print-details-col left-col">
                 <div class="flex"><p class="label" style="min-width: 80px;">Company Name:</p><p class="value font-bold">${contractInfo.payor}</p></div>
+                <div class="flex"><p class="label" style="min-width: 80px;">Sub-Property:</p><p class="value">${printFields.subProperty}</p></div>
                 <div class="flex"><p class="label" style="min-width: 80px;">Department:</p><p class="value">${printFields.department}</p></div>
                 <div class="flex"><p class="label" style="min-width: 80px;">Section:</p><p class="value">${printFields.section}</p></div>
                 <div class="flex"><p class="label" style="min-width: 80px;">Plan Period:</p><p class="value">${planPeriodDisplay}</p></div>
