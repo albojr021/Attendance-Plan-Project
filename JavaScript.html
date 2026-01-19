@@ -3411,12 +3411,44 @@ function openPrintSetupModal() {
       if (isSecurity) {
           standardFields.classList.add('hidden');
           securityFields.classList.remove('hidden');
+          
+          const agencyNameInput = document.getElementById('agency-name-input');
+          const agencyAddressInput = document.getElementById('agency-address-input');
+          const agencyTelInput = document.getElementById('agency-tel-input');
+          const agencyEmailInput = document.getElementById('agency-email-input');
+
+          const currentAgencyName = currentContract.agency || '';
+          agencyNameInput.value = selectedPrintFields.agencyName || currentAgencyName;
+          
+          agencyTelInput.value = selectedPrintFields.agencyTel || '';
+          agencyEmailInput.value = selectedPrintFields.agencyEmail || '';
+
+          if (!selectedPrintFields.agencyAddress) {
+              agencyAddressInput.value = 'Loading address...';
+              agencyAddressInput.disabled = true;
+
+              google.script.run
+                .withSuccessHandler((address) => {
+                    agencyAddressInput.value = address;
+                    agencyAddressInput.disabled = false;
+                    // Auto-save to state
+                    selectedPrintFields.agencyAddress = address;
+                })
+                .withFailureHandler(() => {
+                    agencyAddressInput.value = '';
+                    agencyAddressInput.disabled = false;
+                })
+                .getSupplierAddress(currentAgencyName);
+          } else {
+              agencyAddressInput.value = selectedPrintFields.agencyAddress;
+          }
+
       } else {
           standardFields.classList.remove('hidden');
           securityFields.classList.add('hidden');
       }
 
-      // Populate Name and Designation/Position (Existing code)
+      // Populate Name and Designation/Position 
       document.getElementById('signatory-prepared-by').value = selectedSignatories.preparedBy.name;
       document.getElementById('signatory-prepared-by-designation').value = selectedSignatories.preparedBy.designation;
 
@@ -3452,20 +3484,27 @@ function openPrintSetupModal() {
       }
       referencesInput.value = selectedPrintFields.references;             
 
-      // Attach listeners
+      // Attach listeners (Standard)
       subPropertyInput.oninput = (e) => handlePrintFieldInputChange(e, 'subProperty');
       sectionInput.oninput = (e) => handlePrintFieldInputChange(e, 'section');
       departmentInput.oninput = (e) => handlePrintFieldInputChange(e, 'department');
       remarksInput.oninput = (e) => handlePrintFieldInputChange(e, 'remarks');
+      remarksInput.addEventListener('input', filterDatalistOptions);
+
+      // Attach listeners (Security)
       serialNoInput.oninput = (e) => handlePrintFieldInputChange(e, 'serialNo'); 
       toInput.oninput = (e) => handlePrintFieldInputChange(e, 'to');
       referencesInput.oninput = (e) => handlePrintFieldInputChange(e, 'references');             
       
-      remarksInput.addEventListener('input', filterDatalistOptions);
+      if (isSecurity) {
+          document.getElementById('agency-name-input').oninput = (e) => { selectedPrintFields.agencyName = e.target.value.toUpperCase(); };
+          document.getElementById('agency-address-input').oninput = (e) => { selectedPrintFields.agencyAddress = e.target.value; }; // Allow mixed case for address
+          document.getElementById('agency-tel-input').oninput = (e) => { selectedPrintFields.agencyTel = e.target.value; };
+          document.getElementById('agency-email-input').oninput = (e) => { selectedPrintFields.agencyEmail = e.target.value; };
+      }
 
       document.getElementById('print-setup-modal').classList.remove('hidden'); 
       
-      // Focus on the first visible input
       if (isSecurity) {
            sectionInput.focus();
       } else {
@@ -3503,20 +3542,11 @@ function handlePrintSetupConfirm(event) {
       const subProperty = document.getElementById('sub-property-input').value.trim();
 
       // Validation Common Fields
-      if (!section) {
-          showNotification('Section is required before printing.', false);
-          return;
-      }
-      if (!department) {
-          showNotification('Department is required before printing.', false);
-          return;
-      }
-      if (!subProperty) {
-          showNotification('Sub Property is required before printing.', false);
-          return;
-      }
+      if (!section) { showNotification('Section is required.', false); return; }
+      if (!department) { showNotification('Department is required.', false); return; }
+      if (!subProperty) { showNotification('Sub Property is required.', false); return; }
 
-      // Service Specific Validation
+      // Service Specific Validation & Data Capture
       let remarks = '';
       let serialNo = '';
       let toField = '';
@@ -3524,15 +3554,15 @@ function handlePrintSetupConfirm(event) {
       if (isSecurity) {
            serialNo = document.getElementById('serial-no-input').value.trim();
            toField = document.getElementById('to-input').value.trim();
+           
+           // Capture New Agency Fields explicitly to be safe
+           selectedPrintFields.agencyName = document.getElementById('agency-name-input').value.trim();
+           selectedPrintFields.agencyAddress = document.getElementById('agency-address-input').value.trim();
+           selectedPrintFields.agencyTel = document.getElementById('agency-tel-input').value.trim();
+           selectedPrintFields.agencyEmail = document.getElementById('agency-email-input').value.trim();
 
-           if (!serialNo) {
-               showNotification('Serial No. is required for Security Plan.', false);
-               return;
-           }
-           if (!toField) {
-               showNotification('To (Addressee) is required for Security Plan.', false);
-               return;
-           }
+           if (!serialNo) { showNotification('Serial No. is required.', false); return; }
+           if (!toField) { showNotification('To (Addressee) is required.', false); return; }
       } else {
            remarks = document.getElementById('remarks-input').value.trim();
       }
@@ -3659,6 +3689,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     
     const { preparedBy, approvedBy } = signatories;
     
+    // --- Date & Period Calculation ---
     const date = new Date(year, month, 1);
     const monthName = date.toLocaleString('en-US', { month: 'long' });
     const yearNum = date.getFullYear();
@@ -3676,13 +3707,15 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         year: 'numeric', month: '2-digit', day: '2-digit', 
         hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true 
     });
+    
+    // --- Timestamp Display ---
     const timestampDisplay = document.getElementById('print-timestamp-display');
     if (timestampDisplay) {
          timestampDisplay.textContent = `Printed: ${formattedTime}`;
          timestampDisplay.classList.remove('print-hidden'); 
     }
     
-    // --- Checked By Columns Logic (Existing) ---
+    // --- Checked By Columns Logic ---
     const checkedByNames = signatories.checkedBy; 
     let checkedByColumnsHtml = '';
     const maxChecked = 5; 
@@ -3716,7 +3749,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     }
     printRefElement.textContent = refNum; 
     
-    // --- HEADER INJECTION LOGIC ---
     let headerHtml = '';
 
     if (contractInfo.serviceType === 'SECURITY SERVICES') {
@@ -3724,8 +3756,28 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         const rawRefs = printFields.references || DEFAULT_SECURITY_REFERENCES;
         const formattedRefs = rawRefs.split('\n').map(line => `<p>${line}</p>`).join('');
         
-        // *** CUSTOM SECURITY HEADER ***
+        // --- PREPARE DATA ---
+        const agencyNameStr = printFields.agencyName || contractInfo.agency;
+        const agencyAddressStr = printFields.agencyAddress || ''; // Address from Modal
+        const agencyTelStr = printFields.agencyTel || '';
+        const agencyEmailStr = printFields.agencyEmail || '';
+
+        // --- BUILD OPTIONAL CONTACT LINES (Centered) ---
+        let contactDetailsHtml = '';
+        if (agencyTelStr) {
+            contactDetailsHtml += `<p style="margin: 0; font-size: 10px; text-align: center;">Telephone No: ${agencyTelStr}</p>`;
+        }
+        if (agencyEmailStr) {
+            contactDetailsHtml += `<p style="margin: 0; font-size: 10px; text-align: center;">Email Add: ${agencyEmailStr}</p>`;
+        }
+        
         headerHtml = `
+        <div id="agency-header-standalone" class="print-only-container" style="display: block; width: 100%; text-align: center; margin-bottom: 10px;">
+            <h2 style="margin: 0; font-size: 14px; font-weight: bold; text-transform: uppercase; text-align: center;">${agencyNameStr}</h2>
+            <p style="margin: 0; font-size: 10px; text-align: center;">${agencyAddressStr}</p>
+            ${contactDetailsHtml}
+        </div>
+
         <div id="print-details-unified-container" class="print-only-container">
             <div class="print-details-col left-col">
                 <div class="flex"><p class="label" style="min-width: 80px;">Company Name:</p><p class="value font-bold">${contractInfo.payor}</p></div>
@@ -3753,8 +3805,9 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             <p style="margin-top: 5px;"><strong>4.</strong> The Following named Security Guards (SGs) are detailed to render security service duties on place/s indicated in the table below:</p>
         </div>
         `;
+
     } else {
-        // *** STANDARD HEADER ***
+        // --- STANDARD HEADER  ---
         headerHtml = `
         <div id="print-details-unified-container" class="print-only-container">
             <div class="print-details-col left-col">
@@ -3775,7 +3828,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         `;
     }
 
-    // --- Signatories Injection (Existing) ---
+    // --- Signatories Injection ---
     const signatoriesOnlyHtml = `
         <div id="print-signatories-container" class="print-only-container">
             <div class="grid gap-x-4 gap-y-2 text-center print-signatories">
@@ -3794,9 +3847,8 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         </div>
     `;
 
-    // --- Supporting Documents HTML Construction ---
+    // --- Supporting Documents (Extra Page) ---
     let supportingDocsHtml = '';
-    
     if (relatedContracts && relatedContracts.length > 0) {
         const tableRows = relatedContracts.map(item => `
             <tr>
@@ -3834,24 +3886,25 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         `;
     }
 
-    // --- Injection Steps ---
+    // --- INJECTION EXECUTION ---
     const contractDetailsGrid = document.getElementById('contract-details-grid');
     
-    // Remove old elements if exists
-    ['print-details-unified-container', 'print-signatories-container', 'print-supporting-docs-container'].forEach(id => {
+    // Clean up old elements
+    ['agency-header-standalone', 'print-details-unified-container', 'print-signatories-container', 'print-supporting-docs-container', 'security-text-container'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.remove();
     });
 
     if (contractDetailsGrid) {
+        // Inject Header BEFORE the grid 
         contractDetailsGrid.insertAdjacentHTML('afterend', headerHtml);
         contractDetailsGrid.classList.add('print-hidden'); 
     } 
 
-    // Insert Signatories
+    // Inject Signatories at bottom
     document.body.insertAdjacentHTML('beforeend', signatoriesOnlyHtml);
     
-    // Insert Supporting Docs (Extra Page)
+    // Inject Supporting Docs
     if (supportingDocsHtml) {
         document.body.insertAdjacentHTML('beforeend', supportingDocsHtml);
     }
@@ -3877,6 +3930,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             
             // CLEAN UP INJECTED ELEMENTS
             const elementsToRemove = [
+                'agency-header-standalone', // Added cleanup for new header
                 'print-details-unified-container', 
                 'print-signatories-container', 
                 'print-supporting-docs-container',
