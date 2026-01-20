@@ -957,12 +957,23 @@ function handlePreviousPlanData(data) {
     const currentYear = currentPlanningDate.getFullYear();
     const currentMonth = currentPlanningDate.getMonth();
     const currentShift = document.getElementById('shift-period-select').value;
-    const daysInCurrentMonth = getDaysInMonth(currentYear, currentMonth);
 
     // Create a set of existing employee IDs in the current saved roster
     const existingEmployeeIds = new Set(currentContract.employees.map(emp => emp.id));
     let newEmployeesAdded = 0;
     let employeesSkipped = 0;
+
+    // --- SECURITY DETAILS HANDLING ---
+    if (!currentContract.securityDetails) {
+        currentContract.securityDetails = {};
+    }
+
+    // Merge previous security details into current contract's details
+    if (data.securityDetails) {
+        Object.keys(data.securityDetails).forEach(empId => {
+            currentContract.securityDetails[empId] = data.securityDetails[empId];
+        });
+    }
 
     // 3. Process Employee Roster (Apply only NON-EXISTING employees as pending changes)
     data.employees.forEach(emp => {
@@ -983,7 +994,7 @@ function handlePreviousPlanData(data) {
             position: emp.position, 
             area: emp.area,
             isNew: true, 
-            originalEmployeeId: '', // Walang existing ID na papalitan
+            originalEmployeeId: '', 
             isDeleted: false 
         };
         
@@ -994,7 +1005,12 @@ function handlePreviousPlanData(data) {
     // 6. Re-render the grid (Security or Standard)
     renderAttendancePlan();
     checkPlanSheetLockState(); 
-    showNotification(`Successfully copied ${newEmployeesAdded} new employees into the roster. (Skipped ${employeesSkipped} existing employees). Please input the schedule manually. Click "Save All Changes" to save this new plan.`, true);
+    
+    const msg = currentContract.serviceType === 'SECURITY SERVICES' 
+        ? `Copied ${newEmployeesAdded} guards (with firearms data) from previous plan.`
+        : `Successfully copied ${newEmployeesAdded} new employees into the roster.`;
+
+    showNotification(`${msg} (Skipped ${employeesSkipped} existing). Click "Save All Changes" to save.`, true);
     toggleLoading(false);
 }
 
@@ -1975,7 +1991,26 @@ function handleAttendanceData(data) {
 
         // 6. FA Type
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
-        td.appendChild(createSecInput('PISTOL', 'faType', secDetails?.faType, 'security-type-list'));
+        
+        // Create the input normally
+        const inputFaType = createSecInput('PISTOL', 'faType', secDetails?.faType, 'security-type-list');
+        
+        inputFaType.addEventListener('input', (e) => {
+            if (e.target.value.trim() === '') {
+                const row = e.target.closest('tr');
+                const dependentFields = ['faMake', 'faCaliber', 'faSerial', 'licenseValidity'];
+                
+                dependentFields.forEach(field => {
+                    const el = row.querySelector(`[data-security-field="${field}"]`);
+                    if (el) {
+                        el.value = ''; // Clear value
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+            }
+        });
+        
+        td.appendChild(inputFaType);
 
         // 7. FA Make
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
