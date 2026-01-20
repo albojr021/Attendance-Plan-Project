@@ -1992,22 +1992,21 @@ function handleAttendanceData(data) {
         // 6. FA Type
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
         
-        // Create the input normally
         const inputFaType = createSecInput('PISTOL', 'faType', secDetails?.faType, 'security-type-list');
         
         inputFaType.addEventListener('input', (e) => {
             if (e.target.value.trim() === '') {
                 const row = e.target.closest('tr');
                 const dependentFields = ['faMake', 'faCaliber', 'faSerial', 'licenseValidity'];
-                
                 dependentFields.forEach(field => {
                     const el = row.querySelector(`[data-security-field="${field}"]`);
                     if (el) {
-                        el.value = ''; // Clear value
+                        el.value = ''; 
                         el.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 });
             }
+            updateFirearmDependentFields(e.target.closest('tr'));
         });
         
         td.appendChild(inputFaType);
@@ -2021,7 +2020,7 @@ function handleAttendanceData(data) {
         td.appendChild(createSecInput('', 'faCaliber', secDetails?.faCaliber, 'security-caliber-list'));
 
         // 9. FA Serial
-        td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
+        td = tr.insertCell(); td.className = 'p-1 border border-gray-400'; 
         td.appendChild(createSecInput('', 'faSerial', secDetails?.faSerial, 'security-serial-list'));
 
         // 10. Validity
@@ -2040,12 +2039,14 @@ function handleAttendanceData(data) {
         if (secDetails?.licenseValidity) inputValid.value = secDetails.licenseValidity;
         inputValid.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
         td.appendChild(inputValid);
+
+        updateFirearmDependentFields(tr);
     }
 
     tableContainer.appendChild(table);
 
     // Re-initialize Datepicker
-    $('.security-date-input:not(:disabled)').datepicker({
+    $('.security-date-input').datepicker({
         dateFormat: 'mm/dd/yy',
         changeMonth: true,
         changeYear: true
@@ -2131,7 +2132,7 @@ function showPersonnelWarning(rowElement, message) {
 
     const isEmpty = nameValue.trim() === '';
 
-    // Group A: Strict Fields (Shift, Firearms, Validity) -> Clear AND Disable if empty
+    // Group A: Strict Fields (Shift, Firearms, Validity) -> Base Enable/Disable logic (Name-based)
     const strictInputs = row.querySelectorAll('[data-security-field]');
     strictInputs.forEach(inp => {
         if (isEmpty) {
@@ -2146,12 +2147,12 @@ function showPersonnelWarning(rowElement, message) {
         }
     });
 
-    // Group B: Basic Fields (Designation, Location) -> Clear if empty but keep enabled (as per original logic)
+    // (Group B: Basic Fields logic - Designation
     const basicInputs = row.querySelectorAll('[data-field="position"], [data-field="area"]');
     basicInputs.forEach(inp => {
          if (isEmpty) {
              inp.value = ''; 
-             inp.disabled = false; // Keep enabled for manual input
+             inp.disabled = false; 
              inp.classList.remove('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
              inp.classList.add('bg-transparent', 'focus:ring-2', 'focus:ring-blue-500');
          } else {
@@ -2174,6 +2175,34 @@ function showPersonnelWarning(rowElement, message) {
              $(dateInput).datepicker({ dateFormat: 'mm/dd/yy', changeMonth: true, changeYear: true });
          }
     }
+
+    if (!isEmpty) {
+        updateFirearmDependentFields(row);
+    }
+}
+
+function updateFirearmDependentFields(row) {
+    const typeInput = row.querySelector('[data-security-field="faType"]');
+    if (!typeInput) return;
+
+    const hasType = typeInput.value.trim() !== '';
+    const isRowActive = !typeInput.disabled;
+    const dependentFields = ['faMake', 'faCaliber', 'faSerial', 'licenseValidity'];
+
+    dependentFields.forEach(field => {
+        const input = row.querySelector(`[data-security-field="${field}"]`);
+        if (input) {
+            if (isRowActive && hasType) {
+                input.disabled = false;
+                input.classList.remove('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
+                input.classList.add('bg-transparent', 'focus:ring-1', 'focus:ring-blue-400');
+            } else {
+                input.disabled = true;
+                input.classList.add('bg-gray-100', 'cursor-not-allowed', 'text-gray-400');
+                input.classList.remove('bg-transparent', 'focus:ring-1', 'focus:ring-blue-400');
+            }
+        }
+    });
 }
 
   // --- EMPLOYEE INFO HANDLERS (Manual Save) ---
@@ -2416,9 +2445,19 @@ function showPersonnelWarning(rowElement, message) {
                      employee.id = ''; row.dataset.stableKey = `TEMP_${employee.no}`;
                      delete pendingEmployeeInfoChanges[oldPersonnelKey];
                 }
+
                 if (row.querySelector('[data-field="name"]')) row.querySelector('[data-field="name"]').value = '';
                 if (row.querySelector('[data-field="position"]')) row.querySelector('[data-field="position"]').value = '';
                 if (row.querySelector('[data-field="area"]')) row.querySelector('[data-field="area"]').value = '';
+                
+                if (currentContract && currentContract.serviceType === 'SECURITY SERVICES') {
+                    updateSecurityRowState(row, '');
+                    const timeShiftCell = row.querySelector('.shift-colored-cell');
+                    if (timeShiftCell) {
+                        timeShiftCell.style.removeProperty('background-color');
+                        timeShiftCell.classList.remove('shift-colored-cell');
+                    }
+                }
                 
                 pendingChange.name = ''; pendingChange.position = ''; pendingChange.area = '';
                 pendingChange.isNew = true; pendingChange.originalEmployeeId = '';
@@ -4343,10 +4382,32 @@ function openBulkScheduleModal() {
         stdFields.classList.add('hidden');
         secFields.classList.remove('hidden');
 
+        // DETECT SELECTED COLUMNS
+        const selectedFields = new Set();
+        bulkSelectedCells.forEach(cell => {
+            const input = cell.querySelector('[data-security-field]');
+            if (input) {
+                selectedFields.add(input.dataset.securityField);
+            }
+        });
+
+        // Helper to Toggle Visibility
+        const toggleInputVisibility = (inputId, fieldName) => {
+            const el = document.getElementById(inputId);
+            if (el) {
+                const container = el.parentElement; 
+                if (selectedFields.has(fieldName)) {
+                    container.classList.remove('hidden');
+                } else {
+                    container.classList.add('hidden');
+                }
+                el.value = ''; // Reset value
+            }
+        };
+
         // Populate Security Time Dropdown
         const timeSelect = document.getElementById('bulk-sec-time-shift');
-        timeSelect.innerHTML = '<option value="">-- No Change --</option>';
-        
+        timeSelect.innerHTML = '<option value="">-- Select Time --</option>';
         for (let h = 0; h < 24; h++) {
             for (let m = 0; m < 60; m += 30) {
                 const startH = String(h).padStart(2, '0');
@@ -4359,12 +4420,12 @@ function openBulkScheduleModal() {
                 timeSelect.appendChild(opt);
             }
         }
-        
-        // Clear other inputs
-        document.getElementById('bulk-sec-fa-type').value = '';
-        document.getElementById('bulk-sec-fa-make').value = '';
-        document.getElementById('bulk-sec-fa-caliber').value = '';
-        document.getElementById('bulk-sec-fa-serial').value = '';
+
+        // Toggle visibility based on selection
+        toggleInputVisibility('bulk-sec-time-shift', 'timeOfShift');
+        toggleInputVisibility('bulk-sec-fa-type', 'faType');
+        toggleInputVisibility('bulk-sec-fa-make', 'faMake');
+        toggleInputVisibility('bulk-sec-fa-caliber', 'faCaliber');
 
     } else {
         // SHOW STANDARD FIELDS
@@ -4412,53 +4473,63 @@ function saveBulkSchedule(event, fixedStatusValue) {
     const isSecurity = currentContract.serviceType === 'SECURITY SERVICES';
 
     if (isSecurity) {
-        // === SECURITY BULK SAVE LOGIC ===
-        const newTime = document.getElementById('bulk-sec-time-shift').value;
-        const newType = document.getElementById('bulk-sec-fa-type').value.toUpperCase().trim();
-        const newMake = document.getElementById('bulk-sec-fa-make').value.toUpperCase().trim();
-        const newCal = document.getElementById('bulk-sec-fa-caliber').value.toUpperCase().trim();
-        const newSerial = document.getElementById('bulk-sec-fa-serial').value.toUpperCase().trim();
+        const valMap = {
+            'timeOfShift': document.getElementById('bulk-sec-time-shift').value,
+            'faType': document.getElementById('bulk-sec-fa-type').value.toUpperCase().trim(),
+            'faMake': document.getElementById('bulk-sec-fa-make').value.toUpperCase().trim(),
+            'faCaliber': document.getElementById('bulk-sec-fa-caliber').value.toUpperCase().trim()
+        };
         
         let appliedCount = 0;
-        const processedRows = new Set(); // To avoid double updates if multiple cells in same row selected
+        let skippedCount = 0; 
 
         bulkSelectedCells.forEach(cell => {
             const row = cell.closest('tr');
-            const stableKey = row.dataset.stableKey;
-            
-            if (processedRows.has(stableKey)) return;
             if (row.classList.contains('line-through') || row.classList.contains('locked-row')) return;
 
-            // Update function
-            const setVal = (selector, val) => {
-                const input = row.querySelector(selector);
-                if (input && val !== '') { 
-                    input.value = val;
-                    // Trigger Change Event
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
+            const input = cell.querySelector('[data-security-field]');
+            if (!input) return;
+
+            const fieldType = input.dataset.securityField;
+            const newValue = valMap[fieldType];
+
+            if (newValue && newValue !== '') {
+                if (['faMake', 'faCaliber'].includes(fieldType)) {
+                    const typeInput = row.querySelector('[data-security-field="faType"]');
+                    const currentType = typeInput ? typeInput.value.trim() : '';
                     
-                    // Update Time Shift Color immediately (Visual feedback)
-                    if (selector.includes('timeOfShift')) {
-                        const td = input.closest('td');
-                        const shiftColors = ['#e0f2fe', '#dcfce7', '#fff7ed', '#f3e8ff', '#fae8ff', '#f1f5f9'];
-                        // (Optional: Simple hardcoded color for now or reuse your color map logic)
-                        td.style.backgroundColor = '#dcfce7'; 
-                        td.classList.add('shift-colored-cell');
+                    const isTypeSelectedAndChanging = bulkSelectedCells.includes(typeInput.closest('td')) && valMap['faType'];
+                    const effectiveType = isTypeSelectedAndChanging ? valMap['faType'] : currentType;
+
+                    if (!effectiveType) {
+                        skippedCount++;
+                        return; 
                     }
                 }
-            };
 
-            setVal('[data-security-field="timeOfShift"]', newTime);
-            setVal('[data-security-field="faType"]', newType);
-            setVal('[data-security-field="faMake"]', newMake);
-            setVal('[data-security-field="faCaliber"]', newCal);
-            setVal('[data-security-field="faSerial"]', newSerial);
+                // Apply Change
+                input.value = newValue;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
 
-            processedRows.add(stableKey);
-            appliedCount++;
+                if (fieldType === 'faType') {
+                    updateFirearmDependentFields(row);
+                }
+
+                // Visual feedback for Time of Shift
+                if (fieldType === 'timeOfShift') {
+                     cell.style.backgroundColor = '#dcfce7'; 
+                     cell.classList.add('shift-colored-cell');
+                }
+
+                appliedCount++;
+            }
         });
 
-        showNotification(`Security details updated for ${appliedCount} guards. Click "Save All Changes" to save.`, true);
+        let msg = `Security details updated for ${appliedCount} cells.`;
+        if (skippedCount > 0) {
+            msg += ` (Skipped ${skippedCount} cells because 'Type' was empty).`;
+        }
+        showNotification(`${msg} Click "Save All Changes" to save.`, skippedCount === 0);
 
     } else {
         // === STANDARD BULK SAVE LOGIC ===
