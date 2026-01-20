@@ -11,6 +11,7 @@
   document.write('<style>');
   document.write('.ui-month-year-only .ui-datepicker-calendar { display: none !important; }');
   document.write('.ui-month-year-only .ui-datepicker-buttonpane { text-align: center; }');
+  document.write('@media print { select { -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important; border: none !important; background: transparent !important; padding: 0 !important; margin: 0 !important; text-align: center !important; } select::-ms-expand { display: none; } }');
   document.write('</style>');
   
   // Global state variables
@@ -1668,6 +1669,26 @@ function handleAttendanceData(data) {
     renderRelieverTable();
   }
 
+  function getShiftValue(shiftStr) {
+    if (!shiftStr || shiftStr === 'ZZZZ') return 99999; // Empty shifts go to bottom
+    
+    const startTimeMatch = shiftStr.match(/^(\d{1,2})(?::(\d{2}))?(AM|PM)/i);
+    
+    if (!startTimeMatch) return 99999; // Fallback
+
+    let hours = parseInt(startTimeMatch[1], 10);
+    const minutes = startTimeMatch[2] ? parseInt(startTimeMatch[2], 10) : 0;
+    const period = startTimeMatch[3].toUpperCase();
+
+    if (hours === 12) {
+        hours = (period === 'AM') ? 0 : 12;
+    } else {
+        if (period === 'PM') hours += 12;
+    }
+
+    return (hours * 60) + minutes;
+}
+
   // SECURITY SERVICES GRID
   function renderSecurityPlan() {
     const year = currentPlanningDate.getFullYear();
@@ -1771,8 +1792,10 @@ function handleAttendanceData(data) {
         const shiftA = (secDetailsA && secDetailsA.timeOfShift) ? secDetailsA.timeOfShift.trim() : 'ZZZZ';
         const shiftB = (secDetailsB && secDetailsB.timeOfShift) ? secDetailsB.timeOfShift.trim() : 'ZZZZ';
 
-        if (shiftA < shiftB) return -1;
-        if (shiftA > shiftB) return 1;
+        const valA = getShiftValue(shiftA);
+        const valB = getShiftValue(shiftB);
+
+        if (valA !== valB) return valA - valB;
 
         const nameA = (a.name || '').toUpperCase();
         const nameB = (b.name || '').toUpperCase();
@@ -2894,7 +2917,7 @@ function continueSaveProcess(groupNumber) {
         });
     }
 
-    // === NEW: STRICT SECURITY VALIDATION (Name, Designation, Location, Time) ===
+    // === NEW: STRICT SECURITY VALIDATION (Name, Designation, Location, Time, AND FIREARMS) ===
     if (currentContract.serviceType === 'SECURITY SERVICES') {
         const securityRows = document.querySelectorAll('#attendance-table-container tbody tr');
         
@@ -2907,6 +2930,7 @@ function continueSaveProcess(groupNumber) {
 
             // Only validate active rows (those with a name)
             if (name) {
+                // 1. Basic Security Fields Validation
                 const designationInput = row.querySelector('[data-field="position"]');
                 const locationInput = row.querySelector('[data-field="area"]');
                 const shiftInput = row.querySelector('[data-security-field="timeOfShift"]');
@@ -2916,7 +2940,6 @@ function continueSaveProcess(groupNumber) {
                 const timeOfShift = (shiftInput?.value || '').trim();
                 
                 let missingFields = [];
-                // Check Required Fields
                 if (!designation) missingFields.push("Designation");
                 if (!location) missingFields.push("Place of Duty (Location)");
                 if (!timeOfShift) missingFields.push("Time of Shift");
@@ -2926,6 +2949,35 @@ function continueSaveProcess(groupNumber) {
                      showNotification(`FATAL ERROR: Cannot save. Security Guard "${name}" (Row ${rowNo}) is missing required fields: ${missingFields.join(', ')}.`, false);
                      toggleLoading(false);
                      return; // STOP SAVE
+                }
+
+                // 2. NEW: Firearm Details Validation 
+                const typeInput = row.querySelector('[data-security-field="faType"]');
+                const faType = (typeInput?.value || '').trim();
+
+                if (faType) {
+                    const makeInput = row.querySelector('[data-security-field="faMake"]');
+                    const caliberInput = row.querySelector('[data-security-field="faCaliber"]');
+                    const serialInput = row.querySelector('[data-security-field="faSerial"]');
+                    const validityInput = row.querySelector('[data-security-field="licenseValidity"]');
+
+                    const faMake = (makeInput?.value || '').trim();
+                    const faCaliber = (caliberInput?.value || '').trim();
+                    const faSerial = (serialInput?.value || '').trim();
+                    const validity = (validityInput?.value || '').trim();
+
+                    let missingFirearmFields = [];
+                    if (!faMake) missingFirearmFields.push("Make");
+                    if (!faCaliber) missingFirearmFields.push("Caliber");
+                    if (!faSerial) missingFirearmFields.push("Serial No.");
+                    if (!validity) missingFirearmFields.push("License Validity");
+
+                    if (missingFirearmFields.length > 0) {
+                        const rowNo = row.querySelector('td:first-child')?.textContent.trim();
+                        showNotification(`FATAL ERROR: Cannot save. Guard "${name}" (Row ${rowNo}) has a Firearm Type (${faType}) but is missing: ${missingFirearmFields.join(', ')}.`, false);
+                        toggleLoading(false);
+                        return; // STOP SAVE
+                    }
                 }
             }
         }
