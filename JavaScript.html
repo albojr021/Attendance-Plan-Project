@@ -90,7 +90,7 @@
     { value: 'NA', label: 'Not Applicable (NA) / Excluded', color: 'status-na text-gray-500' },
   ];
   
-  const TIME_FORMAT_REGEX = /^([01]?[0-9]|2[0-3]):[0-5][0-9]-([01]?[0-9]|2[0-3]):[0-5][0-9]$/; // Global variable para sa validation (HH:MM-HH:MM)
+  const TIME_FORMAT_REGEX = /^[0-9]{1,2}(:[0-9]{2})?(AM|PM)-[0-9]{1,2}(:[0-9]{2})?(AM|PM)$/;
   const PERSONNEL_ID_REGEX = /^[0-9]+$/; // Only numbers, Regex for Personnel Info validation
   const SAFE_TEXT_REGEX = /^[A-Z0-9\s.,-]+$/; 
   
@@ -98,15 +98,19 @@
   const SIGNATORY_REGEX = /^[A-Z\s.,-]+$/; 
   const SAFE_NAME_REGEX = /[^A-Z\s.,-]/g; 
   
+  function formatTime12H(h, m) {
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      const mStr = m === 0 ? '' : ':' + m.toString().padStart(2, '0');
+      return `${h12}${mStr}${ampm}`;
+  }
 
   // Time Option Generator for Dropdowns 
   function generateTimeOptions() {
       const times = [];
       for (let h = 0; h < 24; h++) {
           for (let m = 0; m < 60; m += 30) {
-              const hour = String(h).padStart(2, '0');
-              const minute = String(m).padStart(2, '0');
-              times.push(`${hour}:${minute}`);
+              times.push(formatTime12H(h, m)); 
           }
       }
       return times;
@@ -1956,12 +1960,10 @@ function handleAttendanceData(data) {
 
         for (let h = 0; h < 24; h++) {
             for (let m = 0; m < 60; m += 30) {
-                const startH = h.toString().padStart(2, '0');
-                const startM = m.toString().padStart(2, '0');
-                let endVal = (h + 12) % 24; 
-                let endH = endVal === 0 ? "24" : endVal.toString().padStart(2, '0');
-                const endM = startM;
-                const shiftStr = `${startH}:${startM} - ${endH}:${endM}`;
+                const startStr = formatTime12H(h, m);
+                const endH_raw = (h + 12) % 24;
+                const endStr = formatTime12H(endH_raw, m);
+                const shiftStr = `${startStr}-${endStr}`;
                 
                 const opt = document.createElement('option');
                 opt.value = shiftStr;
@@ -2712,8 +2714,8 @@ function updateFirearmDependentFields(row) {
     }
 
     if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
-        if (finalStatus.length !== 11 || finalStatus.charAt(5) !== '-') {
-             showNotification('Invalid schedule format detected.', false);
+        if (!TIME_FORMAT_REGEX.test(finalStatus)) {
+             showNotification('Invalid schedule format detected. Use format like "8AM-5PM" or "8:30AM-5:30PM".', false);
              setTimeout(() => handleCellClick({ currentTarget: selectedCellData.cellElement }), 100); 
              return;
         }
@@ -4410,11 +4412,11 @@ function openBulkScheduleModal() {
         timeSelect.innerHTML = '<option value="">-- Select Time --</option>';
         for (let h = 0; h < 24; h++) {
             for (let m = 0; m < 60; m += 30) {
-                const startH = String(h).padStart(2, '0');
-                const startM = String(m).padStart(2, '0');
-                let endVal = (h + 12) % 24; 
-                let endH = endVal === 0 ? "24" : String(endVal).padStart(2, '0');
-                const shiftStr = `${startH}:${startM} - ${endH}:${startM}`;
+                const startStr = formatTime12H(h, m);
+                const endH_raw = (h + 12) % 24;
+                const endStr = formatTime12H(endH_raw, m);
+                
+                const shiftStr = `${startStr}-${endStr}`;
                 const opt = document.createElement('option');
                 opt.value = shiftStr; opt.text = shiftStr;
                 timeSelect.appendChild(opt);
@@ -4553,7 +4555,7 @@ function saveBulkSchedule(event, fixedStatusValue) {
         }
         
         if (!fixedStatusCodes.includes(finalStatus) && finalStatus.length > 0) {
-            if (finalStatus.length !== 11 || finalStatus.charAt(5) !== '-') {
+            if (!TIME_FORMAT_REGEX.test(finalStatus)) {
                 showNotification('Invalid schedule format detected.', false);
                 setTimeout(openBulkScheduleModal, 100); 
                 return;
