@@ -1679,7 +1679,8 @@ function handleAttendanceData(data) {
     const trHead1 = thead.insertRow();
     const headers1 = [
         { text: 'NO.', rowSpan: 2, width: '40px' },
-        { text: 'Name of Guards', rowSpan: 2, width: '220px' }, 
+        { text: 'Personnel ID', rowSpan: 2, width: '70px' },
+        { text: 'Name of Guards', rowSpan: 2, width: '200px' }, 
         { text: 'Designation', rowSpan: 2, width: '100px' },
         { text: 'Place of Duty (Location)', rowSpan: 2, width: '180px' },
         { text: 'Time of Shift', rowSpan: 1, colSpan: 1, width: '140px' },
@@ -1825,16 +1826,50 @@ function handleAttendanceData(data) {
         td.className = 'text-center p-2 border border-gray-400 font-semibold';
         td.textContent = i + 1;
 
-        // 2. Name
+        // 2. Personnel ID 
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400 relative';
 
         const inputId = document.createElement('input'); 
-        inputId.type = 'hidden'; 
+        inputId.type = 'text'; 
         inputId.value = displayId; 
+        inputId.placeholder = 'ID';
         inputId.dataset.field = 'id'; 
         inputId.dataset.oldPersonnelId = stableLookupKey; 
+        inputId.setAttribute('list', 'employee-id-list'); // Enable datalist suggestion
+
+        if (isSavedRow) {
+            inputId.readOnly = true;
+            inputId.className = 'w-full p-1 bg-transparent text-gray-800 cursor-not-allowed outline-none personnel-info-input text-center font-bold';
+        } else {
+            inputId.className = 'w-full p-1 bg-transparent focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none personnel-info-input text-center font-bold text-gray-800';
+            inputId.addEventListener('input', (e) => handlePersonnelInfoChange(e, employee));
+            inputId.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
+            inputId.addEventListener('input', filterDatalistOptions);
+        }
         td.appendChild(inputId);
+
+        if (isPrintLocked) {
+            const refParts = lockedRefNum.split('-');
+            let randomPart = 'N/A';
+            let groupPart = 'N/A';
+            if (refParts.length === 6) {
+                randomPart = refParts[4]; 
+                groupPart = refParts[5];
+            } else if (refParts.length === 5) {
+                randomPart = refParts[3];
+                groupPart = refParts[4];
+            }
+            const lockTag = document.createElement('span');
+            lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 left-1 print-hidden';
+            lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
+            lockTag.textContent = `REF ${randomPart}`;
+            td.appendChild(lockTag);
+        }
+
+        // 3. Name (MODIFIED: Removed hidden ID input)
+        td = tr.insertCell();
+        td.className = 'p-1 border border-gray-400 relative';
 
         const inputName = document.createElement('input');
         inputName.type = 'text'; 
@@ -1854,28 +1889,6 @@ function handleAttendanceData(data) {
             inputName.addEventListener('input', filterDatalistOptions);
         }
         td.appendChild(inputName);
-
-        if (isPrintLocked) {
-            
-            const refParts = lockedRefNum.split('-');
-            let randomPart = 'N/A';
-            let groupPart = 'N/A';
-
-            if (refParts.length === 6) {
-                randomPart = refParts[4]; // 0001
-                groupPart = refParts[5];  // P1
-            } else if (refParts.length === 5) {
-                randomPart = refParts[3];
-                groupPart = refParts[4];
-            }
-            
-            // Keep the Lock Tag (REF XXXX)
-            const lockTag = document.createElement('span');
-            lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 left-1 print-hidden';
-            lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
-            lockTag.textContent = `REF ${randomPart} (${groupPart})`;
-            td.appendChild(lockTag);
-        }
 
         // 3. Designation
         td = tr.insertCell();
