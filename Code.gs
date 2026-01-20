@@ -1139,9 +1139,10 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
 
     if (!planSheet || planSheet.getLastRow() <= PLAN_HEADER_ROW) {
-        return { employees: [], planMap: {} };
+        return { employees: [], planMap: {}, securityDetails: {} };
     }
     
+    // 1. GET BASIC ATTENDANCE PLAN DATA
     const HEADER_ROW = PLAN_HEADER_ROW;
     const lastRow = planSheet.getLastRow();
     const numColumns = planSheet.getLastColumn();
@@ -1158,9 +1159,8 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
     const positionIndex = headers.indexOf('POSITION');
     const areaIndex = headers.indexOf('AREA POSTING');
     const saveVersionIndex = headers.indexOf('SAVE VERSION'); 
-    const day1Index = headers.indexOf('DAY1');
 
-    if (sfcRefIndex === -1 || monthIndex === -1 || yearIndex === -1 || shiftIndex === -1 || personnelIdIndex === -1 || day1Index === -1) {
+    if (sfcRefIndex === -1 || monthIndex === -1 || yearIndex === -1 || shiftIndex === -1 || personnelIdIndex === -1) {
          throw new Error("Missing critical column in Consolidated Plan sheet.");
     }
     
@@ -1190,8 +1190,7 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
 
     const latestDataRows = Object.values(latestVersionMap).filter(r => r.length > 0); 
     const employees = [];
-    const planMap = {};
-
+    
     latestDataRows.forEach(row => {
         const id = cleanPersonnelId(row[personnelIdIndex]);
         if (id) {
@@ -1209,8 +1208,54 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
         const area = e.area.toUpperCase();
         return position !== 'RELIEVER' || area !== 'RELIEVER';
     });
+
+    // 2. GET SECURITY DETAILS
+    let securityDetailsMap = {};
+    const securitySheet = ss.getSheetByName(SECURITY_PLAN_SHEET_NAME);
     
-    return { employees: regularEmployees, planMap };
+    if (securitySheet && securitySheet.getLastRow() > 1) {
+        const secValues = securitySheet.getRange(1, 1, securitySheet.getLastRow(), securitySheet.getLastColumn()).getDisplayValues();
+        const secHeaders = secValues[0];
+        
+        const sIdx = secHeaders.indexOf('CONTRACT #');
+        const mIdx = secHeaders.indexOf('MONTH');
+        const yIdx = secHeaders.indexOf('YEAR');
+        const shIdx = secHeaders.indexOf('PERIOD / SHIFT');
+        const iIdx = secHeaders.indexOf('Personnel ID');
+        
+        const timeIdx = secHeaders.indexOf('Time of Shift');
+        const typeIdx = secHeaders.indexOf('Firearm Type');
+        const makeIdx = secHeaders.indexOf('Firearm Make');
+        const calIdx = secHeaders.indexOf('Firearm Caliber');
+        const serialIdx = secHeaders.indexOf('Firearm Serial');
+        const validIdx = secHeaders.indexOf('License Validity');
+
+        if (sIdx > -1 && iIdx > -1) {
+             for (let i = 1; i < secValues.length; i++) {
+                 const row = secValues[i];
+                 if (String(row[sIdx]) === sfcRef && 
+                     String(row[mIdx]) === targetMonthShort && 
+                     String(row[yIdx]) === targetYear && 
+                     String(row[shIdx]) === shift) {
+                     
+                     const pId = cleanPersonnelId(row[iIdx]);
+                     if (pId) {
+                         securityDetailsMap[pId] = {
+                             timeOfShift: timeIdx > -1 ? String(row[timeIdx] || '') : '',
+                             faType: typeIdx > -1 ? String(row[typeIdx] || '') : '',
+                             faMake: makeIdx > -1 ? String(row[makeIdx] || '') : '',
+                             faCaliber: calIdx > -1 ? String(row[calIdx] || '') : '',
+                             faSerial: serialIdx > -1 ? String(row[serialIdx] || '') : '',
+                             licenseValidity: validIdx > -1 ? String(row[validIdx] || '') : ''
+                         };
+                     }
+                 }
+             }
+        }
+    }
+
+    // Return combined data
+    return { employees: regularEmployees, planMap: {}, securityDetails: securityDetailsMap };
 }
 
 // ============================================================================
