@@ -644,34 +644,43 @@ function get201FileAllPersonnelDetails() {
     if (!FILE_201_ID) return [];
     try {
         const ss = SpreadsheetApp.openById(FILE_201_ID);
-        const sheet = ss.getSheetByName(FILE_201_SHEET_NAME[0]);
-        if (!sheet) return [];
+        let allData = [];
 
-        const START_ROW = 2; 
-        const lastRow = sheet.getLastRow();
-        const NUM_ROWS = lastRow - START_ROW + 1;
-        const NUM_COLS_TO_READ = FILE_201_BLACKLIST_STATUS_COL_INDEX + 1;
-        if (NUM_ROWS <= 0) return [];
+        FILE_201_SHEET_NAME.forEach(sheetName => {
+            const sheet = ss.getSheetByName(sheetName);
+            if (!sheet) return; // Skip kung wala ang sheet
 
-        const values = sheet.getRange(START_ROW, 1, NUM_ROWS, NUM_COLS_TO_READ).getDisplayValues();
-        const allData = values.map(row => {
-            const personnelIdRaw = row[FILE_201_ID_COL_INDEX]; 
-            const personnelNameRaw = row[FILE_201_NAME_COL_INDEX];
-            const status = String(row[FILE_201_BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase(); 
+            const START_ROW = 2; 
+            const lastRow = sheet.getLastRow();
+            const NUM_ROWS = lastRow - START_ROW + 1;
+            const NUM_COLS_TO_READ = FILE_201_BLACKLIST_STATUS_COL_INDEX + 1;
+
+            if (NUM_ROWS > 0) {
+                const values = sheet.getRange(START_ROW, 1, NUM_ROWS, NUM_COLS_TO_READ).getDisplayValues();
+                const sheetData = values.map(row => {
+                    const personnelIdRaw = row[FILE_201_ID_COL_INDEX]; 
+                    const personnelNameRaw = row[FILE_201_NAME_COL_INDEX];
+                    const status = String(row[FILE_201_BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase(); 
+                    
+                    const cleanId = cleanPersonnelId(personnelIdRaw);
+                    const formattedName = String(personnelNameRaw || '').trim().toUpperCase(); 
+        
+                    const isBlacklisted = status === 'BLACKLISTED';
             
-            const cleanId = cleanPersonnelId(personnelIdRaw);
-            const formattedName = String(personnelNameRaw || '').trim().toUpperCase(); 
-            const isBlacklisted = status === 'BLACKLISTED';
-      
-            if (!cleanId || !formattedName) return null; 
-            return {
-                id: cleanId,
-                name: formattedName,
-                isBlacklisted: isBlacklisted,
-                position: '',
-                area: ''      
-            };
-        }).filter(item => item !== null);
+                    if (!cleanId || !formattedName) return null; 
+                    return {
+                        id: cleanId,
+                        name: formattedName,
+                        isBlacklisted: isBlacklisted,
+                        position: '',
+                        area: ''      
+                    };
+                }).filter(item => item !== null);
+                
+                allData = allData.concat(sheetData);
+            }
+        });
+
         return allData;
     } catch (e) {
         throw new Error(`Failed to access 201 Master File. Error: ${e.message}`);
@@ -694,31 +703,36 @@ function getBlacklistedEmployeesFrom201() {
     if (!FILE_201_ID) return [];
     try {
         const ss = SpreadsheetApp.openById(FILE_201_ID);
-        const sheet = ss.getSheetByName(FILE_201_SHEET_NAME[0]);
-        if (!sheet) return [];
-
-        const START_ROW = 2;
-        const lastRow = sheet.getLastRow();
-        const NUM_ROWS = lastRow - START_ROW + 1;
-        const NUM_COLS_TO_READ = FILE_201_BLACKLIST_STATUS_COL_INDEX + 1;
-        if (NUM_ROWS <= 0) return [];
-
-        const values = sheet.getRange(START_ROW, 1, NUM_ROWS, NUM_COLS_TO_READ).getDisplayValues();
         const blacklistedEmployees = [];
 
-        values.forEach(row => {
-            const status = String(row[FILE_201_BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase();
-            if (status === 'BLACKLISTED') {
-                const personnelIdRaw = row[FILE_201_ID_COL_INDEX]; 
-                const personnelNameRaw = row[FILE_201_NAME_COL_INDEX];
-                const id = cleanPersonnelId(personnelIdRaw);
-                const name = String(personnelNameRaw || '').trim().toUpperCase(); 
+        FILE_201_SHEET_NAME.forEach(sheetName => {
+            const sheet = ss.getSheetByName(sheetName);
+            if (!sheet) return;
 
-                if (id) {  
-                    blacklistedEmployees.push({ id: id, name: name });
-                }
+            const START_ROW = 2;
+            const lastRow = sheet.getLastRow();
+            const NUM_ROWS = lastRow - START_ROW + 1;
+            const NUM_COLS_TO_READ = FILE_201_BLACKLIST_STATUS_COL_INDEX + 1;
+
+            if (NUM_ROWS > 0) {
+                const values = sheet.getRange(START_ROW, 1, NUM_ROWS, NUM_COLS_TO_READ).getDisplayValues();
+
+                values.forEach(row => {
+                    const status = String(row[FILE_201_BLACKLIST_STATUS_COL_INDEX] || '').trim().toUpperCase();
+                    if (status === 'BLACKLISTED') {
+                        const personnelIdRaw = row[FILE_201_ID_COL_INDEX]; 
+                        const personnelNameRaw = row[FILE_201_NAME_COL_INDEX];
+                        const id = cleanPersonnelId(personnelIdRaw);
+                        const name = String(personnelNameRaw || '').trim().toUpperCase(); 
+
+                        if (id) {  
+                            blacklistedEmployees.push({ id: id, name: name });
+                        }
+                    }
+                });
             }
         });
+        
         return blacklistedEmployees;
     } catch (e) {
         throw new Error(`Failed to access 201 Master File for blacklist check. Error: ${e.message}`);
