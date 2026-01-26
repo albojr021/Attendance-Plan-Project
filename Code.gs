@@ -17,7 +17,7 @@ const LOG_SHEET_NAME = 'PrintLog';
 const UNLOCK_LOG_SHEET_NAME = 'UnlockRequestLog';
 const SECURITY_PLAN_SHEET_NAME = 'SecurityPlan_Details';
 const FILE_201_SHEET_NAME = ['MEG', 'MALL'];
-const BLACKLIST_SHEET_NAMES = ['MEG'];
+const BLACKLIST_SHEET_NAMES = ['MEG', 'MALL'];
 
 // Headers & Columns
 const REFSERIES_HEADER_ROW = 8;
