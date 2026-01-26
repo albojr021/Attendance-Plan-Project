@@ -4,7 +4,7 @@
 
 const SPREADSHEET_ID = '1qheN_KURc-sOKSngpzVxLvfkkc8StzGv-1gMvGJZdsc'; // Source Contracts
 const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; // Target Database
-const FILE_201_ID = '1i3ISJGbtRU10MmQ1-YG7esyFpg25-3prOxRa-mpAuJM'; // 201 File Master
+const FILE_201_ID = '1hk4UX4tBFh2-_udnPrlii5j07G4MT0Sl007ZEBCWOc8'; // 201 File Master
 const PDF_FOLDER_ID = '1_CfNZlLDfWW5UBxRDubbDxeN5vZdtNs2';
 
 // Sheet Names
@@ -16,7 +16,7 @@ const PRINT_FIELD_MASTER_SHEET = 'PrintFieldMaster';
 const LOG_SHEET_NAME = 'PrintLog';
 const UNLOCK_LOG_SHEET_NAME = 'UnlockRequestLog';
 const SECURITY_PLAN_SHEET_NAME = 'SecurityPlan_Details';
-const FILE_201_SHEET_NAME = ['MEG'];
+const FILE_201_SHEET_NAME = ['MEG', 'MALL'];
 const BLACKLIST_SHEET_NAMES = ['MEG'];
 
 // Headers & Columns
@@ -26,7 +26,7 @@ const PLAN_FIXED_COLUMNS = 18;
 const PLAN_MAX_DAYS_IN_HALF = 16;
 const FILE_201_ID_COL_INDEX = 0; // Column A
 const FILE_201_NAME_COL_INDEX = 1; // Column B
-const FILE_201_BLACKLIST_STATUS_COL_INDEX = 9; // Column J
+const FILE_201_BLACKLIST_STATUS_COL_INDEX = 2; // Column C
 
 const ADMIN_EMAILS = ['mcdmarketingstorage@megaworld-lifestyle.com'];
 
