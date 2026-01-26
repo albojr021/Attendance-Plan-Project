@@ -2457,8 +2457,8 @@ function updateFirearmDependentFields(row) {
         }
     }
 
-    // Clearing ID logic
-    if (field === 'id' && pendingChange.id === '' && previousIdValue !== '') {
+    // Clearing ID or Name logic
+    if (((field === 'id' && pendingChange.id === '') || (field === 'name' && pendingChange.name === '')) && previousIdValue !== '') {
             const idToClear = previousIdValue; 
             if (idToClear) {
                 const originalEmployeeId = employee.id.trim();
@@ -2470,20 +2470,24 @@ function updateFirearmDependentFields(row) {
                      employee.id = ''; row.dataset.stableKey = `TEMP_${employee.no}`;
                      delete pendingEmployeeInfoChanges[oldPersonnelKey];
                 }
-
+                
+                // Clear ALL inputs visually (ID, Name, Position, Area)
+                if (row.querySelector('[data-field="id"]')) row.querySelector('[data-field="id"]').value = ''; // Added explicit ID clear
                 if (row.querySelector('[data-field="name"]')) row.querySelector('[data-field="name"]').value = '';
                 if (row.querySelector('[data-field="position"]')) row.querySelector('[data-field="position"]').value = '';
                 if (row.querySelector('[data-field="area"]')) row.querySelector('[data-field="area"]').value = '';
                 
+                // Logic for Security Services Row Clearing
                 if (currentContract && currentContract.serviceType === 'SECURITY SERVICES') {
-                    updateSecurityRowState(row, '');
+                    updateSecurityRowState(row, ''); // Force clear/disable security fields
                     const timeShiftCell = row.querySelector('.shift-colored-cell');
                     if (timeShiftCell) {
                         timeShiftCell.style.removeProperty('background-color');
                         timeShiftCell.classList.remove('shift-colored-cell');
                     }
                 }
-                
+
+                pendingChange.id = ''; // Ensure ID is cleared in pending object even if triggered by Name
                 pendingChange.name = ''; pendingChange.position = ''; pendingChange.area = '';
                 pendingChange.isNew = true; pendingChange.originalEmployeeId = '';
 
