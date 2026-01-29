@@ -1304,10 +1304,17 @@ function handleAttendanceData(data) {
     if (bulkSelectBtn) {
         bulkSelectBtn.classList.remove('hidden');
     }
+    const scheduleTypeContainer = document.getElementById('schedule-type-container');
 
     if (currentContract.serviceType === 'SECURITY SERVICES') {
+        if (scheduleTypeContainer) {
+            scheduleTypeContainer.classList.add('hidden');
+        }
         renderSecurityPlan();
     } else {
+        if (scheduleTypeContainer) {
+            scheduleTypeContainer.classList.remove('hidden');
+        }
         renderStandardPlan();
     }
   }
