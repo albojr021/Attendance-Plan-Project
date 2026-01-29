@@ -24,6 +24,7 @@
   let blacklistedEmployeeList = []; // Only blacklisted employees for quick lookup
   let savedRelieverList = [];
   let currentGroup = 'S1'; // Global state for Save Group Number, Default is S1
+  let currentScheduleMode = 'non-compressed'; 
 
   // DATE NAVIGATION VARIABLE
   let currentPlanningDate = new Date(); 
@@ -141,7 +142,6 @@
          .getEmployeeMasterDataForUI(sfcRef);
 }
 
-  // Client-side Blacklist Check (UPDATED FOR NAME NORMALIZATION)
 function checkIsBlacklisted(id, name) {
     const cleanId = (id || '').trim();
     const cleanName = (name || '').trim().toUpperCase(); 
@@ -439,7 +439,7 @@ function filterDatalistOptions(event) {
     }
     
     if (filterValue.length === 0) {
-        return; // Walang gagawin kung walang input
+        return; 
     }
     
     // Check if filtering the main employee master list
@@ -512,8 +512,6 @@ function triggerBlacklistCheck(rowElement, personnelId, personnelName) {
                     showPersonnelWarning(rowElement, null); // Clear
                 }
             } else {
-                // If inputs changed while waiting for response, ignore this outdated result
-                // and trust the warning from the LATEST request.
                 console.warn('Blacklist check result is outdated, ignoring.');
             }
         })
@@ -2748,6 +2746,14 @@ function updateFirearmDependentFields(row) {
         }
     }
 
+    if (currentContract.serviceType !== 'SECURITY SERVICES') { 
+        const validation = isConsecutiveRDAllowed(personnelId, dayKey, shiftKey, finalStatus);
+        if (!validation.allowed) {
+            showNotification(validation.reason, false);
+            return;
+        }
+    }
+
     const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
     const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
 
@@ -3519,7 +3525,6 @@ function updateBulkPrintSelection(event) {
     updatePrintModalState(printableCount);
 }
 
-// Helper for select all/none in the Print Selection Modal
 function toggleSelectAllPrint(event) {
     const isChecked = event.target.checked;
     const checkboxes = document.querySelectorAll('#printable-employee-list-container .print-checkbox');
@@ -3545,7 +3550,6 @@ function toggleSelectAllPrint(event) {
     updatePrintModalState(getPrintableEmployeesForModal().length);
 }
 
-  // --- NEW PRINT LOGIC (UPDATED FLOW) ---
 function openPrintSetupModal() {
       const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
 
@@ -3657,7 +3661,6 @@ function openPrintSetupModal() {
       }
   }
 
-// NEW: Handle Print Field Input Change (Validation and State Update)
 function handlePrintFieldInputChange(event, field) {
     if (field === 'references') {
         selectedPrintFields.references = event.target.value;
@@ -3742,7 +3745,6 @@ function handlePrintPlan() {
     openPrintSelectionModal();
 }
 
-// MODIFIED: Accepts all new fields (section, department, remarks)
 function triggerPrintPreparation(printFields, selectedPrintIds) { 
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
@@ -3828,7 +3830,6 @@ function triggerPrintPreparation(printFields, selectedPrintIds) {
         .fetchSupportingContracts(contractGroupId);
   }
 
-// MODIFIED: Accepts printFields object instead of separate subProperty string
 function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds, relatedContracts = []) { 
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
     
@@ -4141,7 +4142,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     window.print();
 }
 
-// --- NEW HELPER: Get Cell Coordinates (Absolute row index, 0-based column index) ---
 function getCellCoordinates(cell) {
     if (!cell) return null;
     
@@ -4155,7 +4155,6 @@ function getCellCoordinates(cell) {
     return { R: rowIndex, C: colIndex };
 }
 
-// --- NEW HELPER: Check if a Row is Active (Non-blank) ---
 function isRowActive(rowElement) {
     const idInput = rowElement.querySelector('[data-field="id"]');
     const nameInput = rowElement.querySelector('[data-field="name"]');
@@ -4163,7 +4162,6 @@ function isRowActive(rowElement) {
     return (idInput?.value || '').trim() !== '' || (nameInput?.value || '').trim() !== '';
 }
 
-// --- NEW FUNCTION: CRITICAL DRAG LOGIC (Additive) ---
 function visualizeAdditiveRange(startCell, endCell) {
     const startCoords = getCellCoordinates(startCell);
     const endCoords = getCellCoordinates(endCell);
@@ -4220,7 +4218,6 @@ function visualizeAdditiveRange(startCell, endCell) {
     document.getElementById('bulk-cell-count').textContent = uniqueSelectedCount;
 }
 
-// --- NEW FUNCTION: Handle Drag Start ---
 function handleDragStart(event) {
     if (!isBulkSelectionMode || event.button !== 0) return; 
 
@@ -4249,7 +4246,6 @@ function handleDragStart(event) {
     document.addEventListener('mouseup', handleDragEnd); 
 }
 
-// --- NEW FUNCTION: Handle Dragging (Hakbang 2) ---
 function handleDragging(event) {
     if (!isDragging) return;
     
@@ -4265,7 +4261,6 @@ function handleDragging(event) {
     }
 }
 
-// --- NEW FUNCTION: Handle Drag End (Hakbang 3) ---
 function handleDragEnd(event) {
     if (!isDragging) return;
     
@@ -4291,7 +4286,6 @@ function handleDragEnd(event) {
     document.removeEventListener('mouseup', handleDragEnd);
 }
 
-// Function to start the bulk selection process
 function startBulkSelectionMode() {
     if (isBulkSelectionMode) return; 
     isBulkSelectionMode = true;
@@ -4337,7 +4331,6 @@ function startBulkSelectionMode() {
     showNotification('Bulk Selection Mode: Click or Drag to select cells/rows.', true);
 }
 
-// Function to return to normal mode (called after save or cancel)
 function exitBulkSelectionMode() {
     isBulkSelectionMode = false;
     const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
@@ -4422,7 +4415,6 @@ function handleCellSelectionClick(event) {
     toggleCellSelection(targetCell);
 }
 
-// Function to open the Bulk Modal
 function openBulkScheduleModal() {
     if (bulkSelectedCells.length === 0) {
         showNotification('Please select at least one cell/row first.', false);
@@ -4537,22 +4529,18 @@ function saveBulkSchedule(event, fixedStatusValue) {
             'faMake': document.getElementById('bulk-sec-fa-make').value.toUpperCase().trim(),
             'faCaliber': document.getElementById('bulk-sec-fa-caliber').value.toUpperCase().trim()
         };
-        
         let appliedCount = 0;
         let skippedCount = 0; 
-
         bulkSelectedCells.forEach(cell => {
-            const row = cell.closest('tr');
-            if (row.classList.contains('line-through') || row.classList.contains('locked-row')) return;
+             const row = cell.closest('tr');
+             if (row.classList.contains('line-through') || row.classList.contains('locked-row')) return;
+             const input = cell.querySelector('[data-security-field]');
+             if (!input) return;
+             const fieldType = input.dataset.securityField;
+             const newValue = valMap[fieldType];
 
-            const input = cell.querySelector('[data-security-field]');
-            if (!input) return;
-
-            const fieldType = input.dataset.securityField;
-            const newValue = valMap[fieldType];
-
-            if (newValue && newValue !== '') {
-                if (['faMake', 'faCaliber'].includes(fieldType)) {
+             if (newValue && newValue !== '') {
+                 if (['faMake', 'faCaliber'].includes(fieldType)) {
                     const typeInput = row.querySelector('[data-security-field="faType"]');
                     const currentType = typeInput ? typeInput.value.trim() : '';
                     
@@ -4565,32 +4553,19 @@ function saveBulkSchedule(event, fixedStatusValue) {
                     }
                 }
 
-                // Apply Change
-                input.value = newValue;
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-
-                if (fieldType === 'faType') {
-                    updateFirearmDependentFields(row);
-                }
-
-                // Visual feedback for Time of Shift
-                if (fieldType === 'timeOfShift') {
+                 input.value = newValue;
+                 input.dispatchEvent(new Event('change', { bubbles: true }));
+                 if (fieldType === 'faType') updateFirearmDependentFields(row);
+                 if (fieldType === 'timeOfShift') {
                      cell.style.backgroundColor = '#dcfce7'; 
                      cell.classList.add('shift-colored-cell');
-                }
-
-                appliedCount++;
-            }
+                 }
+                 appliedCount++;
+             }
         });
-
-        let msg = `Security details updated for ${appliedCount} cells.`;
-        if (skippedCount > 0) {
-            msg += ` (Skipped ${skippedCount} cells because 'Type' was empty).`;
-        }
-        showNotification(`${msg} Click "Save All Changes" to save.`, skippedCount === 0);
+        showNotification(`Security details updated for ${appliedCount} cells.`, true);
 
     } else {
-        // === STANDARD BULK SAVE LOGIC ===
         let finalStatus = '';
         
         if (event.type === 'click' && fixedStatusValue !== null) {
@@ -4619,6 +4594,8 @@ function saveBulkSchedule(event, fixedStatusValue) {
         }
         
         let changesAppliedCount = 0;
+        let blockedCount = 0; // Counter for blocked RDs
+
         bulkSelectedCells.forEach(cellElement => {
             const row = cellElement.closest('tr');
             const idInput = row.querySelector('[data-field="id"]');
@@ -4629,6 +4606,13 @@ function saveBulkSchedule(event, fixedStatusValue) {
             
             if (lockedIdRefMap[originalId]) return;
             if (!personnelId || !PERSONNEL_ID_REGEX.test(personnelId)) return; 
+
+            const validation = isConsecutiveRDAllowed(personnelId, dayKey, shiftKey, finalStatus);
+            
+            if (!validation.allowed) {
+                blockedCount++;
+                return; // Skip this cell
+            }
 
             const currentPlanKey = `${personnelId}_${dayKey}_${shiftKey}`;
             const originalPlanKey = `${originalId}_${dayKey}_${shiftKey}`;
@@ -4642,19 +4626,21 @@ function saveBulkSchedule(event, fixedStatusValue) {
             updateCellVisuals(cellElement, finalStatus, dayKey);
             changesAppliedCount++;
         });
-        showNotification(`Bulk schedule applied to ${changesAppliedCount} cells. Click "Save All Changes" to save.`, true);
+
+        if (blockedCount > 0) {
+            showNotification(`Applied to ${changesAppliedCount} cells. Skipped ${blockedCount} cells due to consecutive RD restriction (Non-compressed).`, false);
+        } else {
+            showNotification(`Bulk schedule applied to ${changesAppliedCount} cells. Click "Save All Changes" to save.`, true);
+        }
     }
 
     exitBulkSelectionMode();
     checkPlanSheetLockState(); 
 }
 
-// --- NEW HELPER: Get List of Employees for Deletion Modal ---
 function getDeletableEmployeesForModal() {
     const deletableList = [];
     
-    // 1. Regular Employees (Iterate over the SAVED roster: currentContract.employees)
-    // Hindi na gagamitin ang getActiveEmployeesInGrid() para maiwasan ang TEMP_ entries.
     (currentContract?.employees || []).forEach(employee => {
         const stableKey = employee.id; // Saved ID ang stable key
         
@@ -4715,7 +4701,6 @@ function getDeletableEmployeesForModal() {
     return deletableList;
 }
 
-// --- NEW FUNCTION: Open the Bulk Delete Modal ---
 function openBulkDeleteModal() {
     if (!currentContract) {
         showNotification('Please select a Contract Group ID first.', false);
@@ -4798,7 +4783,6 @@ function openBulkDeleteModal() {
     modal.classList.remove('hidden');
 }
 
-// --- NEW FUNCTION: Select All/None for Delete Modal ---
 function toggleSelectAllDelete(event) {
     const isChecked = event.target.checked;
     const checkboxes = document.querySelectorAll('#delete-employee-list-container .delete-checkbox');
@@ -4824,7 +4808,6 @@ function toggleSelectAllDelete(event) {
     updateDeleteModalState(getDeletableEmployeesForModal().length);
 }
 
-// --- NEW HELPER: Update bulkDeleteSelected array ---
 function updateBulkDeleteSelection(event) {
     const checkbox = event.target;
     const stableKey = checkbox.dataset.key;
@@ -4848,7 +4831,6 @@ function updateBulkDeleteSelection(event) {
     updateDeleteModalState(deletableCount);
 }
 
-// --- NEW HELPER: Update Delete Modal UI state ---
 function updateDeleteModalState(totalDeletable) {
     const count = bulkDeleteSelected.length;
     const confirmBtn = document.getElementById('delete-modal-confirm-btn');
@@ -4858,7 +4840,6 @@ function updateDeleteModalState(totalDeletable) {
     confirmBtn.textContent = `Mark for Deletion (${count})`;
 }
 
-// --- NEW FUNCTION: Handle Bulk Delete Confirmation (Marks for Deletion Locally) ---
 function handleBulkDeleteConfirm() {
     document.getElementById('bulk-delete-selection-modal').classList.add('hidden');
     
@@ -4934,7 +4915,6 @@ function handleBulkDeleteConfirm() {
     checkPlanSheetLockState(); 
 }
 
-// --- NEW HELPER: Get Row Schedule Status ---
 function getRowScheduleStatus(row, currentShift) {
     const idInput = row.querySelector('[data-field="id"]');
     const personnelId = (idInput?.value || '').trim();
@@ -4949,7 +4929,7 @@ function getRowScheduleStatus(row, currentShift) {
         return { id: personnelId, isPrintable: hasTimeShift };
     } 
     
-    // --- STANDARD PLAN LOGIC (Existing) ---
+    // --- STANDARD PLAN LOGIC ---
     const startColIndex = 1;
     const endColIndex = 16;
     const year = currentPlanningDate.getFullYear();
@@ -4960,8 +4940,6 @@ function getRowScheduleStatus(row, currentShift) {
     let hasActualSchedule = false;
     const originalId = row.dataset.stableKey.startsWith('TEMP_') ? '' : row.dataset.stableKey;
 
-    // Find the cell elements in the row
-    // Note: Adjust logic kung paano naha-handle ang columns sa Standard Plan
     for(let colIndex = startColIndex; colIndex <= endColIndex; colIndex++) {
         const d = startDayOfMonth + colIndex - 1; 
         if (d > daysInMonth) continue; 
@@ -4969,8 +4947,7 @@ function getRowScheduleStatus(row, currentShift) {
 
         const dayKey = `${year}-${month + 1}-${d}`;
         const originalKey = `${originalId}_${dayKey}_${currentShift}`;
-        
-        // Hanapin ang status sa pending changes o sa saved map
+  
         let status = pendingAttendanceChanges[`${personnelId}_${dayKey}_${currentShift}`];
         if (status === undefined) {
              status = currentContract.planMap[originalKey] || '';
@@ -4986,7 +4963,7 @@ function getRowScheduleStatus(row, currentShift) {
 
     return { id: personnelId, isPrintable: hasActualSchedule };
 }
-// --- NEW FUNCTION: Check Plan Sheet Global Lock State (Disables Print Button) ---
+
 function checkPlanSheetLockState() {
     if (!currentContract) {
         isPlanSheetFullyLocked = false;
@@ -5021,7 +4998,6 @@ function checkPlanSheetLockState() {
     updatePrintButtonState();
 }
 
-// --- NEW FUNCTION: Update Print Button Visuals ---
 function updatePrintButtonState() {
     const printBtn = document.getElementById('print-plan-btn');
 
@@ -5084,19 +5060,14 @@ function renderRelieverTable() {
 
     if (!tableContainer || !relieverArea) return;
 
-    // CRITICAL FIX: Laging i-alis ang 'hidden' para makita ito sa screen
     relieverArea.classList.remove('hidden'); 
 
-    // 3. CRITICAL: Kontrolin lang ang 'print-hidden' class
     if (activeRelievers.length === 0) {
-        // Hiding the entire section only for print
         relieverArea.classList.add('print-hidden'); 
     } else {
-        // Showing the entire section in print
         relieverArea.classList.remove('print-hidden'); 
     }
     
-    // 4. Start Rendering
     
     tableContainer.innerHTML = '';
     
@@ -5427,7 +5398,6 @@ function handleRelieverInfoChange(event) {
     }
 }
 
-// --- NEW FUNCTION: TRIGGERS CROSS-CONTRACT CONFLICT CHECK ---
 function triggerCrossContractCheck(rowElement, personnelName, fieldType) {
     const currentName = (personnelName || '').trim();
     if (!currentName) return;
@@ -5632,6 +5602,50 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
         })
         .savePrintToPdfAndLog(htmlContent, fileName, sfcRef, year, month, shift, personnelIds);
 }
+
+function updateScheduleMode(mode) {
+      currentScheduleMode = mode;
+      console.log("Schedule Mode changed to:", currentScheduleMode);
+  }
+
+  function getStatusForDate(personnelId, year, month, day, shift) {
+      const dateKey = `${year}-${month + 1}-${day}`; 
+      
+      const pendingKey = `${personnelId}_${dateKey}_${shift}`;
+      if (pendingAttendanceChanges.hasOwnProperty(pendingKey)) {
+          return pendingAttendanceChanges[pendingKey];
+      }
+      
+      const savedKey = `${personnelId}_${dateKey}_${shift}`;
+      return currentContract.planMap[savedKey] || '';
+  }
+
+  function isConsecutiveRDAllowed(personnelId, dateStr, shift, newStatus) {
+      if (currentScheduleMode === 'compressed') return { allowed: true };
+      
+      if (newStatus !== 'RD') return { allowed: true };
+
+      const currentDate = new Date(dateStr);
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth(); // 0-indexed
+      const day = currentDate.getDate();
+
+      const prevDate = new Date(year, month, day - 1);
+      const prevStatus = getStatusForDate(personnelId, prevDate.getFullYear(), prevDate.getMonth(), prevDate.getDate(), shift);
+
+      if (prevStatus === 'RD') {
+          return { allowed: false, reason: `Invalid: Consecutive Rest Days (RD) are not allowed in Non-Compressed schedule. Previous day (${prevDate.getDate()}) is already RD.` };
+      }
+
+      const nextDate = new Date(year, month, day + 1);
+      const nextStatus = getStatusForDate(personnelId, nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate(), shift);
+
+      if (nextStatus === 'RD') {
+          return { allowed: false, reason: `Invalid: Consecutive Rest Days (RD) are not allowed in Non-Compressed schedule. Next day (${nextDate.getDate()}) is already RD.` };
+      }
+
+      return { allowed: true };
+  }
 
   // --- INITIALIZATION ---
   window.onload = function() {
