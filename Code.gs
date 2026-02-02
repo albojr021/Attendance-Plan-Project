@@ -986,25 +986,26 @@ function getAttendancePlan(sfcRef, year, month, shift) {
 
     const planSheet = ss.getSheetByName(PLAN_SHEET_NAME);
     const lockedIdRefMap = getLockedPersonnelIds(ss, sfcRef, year, month, shift);
-    
-    // --- FETCH SECURITY DETAILS (FIXED) ---
+
+    // --- FETCH SECURITY DETAILS ---
     let securityDetailsMap = {};
+    let detectedShiftMode = 'range'; // Default to range
+
     const securitySheet = ss.getSheetByName(SECURITY_PLAN_SHEET_NAME);
     
     // Check if sheet exists and has data beyond header
     if (securitySheet && securitySheet.getLastRow() > 1) {
-        // CRITICAL FIX: Use getDisplayValues() instead of getValues() 
-        // This ensures dates like '12/31/2025' come in as strings, preventing UI crashes.
+        // Use getDisplayValues() to handle dates/formats safely
         const secValues = securitySheet.getRange(1, 1, securitySheet.getLastRow(), securitySheet.getLastColumn()).getDisplayValues();
         const secHeaders = secValues[0];
-        
+
         // Map headers
         const sIdx = secHeaders.indexOf('CONTRACT #');
         const mIdx = secHeaders.indexOf('MONTH');
         const yIdx = secHeaders.indexOf('YEAR');
         const shIdx = secHeaders.indexOf('PERIOD / SHIFT');
         const iIdx = secHeaders.indexOf('Personnel ID');
-        
+
         // Data Column Indices
         const timeIdx = secHeaders.indexOf('Time of Shift');
         const typeIdx = secHeaders.indexOf('Firearm Type');
@@ -1019,6 +1020,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
         if (sIdx > -1 && iIdx > -1) {
              for (let i = 1; i < secValues.length; i++) {
                  const row = secValues[i];
+
                  // Check if row matches current context
                  if (String(row[sIdx]) === sfcRef && 
                      String(row[mIdx]) === targetMonthShort && 
@@ -1028,8 +1030,15 @@ function getAttendancePlan(sfcRef, year, month, shift) {
                      const pId = cleanPersonnelId(row[iIdx]);
                      
                      if (pId) {
+                         const timeVal = timeIdx > -1 ? String(row[timeIdx] || '').trim() : '';
+                         
+                         // CHECK FOR "PER DAY" FLAG
+                         if (timeVal === 'PER DAY') {
+                             detectedShiftMode = 'per-day';
+                         }
+
                          securityDetailsMap[pId] = {
-                             timeOfShift: timeIdx > -1 ? String(row[timeIdx] || '') : '',
+                             timeOfShift: timeVal,
                              faType: typeIdx > -1 ? String(row[typeIdx] || '') : '',
                              faMake: makeIdx > -1 ? String(row[makeIdx] || '') : '',
                              faCaliber: calIdx > -1 ? String(row[calIdx] || '') : '',
@@ -1043,19 +1052,33 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     }
 
     // Return empty structure if Consolidated Plan is missing/empty
-    if (!planSheet) return { employees: [], planMap: {}, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap, securityDetails: securityDetailsMap };
-    
+    if (!planSheet) return { 
+        employees: [], 
+        planMap: {}, 
+        lockedIds: Object.keys(lockedIdRefMap), 
+        lockedIdRefMap: lockedIdRefMap, 
+        securityDetails: securityDetailsMap,
+        shiftMode: detectedShiftMode // Return the detected mode
+    };
+
     const HEADER_ROW = PLAN_HEADER_ROW;
     const lastRow = planSheet.getLastRow();
     const numRowsToRead = lastRow - HEADER_ROW;
     const numColumns = planSheet.getLastColumn();
 
     if (numRowsToRead <= 0 || numColumns < (PLAN_FIXED_COLUMNS + 3)) { 
-        return { employees: [], planMap: {}, lockedIds: Object.keys(lockedIdRefMap), lockedIdRefMap: lockedIdRefMap, securityDetails: securityDetailsMap };
+        return { 
+            employees: [], 
+            planMap: {}, 
+            lockedIds: Object.keys(lockedIdRefMap), 
+            lockedIdRefMap: lockedIdRefMap, 
+            securityDetails: securityDetailsMap,
+            shiftMode: detectedShiftMode 
+        };
     }
 
     // Use getDisplayValues here as well for consistency
-    const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - PLAN_HEADER_ROW + 1, numColumns).getDisplayValues();
+    const planValues = planSheet.getRange(HEADER_ROW, 1, lastRow - HEADER_ROW + 1, numColumns).getDisplayValues();
     const headers = planValues[0];
     const dataRows = planValues.slice(1);
     
@@ -1093,6 +1116,7 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             const version = parseFloat(versionParts[versionParts.length - 1]) || 0;
             const mapKey = id; 
             const existingRow = latestVersionMap[mapKey];
+            
             if (!existingRow || version > (parseFloat(existingRow[saveVersionIndex].split('-').pop()) || 0)) { 
                 latestVersionMap[mapKey] = row;
             }
@@ -1118,8 +1142,10 @@ function getAttendancePlan(sfcRef, year, month, shift) {
             for (let d = 1; d <= loopLimit; d++) {
                 const actualDay = startDayOfMonth + d - 1;    
                 if (actualDay > endDayOfMonth) continue; 
+                
                 const dayKey = `${year}-${month + 1}-${actualDay}`; 
                 const dayColIndex = day1Index + d - 1; 
+                
                 if (dayColIndex < numColumns) {
                     const status = String(row[dayColIndex] || '').trim();
                     const key = `${id}_${dayKey}_${shift}`;
@@ -1136,14 +1162,15 @@ function getAttendancePlan(sfcRef, year, month, shift) {
     const regularEmployees = employees.filter(e => e.position !== 'RELIEVER' || e.area !== 'RELIEVER');
     const relieverEmployees = employees.filter(e => e.position === 'RELIEVER' && e.area === 'RELIEVER');
 
-    // Return merged data
+    // Return merged data with detected shift mode
     return { 
         employees: regularEmployees, 
         relieverPersonnelList: relieverEmployees, 
         planMap, 
         lockedIds: Object.keys(lockedIdRefMap), 
         lockedIdRefMap: lockedIdRefMap,
-        securityDetails: securityDetailsMap // Pass the security details map to frontend
+        securityDetails: securityDetailsMap,
+        shiftMode: detectedShiftMode // Pass this to UI to lock/unlock toggle
     };
 }
 
@@ -1276,7 +1303,7 @@ function getPlanDataForPeriod(sfcRef, year, month, shift) {
 // 7. SAVING & WRITING OPERATIONS
 // ============================================================================
 
-function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, attendanceChanges, securityDetails, year, month, shift, group) {
+function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, attendanceChanges, securityDetails, year, month, shift, group, securityShiftMode) {
     if (!sfcRef) throw new Error("SFC Ref# is required.");
     ensureContractSheets(sfcRef, year, month, shift);
     
@@ -1310,29 +1337,37 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     const deletionList = regularDeletions.concat(relieverDeletions);
 
     if (securityDetails && securityDetails.length > 0) {
-        const startDayOfMonth = shift === '1stHalf' ? 1 : 16;
-        const dayKey = `${year}-${month + 1}-${startDayOfMonth}`; // Day 1 of the shift
-        
-        securityDetails.forEach(sec => {
-            if (sec.timeOfShift && sec.id && !lockedIds.includes(String(sec.id))) {
-                const existingChangeIndex = finalAttendanceChanges.findIndex(ac => 
-                    String(ac.personnelId) === String(sec.id) && 
-                    ac.dayKey === dayKey && 
-                    ac.shift === shift
-                );
 
-                if (existingChangeIndex > -1) {
-                    finalAttendanceChanges[existingChangeIndex].status = sec.timeOfShift;
-                } else {
-                    finalAttendanceChanges.push({
-                        personnelId: sec.id,
-                        dayKey: dayKey,
-                        shift: shift,
-                        status: sec.timeOfShift
-                    });
+        if (securityShiftMode === 'range') {
+            const startDayOfMonth = shift === '1stHalf' ? 1 : 16;
+            const dayKey = `${year}-${month + 1}-${startDayOfMonth}`; // Day 1 of the shift
+            
+            securityDetails.forEach(sec => {
+                if (sec.timeOfShift && sec.id && !lockedIds.includes(String(sec.id))) {
+                    const existingChangeIndex = finalAttendanceChanges.findIndex(ac => 
+                        String(ac.personnelId) === String(sec.id) && 
+                        ac.dayKey === dayKey && 
+                        ac.shift === shift
+                    );
+
+                    if (existingChangeIndex > -1) {
+                        finalAttendanceChanges[existingChangeIndex].status = sec.timeOfShift;
+                    } else {
+                        finalAttendanceChanges.push({
+                            personnelId: sec.id,
+                            dayKey: dayKey,
+                            shift: shift,
+                            status: sec.timeOfShift
+                        });
+                    }
                 }
-            }
-        });
+            });
+        } 
+        else if (securityShiftMode === 'per-day') {
+            securityDetails.forEach(sec => {
+                sec.timeOfShift = "PER DAY"; 
+            });
+        }
     }
 
     if ((securityDetails && securityDetails.length > 0) || deletionList.length > 0) {
@@ -1340,7 +1375,6 @@ function saveAllData(sfcRef, contractInfo, employeeChanges, relieverChanges, att
     }
 
     const regularEmployeeInfoChanges = finalEmployeeChanges.filter(c => !c.isDeleted);
-    
     if (regularEmployeeInfoChanges.length > 0 || deletionList.length > 0) {
         saveEmployeeInfoBulk(sfcRef, regularEmployeeInfoChanges, ss, deletionList);
     }
