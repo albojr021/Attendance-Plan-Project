@@ -25,6 +25,7 @@
   let savedRelieverList = [];
   let currentGroup = 'S1'; // Global state for Save Group Number, Default is S1
   let currentScheduleMode = 'non-compressed'; 
+  let securityShiftMode = 'range';
 
   // DATE NAVIGATION VARIABLE
   let currentPlanningDate = new Date(); 
@@ -1694,6 +1695,11 @@ function handleAttendanceData(data) {
     return (hours * 60) + minutes;
 }
 
+function toggleSecurityShiftMode(mode) {
+    securityShiftMode = mode;
+    renderAttendancePlan(); // Re-render table with new mode
+}
+
   // SECURITY SERVICES GRID
   function renderSecurityPlan() {
     const year = currentPlanningDate.getFullYear();
@@ -1706,6 +1712,12 @@ function handleAttendanceData(data) {
 
     const monthName = currentPlanningDate.toLocaleString('en-US', { month: 'short' });
     let dateRangeStr = "";
+    
+    // Calculate start and end day numbers
+    const startDay = selectedShift === '1stHalf' ? 1 : 16;
+    const endDay = selectedShift === '1stHalf' ? 15 : daysInMonth;
+    const totalDays = endDay - startDay + 1;
+
     if (selectedShift === '1stHalf') {
         dateRangeStr = `${monthName} 1-15, ${year}`;
     } else {
@@ -1715,6 +1727,21 @@ function handleAttendanceData(data) {
     const tableContainer = document.getElementById('attendance-table-container');
     tableContainer.innerHTML = '';
 
+    // --- TOGGLE BUTTON UI ---
+    const toggleContainer = document.createElement('div');
+    toggleContainer.className = 'flex justify-end mb-2 space-x-2 print-hidden';
+    toggleContainer.innerHTML = `
+        <div class="inline-flex rounded-md shadow-sm" role="group">
+            <button type="button" onclick="toggleSecurityShiftMode('range')" class="px-4 py-2 text-sm font-medium border border-gray-900 rounded-l-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700 ${securityShiftMode === 'range' ? 'bg-gray-900 text-white hover:bg-gray-800 hover:text-white' : 'bg-white text-gray-900'}">
+                Range (1-15/16-End)
+            </button>
+            <button type="button" onclick="toggleSecurityShiftMode('per-day')" class="px-4 py-2 text-sm font-medium border border-gray-900 rounded-r-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700 ${securityShiftMode === 'per-day' ? 'bg-gray-900 text-white hover:bg-gray-800 hover:text-white' : 'bg-white text-gray-900'}">
+                Per Day (Daily)
+            </button>
+        </div>
+    `;
+    tableContainer.appendChild(toggleContainer);
+
     const table = document.createElement('table');
     table.className = 'w-full text-sm text-left text-gray-700 border-collapse border border-gray-400 security-print-table';
     
@@ -1723,13 +1750,23 @@ function handleAttendanceData(data) {
     
     // ROW 1
     const trHead1 = thead.insertRow();
+    
+    // Dynamic Header Logic
+    let timeShiftHeaderColSpan = 1;
+    let timeShiftHeaderWidth = '140px';
+    
+    if (securityShiftMode === 'per-day') {
+        timeShiftHeaderColSpan = totalDays;
+        timeShiftHeaderWidth = 'auto'; 
+    }
+
     const headers1 = [
         { text: 'NO.', rowSpan: 2, width: '40px' },
         { text: 'Personnel ID', rowSpan: 2, width: '70px' },
         { text: 'Name of Guards', rowSpan: 2, width: '200px' }, 
         { text: 'Designation', rowSpan: 2, width: '100px' },
         { text: 'Place of Duty (Location)', rowSpan: 2, width: '180px' },
-        { text: 'Time of Shift', rowSpan: 1, colSpan: 1, width: '140px' },
+        { text: 'Time of Shift', rowSpan: 1, colSpan: timeShiftHeaderColSpan, width: timeShiftHeaderWidth },
         { text: 'Firearm Nomenclature', rowSpan: 1, colSpan: 4, width: 'auto' }, 
         { text: 'Validity of License', rowSpan: 2, width: '120px' }
     ];
@@ -1746,8 +1783,32 @@ function handleAttendanceData(data) {
 
     // ROW 2 (Sub-headers)
     const trHead2 = thead.insertRow();
+    
+    // Generate Sub-headers for Time of Shift
+    if (securityShiftMode === 'range') {
+        const th = document.createElement('th');
+        th.textContent = dateRangeStr;
+        th.className = 'text-xs font-bold uppercase p-2 bg-gray-100 border border-gray-500 text-center text-blue-800 font-extrabold';
+        trHead2.appendChild(th);
+    } else {
+        // Per Day Headers - STRICT EQUAL SIZING (60px)
+        for (let d = startDay; d <= endDay; d++) {
+            const th = document.createElement('th');
+            const dateObj = new Date(year, month, d);
+            const dayName = dayNames[dateObj.getDay()]; 
+            
+            th.innerHTML = `<span>${monthName} ${d}</span><br><span class="text-[9px] text-gray-500">${dayName}</span>`;
+            th.className = 'text-xs font-bold uppercase p-1 bg-gray-100 border border-gray-500 text-center'; 
+            th.style.width = '60px';
+            th.style.minWidth = '60px';
+            th.style.maxWidth = '60px';
+            th.style.overflow = 'hidden'; 
+            trHead2.appendChild(th);
+        }
+    }
+
+    // Firearm Sub-headers
     const headers2 = [
-        { text: dateRangeStr, className: 'text-blue-800 font-extrabold' }, 
         { text: 'Type' },
         { text: 'Make' },
         { text: 'Caliber' },
@@ -1786,7 +1847,7 @@ function handleAttendanceData(data) {
          }
     });
 
-    // --- SORTING LOGIC (Shift Priority -> Alphabetical) ---
+    // --- SORTING LOGIC ---
     rowsToRender.sort((a, b) => {
         const idA = (pendingEmployeeInfoChanges[a.id]?.id || a.id || '').toString().trim();
         const idB = (pendingEmployeeInfoChanges[b.id]?.id || b.id || '').toString().trim();
@@ -1794,8 +1855,20 @@ function handleAttendanceData(data) {
         const secDetailsA = (currentContract.securityDetails && idA) ? currentContract.securityDetails[idA] : null;
         const secDetailsB = (currentContract.securityDetails && idB) ? currentContract.securityDetails[idB] : null;
 
-        const shiftA = (secDetailsA && secDetailsA.timeOfShift) ? secDetailsA.timeOfShift.trim() : 'ZZZZ';
-        const shiftB = (secDetailsB && secDetailsB.timeOfShift) ? secDetailsB.timeOfShift.trim() : 'ZZZZ';
+        let shiftA = (secDetailsA && secDetailsA.timeOfShift) ? secDetailsA.timeOfShift.trim() : '';
+        let shiftB = (secDetailsB && secDetailsB.timeOfShift) ? secDetailsB.timeOfShift.trim() : '';
+        
+        if (!shiftA) {
+            const d1Key = `${idA}_${year}-${month + 1}-${startDay}_${selectedShift}`;
+            shiftA = pendingAttendanceChanges[d1Key] || currentContract.planMap[d1Key] || 'ZZZZ';
+        }
+        if (!shiftB) {
+            const d1Key = `${idB}_${year}-${month + 1}-${startDay}_${selectedShift}`;
+            shiftB = pendingAttendanceChanges[d1Key] || currentContract.planMap[d1Key] || 'ZZZZ';
+        }
+        
+        if (shiftA === '') shiftA = 'ZZZZ';
+        if (shiftB === '') shiftB = 'ZZZZ';
 
         const valA = getShiftValue(shiftA);
         const valB = getShiftValue(shiftB);
@@ -1809,12 +1882,7 @@ function handleAttendanceData(data) {
 
     // --- COLOR PALETTE FOR SHIFT ---
     const shiftColors = [
-        '#e0f2fe', // Light Blue
-        '#dcfce7', // Light Green
-        '#fff7ed', // Light Orange
-        '#f3e8ff', // Light Purple
-        '#fae8ff', // Light Pink
-        '#f1f5f9'  // Light Gray
+        '#e0f2fe', '#dcfce7', '#fff7ed', '#f3e8ff', '#fae8ff', '#f1f5f9'
     ];
     let colorMap = {}; 
     let colorIndex = 0;
@@ -1836,33 +1904,20 @@ function handleAttendanceData(data) {
         const lockedRefNum = lockedIdRefMap[employee.id]; 
         const isPrintLocked = !!lockedRefNum && !isMarkedForDeletion; 
 
-        // Get Security Details & Determine Color
+        // Get Security Details
         const secDetails = (currentContract.securityDetails && displayId) 
             ? currentContract.securityDetails[displayId.toString().trim()] 
             : null;
 
-        let cellBackgroundColor = 'transparent';
-        const currentShiftTime = (secDetails && secDetails.timeOfShift) ? secDetails.timeOfShift.trim() : '';
-
-        if (currentShiftTime && currentShiftTime !== '') {
-            if (!colorMap.hasOwnProperty(currentShiftTime)) {
-                colorMap[currentShiftTime] = shiftColors[colorIndex % shiftColors.length];
-                colorIndex++;
-            }
-            cellBackgroundColor = colorMap[currentShiftTime];
-        }
-
         const tr = tbody.insertRow();
         tr.dataset.stableKey = stableLookupKey;
         
-        // Removed row-wide background color application
         if (isMarkedForDeletion) {
             tr.classList.add('bg-red-200', 'line-through');
         } else if (isPrintLocked) { 
             tr.classList.add('bg-gray-300', 'opacity-80', 'locked-row'); 
         }
 
-        // Logic for fields
         const isNamePresent = displayName && displayName.trim() !== '';
         const isBasicFieldDisabled = isSavedRow || isPrintLocked; 
         const basicDisabledClass = isBasicFieldDisabled ? 'cursor-not-allowed text-gray-500' : '';
@@ -1877,14 +1932,13 @@ function handleAttendanceData(data) {
         // 2. Personnel ID 
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400 relative';
-
         const inputId = document.createElement('input'); 
         inputId.type = 'text'; 
         inputId.value = displayId; 
         inputId.placeholder = 'ID';
         inputId.dataset.field = 'id'; 
         inputId.dataset.oldPersonnelId = stableLookupKey; 
-        inputId.setAttribute('list', 'employee-id-list'); // Enable datalist suggestion
+        inputId.setAttribute('list', 'employee-id-list'); 
 
         if (isSavedRow) {
             inputId.readOnly = true;
@@ -1898,27 +1952,15 @@ function handleAttendanceData(data) {
         td.appendChild(inputId);
 
         if (isPrintLocked) {
-            const refParts = lockedRefNum.split('-');
-            let randomPart = 'N/A';
-            let groupPart = 'N/A';
-            if (refParts.length === 6) {
-                randomPart = refParts[4]; 
-                groupPart = refParts[5];
-            } else if (refParts.length === 5) {
-                randomPart = refParts[3];
-                groupPart = refParts[4];
-            }
-            const lockTag = document.createElement('span');
-            lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 left-1 print-hidden';
-            lockTag.title = `Locked by Print Ref. #${lockedRefNum}`;
-            lockTag.textContent = `REF ${randomPart}`;
-            td.appendChild(lockTag);
+           const lockTag = document.createElement('span');
+           lockTag.className = 'text-[9px] font-extrabold text-blue-800 bg-blue-200 px-1.5 py-0.5 rounded-full whitespace-nowrap absolute top-1 left-1 print-hidden';
+           lockTag.textContent = `REF ${lockedRefNum}`;
+           td.appendChild(lockTag);
         }
 
-        // 3. Name (MODIFIED: Removed hidden ID input)
+        // 3. Name
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400 relative';
-
         const inputName = document.createElement('input');
         inputName.type = 'text'; 
         inputName.setAttribute('list', 'employee-name-list'); 
@@ -1938,7 +1980,7 @@ function handleAttendanceData(data) {
         }
         td.appendChild(inputName);
 
-        // 3. Designation
+        // 4. Designation
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputPos = document.createElement('input');
@@ -1952,7 +1994,7 @@ function handleAttendanceData(data) {
         if (!isSavedRow) inputPos.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
         td.appendChild(inputPos);
 
-        // 4. Place of Duty
+        // 5. Place of Duty
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputArea = document.createElement('input');
@@ -1966,46 +2008,112 @@ function handleAttendanceData(data) {
         if (!isSavedRow) inputArea.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
         td.appendChild(inputArea);
 
-        // 5. Time of Shift (ONLY THIS CELL IS COLORED)
-        td = tr.insertCell();
-        td.className = 'p-1 border border-gray-400 relative security-bulk-cell';
-        
-        if (currentShiftTime) {
-            td.style.setProperty('background-color', cellBackgroundColor, 'important');
-            td.classList.add('shift-colored-cell');
-        }
-
-        const selectShift = document.createElement('select');
-        selectShift.disabled = isStrictFieldDisabled; 
-        selectShift.className = `w-full text-xs p-1 border border-gray-300 rounded focus:ring-blue-500 text-center font-semibold h-8 bg-transparent ${isStrictFieldDisabled ? 'cursor-not-allowed opacity-50' : ''}`;
-        selectShift.style.backgroundColor = 'transparent';
-        selectShift.dataset.securityField = 'timeOfShift';
-
-        const defOpt = document.createElement('option');
-        defOpt.value = '';
-        defOpt.text = '- Select -';
-        selectShift.appendChild(defOpt);
-
-        for (let h = 0; h < 24; h++) {
-            for (let m = 0; m < 60; m += 30) {
-                const startStr = formatTime12H(h, m);
-                const endH_raw = (h + 12) % 24;
-                const endStr = formatTime12H(endH_raw, m);
-                const shiftStr = `${startStr}-${endStr}`;
-                
-                const opt = document.createElement('option');
-                opt.value = shiftStr;
-                opt.text = shiftStr;
-                if (secDetails && secDetails.timeOfShift && secDetails.timeOfShift.trim() === shiftStr) {
-                    opt.selected = true;
+        // 6. TIME OF SHIFT (Modified Logic for Colors)
+        if (securityShiftMode === 'range') {
+            // --- RANGE MODE (With Color) ---
+            td = tr.insertCell();
+            td.className = 'p-1 border border-gray-400 relative security-bulk-cell';
+            const rangeShiftTime = (secDetails && secDetails.timeOfShift) ? secDetails.timeOfShift.trim() : '';
+            
+            // Apply Color in Range Mode ONLY
+            let cellBackgroundColor = 'transparent';
+            if (rangeShiftTime && rangeShiftTime !== '') {
+                if (!colorMap.hasOwnProperty(rangeShiftTime)) {
+                    colorMap[rangeShiftTime] = shiftColors[colorIndex % shiftColors.length];
+                    colorIndex++;
                 }
-                selectShift.appendChild(opt);
+                cellBackgroundColor = colorMap[rangeShiftTime];
+                td.style.setProperty('background-color', cellBackgroundColor, 'important');
+                td.classList.add('shift-colored-cell');
+            }
+
+            const selectShift = document.createElement('select');
+            selectShift.disabled = isStrictFieldDisabled; 
+            selectShift.className = `w-full text-xs p-1 border border-gray-300 rounded focus:ring-blue-500 text-center font-semibold h-8 bg-transparent ${isStrictFieldDisabled ? 'cursor-not-allowed opacity-50' : ''}`;
+            selectShift.style.backgroundColor = 'transparent';
+            selectShift.dataset.securityField = 'timeOfShift';
+            
+            const defOpt = document.createElement('option');
+            defOpt.value = ''; defOpt.text = '- Select -'; selectShift.appendChild(defOpt);
+
+            for (let h = 0; h < 24; h++) {
+                for (let m = 0; m < 60; m += 30) {
+                    const shiftStr = formatTime12H(h, m) + '-' + formatTime12H((h + 12) % 24, m);
+                    const opt = document.createElement('option');
+                    opt.value = shiftStr; opt.text = shiftStr;
+                    if (rangeShiftTime === shiftStr) opt.selected = true;
+                    selectShift.appendChild(opt);
+                }
+            }
+            selectShift.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
+            td.appendChild(selectShift);
+            
+        } else {
+            // --- PER DAY MODE (NO Color, Strict Size) ---
+            for (let d = startDay; d <= endDay; d++) {
+                td = tr.insertCell();
+                td.className = 'p-0 border border-gray-400 relative security-bulk-cell';
+                
+                // STRICT SIZING
+                td.style.width = '60px'; 
+                td.style.minWidth = '60px';
+                td.style.maxWidth = '60px';
+                td.style.overflow = 'hidden';
+
+                const dayKey = `${year}-${month + 1}-${d}`;
+                const shiftKey = selectedShift;
+                const dailyPlanKey = `${displayId}_${dayKey}_${shiftKey}`;
+
+                // Retrieve Daily Status
+                let dailyStatus = '';
+                if (pendingAttendanceChanges.hasOwnProperty(dailyPlanKey)) {
+                    dailyStatus = pendingAttendanceChanges[dailyPlanKey];
+                } else if (currentContract.planMap && currentContract.planMap[dailyPlanKey]) {
+                    dailyStatus = currentContract.planMap[dailyPlanKey];
+                } else if (secDetails && secDetails.timeOfShift) {
+                    dailyStatus = secDetails.timeOfShift; 
+                }
+
+                // REMOVED: Color Logic Here. 
+                // We keep background transparent default.
+
+                const selectShift = document.createElement('select');
+                selectShift.disabled = isStrictFieldDisabled;
+                selectShift.className = `w-full text-[10px] p-0 border-none focus:ring-1 focus:ring-blue-500 text-center font-semibold h-full bg-transparent appearance-none ${isStrictFieldDisabled ? 'cursor-not-allowed opacity-50' : ''}`;
+                selectShift.style.backgroundColor = 'transparent';
+                
+                selectShift.dataset.securityDay = dayKey; 
+                selectShift.dataset.securityShift = shiftKey;
+                selectShift.dataset.securityField = 'dailyTimeOfShift';
+
+                const defOpt = document.createElement('option');
+                defOpt.value = ''; defOpt.text = ''; selectShift.appendChild(defOpt); 
+
+                for (let h = 0; h < 24; h++) {
+                    for (let m = 0; m < 60; m += 30) {
+                        const shiftStr = formatTime12H(h, m) + '-' + formatTime12H((h + 12) % 24, m);
+                        const opt = document.createElement('option');
+                        opt.value = shiftStr; opt.text = shiftStr;
+                        if (dailyStatus === shiftStr) opt.selected = true;
+                        selectShift.appendChild(opt);
+                    }
+                }
+                
+                selectShift.addEventListener('change', (e) => {
+                     const newVal = e.target.value;
+                     pendingAttendanceChanges[dailyPlanKey] = newVal;
+                     
+                     // REMOVED: Dynamic coloring on change
+                     // e.target.closest('td').style.setProperty('background-color', ...);
+                     
+                     handleSecurityInputDirty(e, employee);
+                });
+                
+                td.appendChild(selectShift);
             }
         }
-        selectShift.addEventListener('change', (e) => handleSecurityInputDirty(e, employee));
-        td.appendChild(selectShift);
 
-        // Helper for other inputs
+        // Helper for other inputs (Firearms)
         const createSecInput = (placeholder, field, val, listId) => {
              const inp = document.createElement('input'); 
              inp.type = 'text'; 
@@ -2019,11 +2127,9 @@ function handleAttendanceData(data) {
              return inp;
         };
 
-        // 6. FA Type
+        // 7. FA Type
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
-        
         const inputFaType = createSecInput('PISTOL', 'faType', secDetails?.faType, 'security-type-list');
-        
         inputFaType.addEventListener('input', (e) => {
             if (e.target.value.trim() === '') {
                 const row = e.target.closest('tr');
@@ -2038,22 +2144,21 @@ function handleAttendanceData(data) {
             }
             updateFirearmDependentFields(e.target.closest('tr'));
         });
-        
         td.appendChild(inputFaType);
 
-        // 7. FA Make
+        // 8. FA Make
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
         td.appendChild(createSecInput('', 'faMake', secDetails?.faMake, 'security-make-list'));
 
-        // 8. FA Caliber
+        // 9. FA Caliber
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400 security-bulk-cell';
         td.appendChild(createSecInput('', 'faCaliber', secDetails?.faCaliber, 'security-caliber-list'));
 
-        // 9. FA Serial
+        // 10. FA Serial
         td = tr.insertCell(); td.className = 'p-1 border border-gray-400'; 
         td.appendChild(createSecInput('', 'faSerial', secDetails?.faSerial, 'security-serial-list'));
 
-        // 10. Validity
+        // 11. Validity
         td = tr.insertCell();
         td.className = 'p-1 border border-gray-400';
         const inputValid = document.createElement('input');
@@ -2910,25 +3015,28 @@ function continueSaveProcess(groupNumber) {
             const personnelId = (idInput?.value || '').trim();
             const personnelName = (nameInput?.value || '').toUpperCase().trim(); 
 
-            if (personnelId || personnelName) { // Capture if either ID or Name exists
-                const timeShift = row.querySelector('[data-security-field="timeOfShift"]')?.value || '';
+            if (personnelId || personnelName) { 
+                // Determine Time of Shift based on Mode
+                let timeShift = '';
                 
+                if (securityShiftMode === 'range') {
+                    timeShift = row.querySelector('[data-security-field="timeOfShift"]')?.value || '';
+                } else {
+                    // In Per Day mode, we save the FIRST DAY's shift as the 'main' shift for the Security Grid
+                    // But we ensure individual days are in pendingAttendanceChanges
+                    const firstDayInput = row.querySelector('[data-security-field="dailyTimeOfShift"]'); // First one
+                    timeShift = firstDayInput ? firstDayInput.value : '';
+                }
+
                 const faType = (row.querySelector('[data-security-field="faType"]')?.value || '').toUpperCase().trim();
                 const faMake = (row.querySelector('[data-security-field="faMake"]')?.value || '').toUpperCase().trim();
                 const faCal = (row.querySelector('[data-security-field="faCaliber"]')?.value || '').toUpperCase().trim();
                 const faSerial = (row.querySelector('[data-security-field="faSerial"]')?.value || '').toUpperCase().trim();
-                
                 const valid = row.querySelector('[data-security-field="licenseValidity"]')?.value || '';
 
                 securityDetails.push({
-                    id: personnelId,
-                    name: personnelName,
-                    timeOfShift: timeShift,
-                    faType: faType,
-                    faMake: faMake,
-                    faCaliber: faCal,
-                    faSerial: faSerial,
-                    licenseValidity: valid
+                    id: personnelId, name: personnelName, timeOfShift: timeShift,
+                    faType: faType, faMake: faMake, faCaliber: faCal, faSerial: faSerial, licenseValidity: valid
                 });
             }
         });
@@ -3115,7 +3223,7 @@ function continueSaveProcess(groupNumber) {
     };
     
     // 3. Final Save Call
-    toggleUiLock(true, 'Saving all changes to Google Sheets. Please wait...');
+    toggleUiLock(true, 'Saving all changes to Google Sheets...');
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
@@ -4302,6 +4410,7 @@ function startBulkSelectionMode() {
 
     if (isSecurity) {
         // SECURITY LOGIC
+        // Update selector to include dynamic daily inputs if present
         document.querySelectorAll('.security-bulk-cell input, .security-bulk-cell select').forEach(el => {
             el.classList.add('pointer-events-none'); 
         });
@@ -4327,7 +4436,6 @@ function startBulkSelectionMode() {
     const gridContainer = document.getElementById('attendance-grid');
     if (gridContainer) gridContainer.addEventListener('mousedown', handleDragStart, false); 
     
-    // Update Button UI
     const bulkBtn = document.getElementById('start-bulk-select-btn');
     bulkBtn.textContent = 'Apply Selection';
     bulkBtn.classList.remove('bg-yellow-600', 'hover:bg-yellow-700');
@@ -4439,16 +4547,21 @@ function openBulkScheduleModal() {
         stdFields.classList.add('hidden');
         secFields.classList.remove('hidden');
 
-        // DETECT SELECTED COLUMNS
+        let hasTimeShift = false;
         const selectedFields = new Set();
+
         bulkSelectedCells.forEach(cell => {
-            const input = cell.querySelector('[data-security-field]');
+            // Check for Range Input OR Daily Input
+            const input = cell.querySelector('[data-security-field="timeOfShift"]') || 
+                          cell.querySelector('[data-security-field="dailyTimeOfShift"]') ||
+                          cell.querySelector('[data-security-field]');
             if (input) {
-                selectedFields.add(input.dataset.securityField);
+                // Map 'dailyTimeOfShift' to 'timeOfShift' for bulk logic grouping
+                const fieldName = input.dataset.securityField === 'dailyTimeOfShift' ? 'timeOfShift' : input.dataset.securityField;
+                selectedFields.add(fieldName);
             }
         });
 
-        // Helper to Toggle Visibility
         const toggleInputVisibility = (inputId, fieldName) => {
             const el = document.getElementById(inputId);
             if (el) {
@@ -4458,27 +4571,21 @@ function openBulkScheduleModal() {
                 } else {
                     container.classList.add('hidden');
                 }
-                el.value = ''; // Reset value
+                el.value = ''; 
             }
         };
 
-        // Populate Security Time Dropdown
         const timeSelect = document.getElementById('bulk-sec-time-shift');
         timeSelect.innerHTML = '<option value="">-- Select Time --</option>';
         for (let h = 0; h < 24; h++) {
             for (let m = 0; m < 60; m += 30) {
-                const startStr = formatTime12H(h, m);
-                const endH_raw = (h + 12) % 24;
-                const endStr = formatTime12H(endH_raw, m);
-                
-                const shiftStr = `${startStr}-${endStr}`;
+                const shiftStr = formatTime12H(h, m) + '-' + formatTime12H((h + 12) % 24, m);
                 const opt = document.createElement('option');
                 opt.value = shiftStr; opt.text = shiftStr;
                 timeSelect.appendChild(opt);
             }
         }
 
-        // Toggle visibility based on selection
         toggleInputVisibility('bulk-sec-time-shift', 'timeOfShift');
         toggleInputVisibility('bulk-sec-fa-type', 'faType');
         toggleInputVisibility('bulk-sec-fa-make', 'faMake');
@@ -4538,34 +4645,46 @@ function saveBulkSchedule(event, fixedStatusValue) {
         };
         let appliedCount = 0;
         let skippedCount = 0; 
+        
         bulkSelectedCells.forEach(cell => {
              const row = cell.closest('tr');
              if (row.classList.contains('line-through') || row.classList.contains('locked-row')) return;
+             
+             // Check for both field types
              const input = cell.querySelector('[data-security-field]');
              if (!input) return;
-             const fieldType = input.dataset.securityField;
+             
+             let fieldType = input.dataset.securityField;
+             if (fieldType === 'dailyTimeOfShift') fieldType = 'timeOfShift'; // Normalize key
+
              const newValue = valMap[fieldType];
 
              if (newValue && newValue !== '') {
                  if (['faMake', 'faCaliber'].includes(fieldType)) {
+                    // Logic to check dependent fields
                     const typeInput = row.querySelector('[data-security-field="faType"]');
                     const currentType = typeInput ? typeInput.value.trim() : '';
-                    
                     const isTypeSelectedAndChanging = bulkSelectedCells.includes(typeInput.closest('td')) && valMap['faType'];
                     const effectiveType = isTypeSelectedAndChanging ? valMap['faType'] : currentType;
-
-                    if (!effectiveType) {
-                        skippedCount++;
-                        return; 
-                    }
+                    if (!effectiveType) { skippedCount++; return; }
                 }
 
                  input.value = newValue;
-                 input.dispatchEvent(new Event('change', { bubbles: true }));
+                 
+                 // If it is a daily input, we must trigger the specific event logic to update pendingAttendanceChanges
+                 if (input.dataset.securityField === 'dailyTimeOfShift') {
+                     input.dispatchEvent(new Event('change', { bubbles: true }));
+                 } else {
+                     // Standard field dispatch
+                     input.dispatchEvent(new Event('change', { bubbles: true }));
+                 }
+
                  if (fieldType === 'faType') updateFirearmDependentFields(row);
                  if (fieldType === 'timeOfShift') {
-                     cell.style.backgroundColor = '#dcfce7'; 
-                     cell.classList.add('shift-colored-cell');
+                     if (input.dataset.securityField === 'timeOfShift') {
+                        cell.style.setProperty('background-color', '#dcfce7', 'important'); 
+                        cell.classList.add('shift-colored-cell');
+                     }
                  }
                  appliedCount++;
              }
