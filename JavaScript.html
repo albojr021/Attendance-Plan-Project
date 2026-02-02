@@ -3300,7 +3300,6 @@ function continueSaveProcess(groupNumber) {
     let printNumber = 1;
     const gridRows = document.querySelectorAll('#attendance-table-container tbody tr');
     
-    // KUNIN ANG SERVICE TYPE
     const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
 
     gridRows.forEach(row => {
@@ -3336,14 +3335,23 @@ function continueSaveProcess(groupNumber) {
             return;
         }
         
-        // C. Check for NA/Blank Exclusion (UPDATED FOR SECURITY)
+        // C. Check for NA/Blank Exclusion (UPDATED FOR SECURITY PER DAY)
         let hasActualSchedule = false;
 
         if (isSecurity) {
-            // *** SECURITY FIX: Check Time of Shift instead of Cells ***
+            // Check Range Input
             const timeShiftInput = row.querySelector('[data-security-field="timeOfShift"]');
             if (timeShiftInput && timeShiftInput.value.trim() !== '') {
                 hasActualSchedule = true;
+            } else {
+                // Check Per Day Inputs
+                const dailyInputs = row.querySelectorAll('[data-security-field="dailyTimeOfShift"]');
+                for (let i = 0; i < dailyInputs.length; i++) {
+                     if (dailyInputs[i].value.trim() !== '') {
+                         hasActualSchedule = true;
+                         break;
+                     }
+                }
             }
         } else {
             // *** STANDARD LOGIC: Check Cells ***
@@ -3363,8 +3371,7 @@ function continueSaveProcess(groupNumber) {
         }
 
         // --- 2. Apply sequential numbering to rows NOT excluded ---
-        const noCellSpan = row.querySelector('.sticky-col:first-child > span:first-child'); // Standard has span inside
-        // Security usually renders NO. directly in TD, but let's check structure
+        const noCellSpan = row.querySelector('.sticky-col:first-child > span:first-child'); 
         const firstTd = row.querySelector('td:first-child');
         
         if (!row.classList.contains('print-hidden')) {
@@ -3372,7 +3379,6 @@ function continueSaveProcess(groupNumber) {
             if (noCellSpan) {
                 noCellSpan.textContent = printNumber;
             } else if (firstTd) {
-                // Fallback specifically for Security Table structure if strictly TD text
                 firstTd.textContent = printNumber;
             }
             printNumber++;
@@ -3380,7 +3386,7 @@ function continueSaveProcess(groupNumber) {
     });
     
     return dynamicallyHiddenRows; 
-  }
+}
   
   // --- NEW FUNCTION: Signatory Input Handler (Name) ---
   function handleSignatoryInputChange(event, fieldType, index = null) {
@@ -3887,11 +3893,24 @@ function triggerPrintPreparation(printFields, selectedPrintIds) {
             const isLocked = !!lockedIdRefMap[stableKey];
             let hasActualSchedule = false;
 
-            // Simple check if Security Row has Time Shift
+            // --- SECURITY SERVICES CHECK  ---
             if (currentContract.serviceType === 'SECURITY SERVICES') {
+                 // Check Range Input
                  const timeShift = row.querySelector('[data-security-field="timeOfShift"]')?.value;
-                 if (timeShift) hasActualSchedule = true;
+                 if (timeShift && timeShift.trim() !== '') {
+                     hasActualSchedule = true;
+                 } else {
+                     // Check Per Day Inputs
+                     const dailyInputs = row.querySelectorAll('[data-security-field="dailyTimeOfShift"]');
+                     for (let i = 0; i < dailyInputs.length; i++) {
+                         if (dailyInputs[i].value.trim() !== '') {
+                             hasActualSchedule = true;
+                             break;
+                         }
+                     }
+                 }
             } else {
+                // Standard Logic
                 row.querySelectorAll('.cell-container').forEach(cell => {
                      const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
                      if (status !== '' && status !== 'NA' && status !== 'DELETED' && status !== 'LOCKED') {
@@ -3951,7 +3970,7 @@ function triggerPrintPreparation(printFields, selectedPrintIds) {
             handleError(error);
         })
         .fetchSupportingContracts(contractGroupId);
-  }
+}
 
 function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds, relatedContracts = []) { 
     showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
@@ -5054,11 +5073,27 @@ function getRowScheduleStatus(row, currentShift) {
     const personnelId = (idInput?.value || '').trim();
     
     if (!personnelId) return { id: null, isPrintable: false };
-    const isSecurityRow = row.querySelector('[data-security-field="timeOfShift"]') !== null;
+    
+    // --- SECURITY SERVICES LOGIC ---
+    if (currentContract && currentContract.serviceType === 'SECURITY SERVICES') {
+        let hasTimeShift = false;
 
-    if (isSecurityRow) {
+        // Check 1: Range Mode Input
         const timeShiftInput = row.querySelector('[data-security-field="timeOfShift"]');
-        const hasTimeShift = timeShiftInput && timeShiftInput.value.trim() !== '';
+        if (timeShiftInput && timeShiftInput.value.trim() !== '') {
+            hasTimeShift = true;
+        } 
+        
+        // Check 2: Per Day Mode Inputs 
+        if (!hasTimeShift) {
+             const dailyInputs = row.querySelectorAll('[data-security-field="dailyTimeOfShift"]');
+             for (let i = 0; i < dailyInputs.length; i++) {
+                 if (dailyInputs[i].value.trim() !== '') {
+                     hasTimeShift = true;
+                     break;
+                 }
+             }
+        }
         
         return { id: personnelId, isPrintable: hasTimeShift };
     } 
