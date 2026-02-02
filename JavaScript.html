@@ -3364,7 +3364,6 @@ function continueSaveProcess(groupNumber) {
         }
 
         if (!hasActualSchedule) { 
-            // Kung walang schedule, itago sa print
             row.classList.add('print-hidden');
             dynamicallyHiddenRows.push(row); 
             return;
@@ -5078,13 +5077,11 @@ function getRowScheduleStatus(row, currentShift) {
     if (currentContract && currentContract.serviceType === 'SECURITY SERVICES') {
         let hasTimeShift = false;
 
-        // Check 1: Range Mode Input
         const timeShiftInput = row.querySelector('[data-security-field="timeOfShift"]');
         if (timeShiftInput && timeShiftInput.value.trim() !== '') {
             hasTimeShift = true;
         } 
         
-        // Check 2: Per Day Mode Inputs 
         if (!hasTimeShift) {
              const dailyInputs = row.querySelectorAll('[data-security-field="dailyTimeOfShift"]');
              for (let i = 0; i < dailyInputs.length; i++) {
@@ -5627,6 +5624,9 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
     const liveInputs = document.querySelectorAll(selector);
     const cloneInputs = cloneDoc.querySelectorAll(selector);
     
+    const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
+    const isPerDay = securityShiftMode === 'per-day';
+    
     for (let i = 0; i < liveInputs.length; i++) {
         if (!cloneInputs[i]) continue; // Safety check
 
@@ -5638,20 +5638,44 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
             if (liveInput.selectedIndex >= 0) {
                 displayValue = liveInput.options[liveInput.selectedIndex].text;
             }
-            if (displayValue === '- Select -' || displayValue === '- Select -') {
+            if (displayValue === '- Select -' || displayValue === '') {
                 displayValue = '';
             }
         } 
         else if (liveInput.type === 'checkbox' || liveInput.type === 'radio') {
-            if (!liveInput.checked) displayValue = ''; // Hide kung hindi checked
+            if (!liveInput.checked) displayValue = ''; 
+        }
+
+        let customStyle = '';
+        
+        if (isSecurity && isPerDay && liveInput.dataset.securityField === 'dailyTimeOfShift') {
+            if (displayValue && displayValue.includes('-')) {
+                displayValue = displayValue.replace('-', '\n'); 
+            }
+            
+            customStyle = `
+                width: 35px !important; 
+                min-width: 35px !important; 
+                max-width: 35px !important;
+                font-size: 8px !important; 
+                line-height: 1 !important;
+                letter-spacing: -0.5px;
+            `;
+            
+            if (cloneInput.parentNode && cloneInput.parentNode.tagName === 'TD') {
+                cloneInput.parentNode.style.width = '35px';
+                cloneInput.parentNode.style.minWidth = '35px';
+                cloneInput.parentNode.style.maxWidth = '35px';
+            }
         }
 
         const textDiv = document.createElement('div');
         textDiv.textContent = displayValue;
         textDiv.className = cloneInput.className; 
         
+        // Base Style + Custom Style
         textDiv.style.cssText = `
-            white-space: pre-wrap !important;
+            white-space: pre-wrap !important; /* Important for \n to work */
             word-wrap: break-word !important;
             overflow: visible !important;
             border: none !important;
@@ -5663,11 +5687,25 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
             align-items: center;
             justify-content: center;
             text-align: center;
+            ${customStyle}
         `;
 
         if (cloneInput.parentNode) {
             cloneInput.parentNode.replaceChild(textDiv, cloneInput);
         }
+    }
+
+    if (isSecurity && isPerDay) {
+        const headers = cloneDoc.querySelectorAll('.security-print-table thead tr:nth-child(2) th');
+        headers.forEach(th => {
+            if (th.style.width === '60px' || th.style.minWidth === '60px') {
+                th.style.width = '35px';
+                th.style.minWidth = '35px';
+                th.style.maxWidth = '35px';
+                th.style.fontSize = '8px'; 
+                th.style.padding = '1px';
+            }
+        });
     }
 
     const refDisplay = cloneDoc.querySelector('#print-ref-display');
@@ -5714,7 +5752,7 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
             table-layout: fixed !important; 
         }
         
-        /* IISANG FONT SIZE: 11px */
+        /* IISANG FONT SIZE: 11px -> adjusted to 9px globally, smaller for shifts */
         th, td, div, span, p {
             font-size: 9px !important; 
             line-height: 1.2 !important;
@@ -5726,6 +5764,11 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
             white-space: normal !important;
             vertical-align: middle !important;
             padding: 2px !important;
+        }
+
+        /* Override padding for Security Table to save space */
+        .security-print-table th, .security-print-table td {
+             padding: 1px !important;
         }
 
         .sticky-col, .sticky-col-header, th, td {
@@ -5748,14 +5791,14 @@ function savePdfOfPrintLayout(refNum, sfcRef, year, month, shift, personnelIds) 
         htmlContent = pdfStyles + htmlContent;
     }
 
-    // --- STEP 6: SEND TO SERVER ---
+    // --- SEND TO SERVER ---
     const date = new Date(year, month, 1);
     const monthName = date.toLocaleString('en-US', { month: 'short' });
     const yearStr = date.getFullYear();
     const cleanSfc = sfcRef.replace(/[^a-zA-Z0-9]/g, ''); 
     const fileName = `AttendancePlan_${cleanSfc}_${monthName}${yearStr}_${shift}_${refNum}.pdf`;
 
-    console.log("Generating PDF (Version 9 - Live Value Sync)...");
+    console.log("Generating PDF (Vertical Stack Fix)...");
 
     google.script.run
         .withSuccessHandler((response) => {
