@@ -1270,6 +1270,13 @@ function handleAttendanceData(data) {
     currentContract.securityDetails = data.securityDetails || {}; 
     savedRelieverList = data.relieverPersonnelList || []; 
     
+    if (data.shiftMode) {
+        securityShiftMode = data.shiftMode;
+        console.log("Loaded Security Shift Mode:", securityShiftMode);
+    } else {
+        securityShiftMode = 'range'; // Default
+    }
+
     lockedIdRefMap = data.lockedIdRefMap || {}; 
     const lockedIds = Object.keys(lockedIdRefMap);
     
@@ -1727,15 +1734,24 @@ function toggleSecurityShiftMode(mode) {
     const tableContainer = document.getElementById('attendance-table-container');
     tableContainer.innerHTML = '';
 
+    // --- CHECK IF MODE SHOULD BE LOCKED ---
+    const isModeLocked = currentContract.employees && currentContract.employees.length > 0;
+    const disabledAttr = isModeLocked ? 'disabled title="Mode is locked because data is already saved."' : '';
+    const cursorClass = isModeLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer';
+
     // --- TOGGLE BUTTON UI ---
     const toggleContainer = document.createElement('div');
     toggleContainer.className = 'flex justify-end mb-2 space-x-2 print-hidden';
     toggleContainer.innerHTML = `
         <div class="inline-flex rounded-md shadow-sm" role="group">
-            <button type="button" onclick="toggleSecurityShiftMode('range')" class="px-4 py-2 text-sm font-medium border border-gray-900 rounded-l-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700 ${securityShiftMode === 'range' ? 'bg-gray-900 text-white hover:bg-gray-800 hover:text-white' : 'bg-white text-gray-900'}">
+            <button type="button" onclick="toggleSecurityShiftMode('range')" ${disabledAttr} 
+                class="px-4 py-2 text-sm font-medium border border-gray-900 rounded-l-lg focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700 ${cursorClass} 
+                ${securityShiftMode === 'range' ? 'bg-gray-900 text-white' : 'bg-white text-gray-900 hover:bg-gray-100 hover:text-blue-700'}">
                 Range (1-15/16-End)
             </button>
-            <button type="button" onclick="toggleSecurityShiftMode('per-day')" class="px-4 py-2 text-sm font-medium border border-gray-900 rounded-r-lg hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700 ${securityShiftMode === 'per-day' ? 'bg-gray-900 text-white hover:bg-gray-800 hover:text-white' : 'bg-white text-gray-900'}">
+            <button type="button" onclick="toggleSecurityShiftMode('per-day')" ${disabledAttr} 
+                class="px-4 py-2 text-sm font-medium border border-gray-900 rounded-r-lg focus:z-10 focus:ring-2 focus:ring-blue-500 focus:text-blue-700 ${cursorClass} 
+                ${securityShiftMode === 'per-day' ? 'bg-gray-900 text-white' : 'bg-white text-gray-900 hover:bg-gray-100 hover:text-blue-700'}">
                 Per Day (Daily)
             </button>
         </div>
@@ -1858,17 +1874,14 @@ function toggleSecurityShiftMode(mode) {
         let shiftA = (secDetailsA && secDetailsA.timeOfShift) ? secDetailsA.timeOfShift.trim() : '';
         let shiftB = (secDetailsB && secDetailsB.timeOfShift) ? secDetailsB.timeOfShift.trim() : '';
         
-        if (!shiftA) {
-            const d1Key = `${idA}_${year}-${month + 1}-${startDay}_${selectedShift}`;
-            shiftA = pendingAttendanceChanges[d1Key] || currentContract.planMap[d1Key] || 'ZZZZ';
+        // Handling for "PER DAY" sorting might be irrelevant, but keeping structure
+        if (!shiftA || shiftA === 'PER DAY') {
+             // Fallback to day 1 check or ZZZ
+             shiftA = 'ZZZZ';
         }
-        if (!shiftB) {
-            const d1Key = `${idB}_${year}-${month + 1}-${startDay}_${selectedShift}`;
-            shiftB = pendingAttendanceChanges[d1Key] || currentContract.planMap[d1Key] || 'ZZZZ';
+         if (!shiftB || shiftB === 'PER DAY') {
+             shiftB = 'ZZZZ';
         }
-        
-        if (shiftA === '') shiftA = 'ZZZZ';
-        if (shiftB === '') shiftB = 'ZZZZ';
 
         const valA = getShiftValue(shiftA);
         const valB = getShiftValue(shiftB);
@@ -1880,7 +1893,7 @@ function toggleSecurityShiftMode(mode) {
         return nameA.localeCompare(nameB);
     });
 
-    // --- COLOR PALETTE FOR SHIFT ---
+    // --- COLOR PALETTE FOR SHIFT (Range Mode Only) ---
     const shiftColors = [
         '#e0f2fe', '#dcfce7', '#fff7ed', '#f3e8ff', '#fae8ff', '#f1f5f9'
     ];
@@ -2008,12 +2021,12 @@ function toggleSecurityShiftMode(mode) {
         if (!isSavedRow) inputArea.addEventListener('change', (e) => handlePersonnelInfoChange(e, employee));
         td.appendChild(inputArea);
 
-        // 6. TIME OF SHIFT (Modified Logic for Colors)
+        // 6. TIME OF SHIFT (Modified Logic)
         if (securityShiftMode === 'range') {
             // --- RANGE MODE (With Color) ---
             td = tr.insertCell();
             td.className = 'p-1 border border-gray-400 relative security-bulk-cell';
-            const rangeShiftTime = (secDetails && secDetails.timeOfShift) ? secDetails.timeOfShift.trim() : '';
+            const rangeShiftTime = (secDetails && secDetails.timeOfShift && secDetails.timeOfShift !== 'PER DAY') ? secDetails.timeOfShift.trim() : '';
             
             // Apply Color in Range Mode ONLY
             let cellBackgroundColor = 'transparent';
@@ -2070,12 +2083,8 @@ function toggleSecurityShiftMode(mode) {
                     dailyStatus = pendingAttendanceChanges[dailyPlanKey];
                 } else if (currentContract.planMap && currentContract.planMap[dailyPlanKey]) {
                     dailyStatus = currentContract.planMap[dailyPlanKey];
-                } else if (secDetails && secDetails.timeOfShift) {
-                    dailyStatus = secDetails.timeOfShift; 
-                }
-
-                // REMOVED: Color Logic Here. 
-                // We keep background transparent default.
+                } 
+                // We do NOT use secDetails.timeOfShift as fallback here because it will be "PER DAY" string
 
                 const selectShift = document.createElement('select');
                 selectShift.disabled = isStrictFieldDisabled;
@@ -2102,10 +2111,6 @@ function toggleSecurityShiftMode(mode) {
                 selectShift.addEventListener('change', (e) => {
                      const newVal = e.target.value;
                      pendingAttendanceChanges[dailyPlanKey] = newVal;
-                     
-                     // REMOVED: Dynamic coloring on change
-                     // e.target.closest('td').style.setProperty('background-color', ...);
-                     
                      handleSecurityInputDirty(e, employee);
                 });
                 
@@ -2912,7 +2917,7 @@ function handleSaveAllChanges() {
         .getNextGroupNumber(sfcRefToSave, currentYear, currentMonth, currentShift);
   }
 
-// *** NEW FUNCTION: Continues the saving process after the batch number is determined (UPDATED FOR RELIEVERS) ***
+// *** Continues the saving process after the batch number is determined (UPDATED FOR RELIEVERS) ***
 function continueSaveProcess(groupNumber) {
     const sfcRefToSave = currentContract ? currentContract.sfcRef : null;
     const currentYear = currentPlanningDate.getFullYear();
@@ -2920,7 +2925,6 @@ function continueSaveProcess(groupNumber) {
     const currentShift = document.getElementById('shift-period-select').value;
     
     // --- START: Validation and Data Assembly for REGULAR EMPLOYEES ---
-    
     const finalEmpChanges = [];
     const empChanges = Object.keys(pendingEmployeeInfoChanges)
     .filter(stableKey => { 
@@ -2953,7 +2957,6 @@ function continueSaveProcess(groupNumber) {
     });
     
     empChanges.forEach(e => {
-        // Only push if it's a valid change (Deletion, New, or Existing added)
         if (e.isDeleted) {
             finalEmpChanges.push(e); 
         } else if (e.isExistingEmployeeAdded || e.isNew) {
@@ -2970,7 +2973,6 @@ function continueSaveProcess(groupNumber) {
     for (const stableKey of relieverStableKeys) {
          const change = pendingRelieverChanges[stableKey];
          
-         // 1. Handle Deletion
          if (change.isDeleted) {
              finalRelieverChanges.push({
                  id: change.id.trim(), 
@@ -2982,7 +2984,6 @@ function continueSaveProcess(groupNumber) {
                  oldPersonnelId: change.id.trim()
              });
          }
-         // 2. Handle New Entry
          else if (change.id.trim() !== '' && change.name.trim() !== '') {
              
              if (change.position.trim() !== 'RELIEVER' || change.area.trim() !== 'RELIEVER') {
@@ -3022,10 +3023,7 @@ function continueSaveProcess(groupNumber) {
                 if (securityShiftMode === 'range') {
                     timeShift = row.querySelector('[data-security-field="timeOfShift"]')?.value || '';
                 } else {
-                    // In Per Day mode, we save the FIRST DAY's shift as the 'main' shift for the Security Grid
-                    // But we ensure individual days are in pendingAttendanceChanges
-                    const firstDayInput = row.querySelector('[data-security-field="dailyTimeOfShift"]'); // First one
-                    timeShift = firstDayInput ? firstDayInput.value : '';
+                    timeShift = "PER DAY"; 
                 }
 
                 const faType = (row.querySelector('[data-security-field="faType"]')?.value || '').toUpperCase().trim();
@@ -3058,16 +3056,24 @@ function continueSaveProcess(groupNumber) {
                 // 1. Basic Security Fields Validation
                 const designationInput = row.querySelector('[data-field="position"]');
                 const locationInput = row.querySelector('[data-field="area"]');
-                const shiftInput = row.querySelector('[data-security-field="timeOfShift"]');
-
+                
                 const designation = (designationInput?.value || '').trim();
                 const location = (locationInput?.value || '').trim();
-                const timeOfShift = (shiftInput?.value || '').trim();
+                
+                // --- LOGIC FOR TIME OF SHIFT VALIDATION ---
+                let timeOfShift = '';
+                if (securityShiftMode === 'range') {
+                     // Check specific input
+                     timeOfShift = (row.querySelector('[data-security-field="timeOfShift"]')?.value || '').trim();
+                } else {
+
+                     timeOfShift = "PER DAY VALID"; 
+                }
                 
                 let missingFields = [];
                 if (!designation) missingFields.push("Designation");
                 if (!location) missingFields.push("Place of Duty (Location)");
-                if (!timeOfShift) missingFields.push("Time of Shift");
+                if (!timeOfShift) missingFields.push("Time of Shift"); // Validates based on mode logic above
 
                 if (missingFields.length > 0) {
                      const rowNo = row.querySelector('td:first-child')?.textContent.trim();
@@ -3180,12 +3186,14 @@ function continueSaveProcess(groupNumber) {
 
         let isCurrentPlanIncomplete = false;
         
-        row.querySelectorAll('.cell-container').forEach(cell => {
-            const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
-            if (status === '') { 
-                 isCurrentPlanIncomplete = true;
-            }
-        });
+        if (currentContract.serviceType !== 'SECURITY SERVICES') {
+            row.querySelectorAll('.cell-container').forEach(cell => {
+                const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
+                if (status === '') { 
+                     isCurrentPlanIncomplete = true;
+                }
+            });
+        }
         
         if (isCurrentPlanIncomplete) {
              rowsToValidate.push({ id: employeeId, name: displayName, stableKey });
@@ -3227,7 +3235,7 @@ function continueSaveProcess(groupNumber) {
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
-        .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, finalRelieverChanges, attChanges, securityDetails, currentYear, currentMonth, currentShift, groupNumber);
+        .saveAllData(sfcRefToSave, contractInfo, finalEmpChangesAfterValidation, finalRelieverChanges, attChanges, securityDetails, currentYear, currentMonth, currentShift, groupNumber, securityShiftMode);
 }
 
   function handleSaveAllSuccess(response) {
