@@ -2985,13 +2985,11 @@ function continueSaveProcess(groupNumber) {
              });
          }
          else if (change.id.trim() !== '' && change.name.trim() !== '') {
-             
              if (change.position.trim() !== 'RELIEVER' || change.area.trim() !== 'RELIEVER') {
                   showNotification(`FATAL ERROR: Cannot save reliever (ID: ${change.id}). Position and Area were not set to 'RELIEVER'.`, false);
                   toggleLoading(false);
                   return; 
              }
-             
              finalRelieverChanges.push({
                  id: change.id.trim(), 
                  name: change.name.trim(), 
@@ -3017,7 +3015,6 @@ function continueSaveProcess(groupNumber) {
             const personnelName = (nameInput?.value || '').toUpperCase().trim(); 
 
             if (personnelId || personnelName) { 
-                // Determine Time of Shift based on Mode
                 let timeShift = '';
                 
                 if (securityShiftMode === 'range') {
@@ -3040,18 +3037,17 @@ function continueSaveProcess(groupNumber) {
         });
     }
 
-    // === NEW: STRICT SECURITY VALIDATION (Name, Designation, Location, Time, AND FIREARMS) ===
+    // === NEW: STRICT SECURITY VALIDATION (With Per Day Check) ===
     if (currentContract.serviceType === 'SECURITY SERVICES') {
         const securityRows = document.querySelectorAll('#attendance-table-container tbody tr');
         
         for (const row of securityRows) {
-            // Skip rows marked for deletion
             if (row.classList.contains('line-through')) continue;
 
             const nameInput = row.querySelector('[data-field="name"]');
             const name = (nameInput?.value || '').trim();
 
-            // Only validate active rows (those with a name)
+            // Only validate active rows
             if (name) {
                 // 1. Basic Security Fields Validation
                 const designationInput = row.querySelector('[data-field="position"]');
@@ -3060,29 +3056,56 @@ function continueSaveProcess(groupNumber) {
                 const designation = (designationInput?.value || '').trim();
                 const location = (locationInput?.value || '').trim();
                 
-                // --- LOGIC FOR TIME OF SHIFT VALIDATION ---
+                // --- STRICT TIME OF SHIFT CHECK ---
                 let timeOfShift = '';
+                let validationMessage = "Time of Shift"; // Default message
+
                 if (securityShiftMode === 'range') {
-                     // Check specific input
                      timeOfShift = (row.querySelector('[data-security-field="timeOfShift"]')?.value || '').trim();
                 } else {
+                     // *** PER DAY STRICT VALIDATION LOGIC ***
+                     const startDay = currentShift === '1stHalf' ? 1 : 16;
+                     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+                     const endDay = currentShift === '1stHalf' ? 15 : daysInMonth;
+                     let missingDays = [];
 
-                     timeOfShift = "PER DAY VALID"; 
+                     for (let d = startDay; d <= endDay; d++) {
+                         const dayKey = `${currentYear}-${currentMonth + 1}-${d}`;
+                         // Find the input for this specific day in this row
+                         const dayInput = row.querySelector(`[data-security-day="${dayKey}"]`);
+                         
+                         // Check if input exists and is empty
+                         if (dayInput && dayInput.value.trim() === '') {
+                             missingDays.push(d);
+                         }
+                     }
+
+                     if (missingDays.length > 0) {
+                         timeOfShift = ''; // FORCE FAIL since it's incomplete
+                         // Truncate message if too many missing days
+                         const missingStr = missingDays.length > 5 ? 
+                                            missingDays.slice(0, 5).join(', ') + '...' : 
+                                            missingDays.join(', ');
+                                            
+                         validationMessage = `Daily Shift (Missing Dates: ${missingStr})`;
+                     } else {
+                         timeOfShift = "PER DAY COMPLETE"; // Valid
+                     }
                 }
                 
                 let missingFields = [];
                 if (!designation) missingFields.push("Designation");
                 if (!location) missingFields.push("Place of Duty (Location)");
-                if (!timeOfShift) missingFields.push("Time of Shift"); // Validates based on mode logic above
+                if (!timeOfShift) missingFields.push(validationMessage); // Uses dynamic message
 
                 if (missingFields.length > 0) {
                      const rowNo = row.querySelector('td:first-child')?.textContent.trim();
                      showNotification(`FATAL ERROR: Cannot save. Security Guard "${name}" (Row ${rowNo}) is missing required fields: ${missingFields.join(', ')}.`, false);
                      toggleLoading(false);
-                     return; // STOP SAVE
+                     return; 
                 }
 
-                // 2. NEW: Firearm Details Validation 
+                // 2. Firearm Details Validation 
                 const typeInput = row.querySelector('[data-security-field="faType"]');
                 const faType = (typeInput?.value || '').trim();
 
@@ -3107,14 +3130,14 @@ function continueSaveProcess(groupNumber) {
                         const rowNo = row.querySelector('td:first-child')?.textContent.trim();
                         showNotification(`FATAL ERROR: Cannot save. Guard "${name}" (Row ${rowNo}) has a Firearm Type (${faType}) but is missing: ${missingFirearmFields.join(', ')}.`, false);
                         toggleLoading(false);
-                        return; // STOP SAVE
+                        return;
                     }
                 }
             }
         }
     }
 
-    // === CRITICAL 3: FINAL CHECK FOR EMPTY ID/NAME ON ACTIVE ROWS (REGULAR TABLE ONLY) ===
+    // === CRITICAL 3: FINAL CHECK FOR EMPTY ID/NAME ON ACTIVE ROWS (REGULAR TABLE) ===
     if (currentContract.serviceType !== 'SECURITY SERVICES') {
         const allRows = document.querySelectorAll('#attendance-table-container tbody tr');
         
@@ -3134,25 +3157,20 @@ function continueSaveProcess(groupNumber) {
             
             if (row.classList.contains('line-through')) return false; 
             
-            // If row has partial data, ensure it is complete
             if (displayId || displayName || displayPosition || displayArea) {
                  return displayId === '' || 
                         displayName === '' || 
                         displayPosition === '' || 
                         displayArea === '';        
             }
-            
             return false; 
         });
 
         if (incompleteRow) {
-            const rowElement = incompleteRow;
-            const rowNo = rowElement.querySelector('.sticky-col:first-child > span').textContent.trim();
-            
+            const rowNo = incompleteRow.querySelector('.sticky-col:first-child > span').textContent.trim();
             let missingField = '';
             let idInput = incompleteRow.querySelector('[data-field="id"]');
             let nameInput = incompleteRow.querySelector('[data-field="name"]');
-
             const displayId = (idInput?.value || '').trim();
             const displayName = (nameInput?.value || '').trim();
             
@@ -3161,31 +3179,27 @@ function continueSaveProcess(groupNumber) {
             else if (incompleteRow.querySelector('[data-field="position"]').value.trim() === '') missingField = 'Position';
             else if (incompleteRow.querySelector('[data-field="area"]').value.trim() === '') missingField = 'Area Posting';
             
-            const identifier = displayId || displayName ? 
-                               `${displayId || displayName}` : 
-                               `Row ${rowNo}`;
-                               
-            showNotification(`FATAL ERROR: Cannot save. ${identifier} is missing a required ${missingField} (Regular Employee). All active employee rows must have all four info fields.`, false);
+            const identifier = displayId || displayName ? `${displayId || displayName}` : `Row ${rowNo}`;
+            showNotification(`FATAL ERROR: Cannot save. ${identifier} is missing a required ${missingField} (Regular Employee).`, false);
             toggleLoading(false);
             return; 
         }
     }
    
-    // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (STRICT ALL-OR-NOTHING CHECK) ===
+    // === CRITICAL 2: CHECK FOR BLANK ATTENDANCE COLUMNS (STANDARD) ===
     const rowsToValidate = [];
-    
     document.querySelectorAll('#attendance-table-container tbody tr').forEach(row => {
         const stableKey = row.dataset.stableKey;
-        
         if (lockedIdRefMap[stableKey] || row.classList.contains('line-through')) return;
         
         const employeeId = row.querySelector('[data-field="id"]')?.value; 
         const displayName = row.querySelector('[data-field="name"]')?.value.trim();
         
-        if (!employeeId && !displayName) return; // Skip completely empty rows
+        if (!employeeId && !displayName) return; 
 
         let isCurrentPlanIncomplete = false;
         
+        // Only for standard services
         if (currentContract.serviceType !== 'SECURITY SERVICES') {
             row.querySelectorAll('.cell-container').forEach(cell => {
                 const status = cell.querySelector('.attendance-cell-bg').textContent.trim();
@@ -3201,11 +3215,10 @@ function continueSaveProcess(groupNumber) {
     });
 
     if (rowsToValidate.length > 0) {
-        showNotification(`FATAL ERROR: Cannot save. Attendance Plan incomplete for employee: ${rowsToValidate[0].name || 'Unknown'}. All days in the current shift/period must have a status.`, false);
+        showNotification(`FATAL ERROR: Cannot save. Attendance Plan incomplete for employee: ${rowsToValidate[0].name || 'Unknown'}.`, false);
         toggleLoading(false);
         return; 
     }
-    // === END CRITICAL 2 CHECK ===
 
     const attChanges = Object.keys(pendingAttendanceChanges).map(key => {
         const [personnelId, dayKey, shift] = key.split('_');
@@ -3215,12 +3228,11 @@ function continueSaveProcess(groupNumber) {
     const finalEmpChangesAfterValidation = finalEmpChanges; 
 
     if (!sfcRefToSave) {
-        showNotification('CRITICAL ERROR: Contract data is not loaded. Please select a Contract Group ID and retry.', false);
+        showNotification('CRITICAL ERROR: Contract data is not loaded.', false);
         toggleLoading(false);
         return;
     }
     
-    // 2. Prepare Contract Info 
     const contractInfo = {
         payor: currentContract.payorCompany,
         agency: currentContract.agency,
@@ -3230,8 +3242,8 @@ function continueSaveProcess(groupNumber) {
         sector: currentContract.sector
     };
     
-    // 3. Final Save Call
     toggleUiLock(true, 'Saving all changes to Google Sheets...');
+    
     google.script.run
         .withSuccessHandler(handleSaveAllSuccess)
         .withFailureHandler(handleSaveAllError)
