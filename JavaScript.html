@@ -3971,8 +3971,114 @@ function triggerPrintPreparation(printFields, selectedPrintIds) {
         .fetchSupportingContracts(contractGroupId);
 }
 
+function createPrintableTableClone() {
+    const originalContainer = document.getElementById('attendance-table-container');
+    const cloneContainer = originalContainer.cloneNode(true); // Deep clone
+    
+    cloneContainer.id = 'print-table-clone';
+    cloneContainer.classList.add('print-only-container'); // Show in print
+    cloneContainer.classList.remove('print-hidden'); 
+    cloneContainer.classList.remove('hidden');
+    
+    // Ensure full width visibility
+    cloneContainer.classList.remove('overflow-x-auto');
+    cloneContainer.style.overflow = 'visible';
+    cloneContainer.style.display = 'block';
+
+    // Get Inputs from ORIGINAL (source) and CLONE (target)
+    const selector = 'input:not([type="hidden"]), textarea, select';
+    const originalInputs = originalContainer.querySelectorAll(selector);
+    const cloneInputs = cloneContainer.querySelectorAll(selector);
+    
+    const isSecurity = currentContract && currentContract.serviceType === 'SECURITY SERVICES';
+    const isPerDay = securityShiftMode === 'per-day';
+
+    for (let i = 0; i < cloneInputs.length; i++) {
+        const liveInput = originalInputs[i];
+        const cloneInput = cloneInputs[i];
+        let displayValue = liveInput.value;
+
+        // Handle Select Text
+        if (liveInput.tagName === 'SELECT') {
+            if (liveInput.selectedIndex >= 0) {
+                displayValue = liveInput.options[liveInput.selectedIndex].text;
+            }
+            if (displayValue === '- Select -' || displayValue === '') {
+                displayValue = '';
+            }
+        } else if (liveInput.type === 'checkbox' || liveInput.type === 'radio') {
+            if (!liveInput.checked) displayValue = '';
+        }
+
+        // --- TRANSFORMATION LOGIC (Copy of PDF Logic) ---
+        let customStyle = '';
+        
+        // Handle Security Per Day Vertical Stacking & Width
+        if (isSecurity && isPerDay && liveInput.dataset.securityField === 'dailyTimeOfShift') {
+            // Stack vertically (8AM - 8PM -> 8AM \n 8PM)
+            if (displayValue && displayValue.includes('-')) {
+                displayValue = displayValue.replace('-', '\n'); 
+            }
+            
+            // Force Width & Font settings specific for Per Day columns
+            customStyle = `
+                width: 35px !important; 
+                min-width: 35px !important; 
+                max-width: 35px !important;
+                font-size: 8px !important; 
+                line-height: 1 !important;
+                letter-spacing: -0.5px;
+            `;
+
+            // Adjust Parent TD to force strict width
+            if (cloneInput.parentNode && cloneInput.parentNode.tagName === 'TD') {
+                cloneInput.parentNode.style.cssText = 'width: 35px !important; min-width: 35px !important; max-width: 35px !important; padding: 0px !important;';
+            }
+        }
+
+        // Create Text Div replacement
+        const textDiv = document.createElement('div');
+        textDiv.textContent = displayValue;
+        textDiv.className = cloneInput.className;
+        
+        // Apply Print Styles
+        textDiv.style.cssText = `
+            white-space: pre-wrap !important; /* Handles the newline \n */
+            word-wrap: break-word !important;
+            overflow: visible !important;
+            border: none !important;
+            background: transparent !important;
+            color: #000000 !important;
+            width: 100% !important;
+            min-height: 15px !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            ${customStyle}
+        `;
+        
+        if (cloneInput.parentNode) {
+            cloneInput.parentNode.replaceChild(textDiv, cloneInput);
+        }
+    }
+
+    // --- HANDLE HEADERS WIDTH (TH) ---
+    if (isSecurity && isPerDay) {
+        const headers = cloneContainer.querySelectorAll('table thead tr:nth-child(2) th');
+        headers.forEach(th => {
+             // Target date headers (previously 60px)
+             if (th.style.width === '60px' || th.style.minWidth === '60px') {
+                th.style.cssText = 'width: 35px !important; min-width: 35px !important; max-width: 35px !important; font-size: 8px !important; padding: 1px !important;';
+            }
+        });
+    }
+
+    return cloneContainer;
+}
+
 function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyHiddenRows = [], sfcRef, contractInfo, year, month, shift, printedPersonnelIds, relatedContracts = []) { 
-    showNotification(`Print Reference #${refNum} generated. Printing now...`, true);
+    showNotification(`Print Reference #${refNum} generated. Opening Print Preview...`, true);
     
     const { preparedBy, approvedBy } = signatories;
     
@@ -4039,17 +4145,14 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     let headerHtml = '';
 
     if (contractInfo.serviceType === 'SECURITY SERVICES') {
-
         const rawRefs = printFields.references || DEFAULT_SECURITY_REFERENCES;
         const formattedRefs = rawRefs.split('\n').map(line => `<p>${line}</p>`).join('');
         
-        // --- PREPARE DATA ---
         const agencyNameStr = printFields.agencyName || contractInfo.agency;
-        const agencyAddressStr = printFields.agencyAddress || ''; // Address from Modal
+        const agencyAddressStr = printFields.agencyAddress || ''; 
         const agencyTelStr = printFields.agencyTel || '';
         const agencyEmailStr = printFields.agencyEmail || '';
 
-        // --- BUILD OPTIONAL CONTACT LINES (Centered) ---
         let contactDetailsHtml = '';
         if (agencyTelStr) {
             contactDetailsHtml += `<p style="margin: 0; font-size: 10px; text-align: center;">Telephone No: ${agencyTelStr}</p>`;
@@ -4094,7 +4197,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         `;
 
     } else {
-        // --- STANDARD HEADER  ---
         headerHtml = `
         <div id="print-details-unified-container" class="print-only-container">
             <div class="print-details-col left-col">
@@ -4115,7 +4217,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         `;
     }
 
-    // --- Signatories Injection ---
     const signatoriesOnlyHtml = `
         <div id="print-signatories-container" class="print-only-container">
             <div class="grid gap-x-4 gap-y-2 text-center print-signatories">
@@ -4134,7 +4235,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         </div>
     `;
 
-    // --- Supporting Documents (Extra Page) ---
     let supportingDocsHtml = '';
     if (relatedContracts && relatedContracts.length > 0) {
         const tableRows = relatedContracts.map(item => `
@@ -4173,7 +4273,7 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         `;
     }
 
-    // --- INJECTION EXECUTION ---
+    // --- DOM INJECTION & MANIPULATION ---
     const contractDetailsGrid = document.getElementById('contract-details-grid');
     
     // Clean up old elements
@@ -4183,18 +4283,25 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
     });
 
     if (contractDetailsGrid) {
-        // Inject Header BEFORE the grid 
         contractDetailsGrid.insertAdjacentHTML('afterend', headerHtml);
         contractDetailsGrid.classList.add('print-hidden'); 
     } 
 
-    // Inject Signatories at bottom
     document.body.insertAdjacentHTML('beforeend', signatoriesOnlyHtml);
+    if (supportingDocsHtml) document.body.insertAdjacentHTML('beforeend', supportingDocsHtml);
+
+    // --- NEW: CLONE AND PREPARE TABLE FOR PRINT ---
+    // 1. Hide unwanted rows first in the live table
+    const rowsToRestore = applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows, printedPersonnelIds); 
+    document.querySelectorAll('.print-empty-row').forEach(row => row.classList.add('print-hidden'));
+
+    // 2. CREATE CLONE (Changes inputs to text, handles newlines)
+    const printClone = createPrintableTableClone();
     
-    // Inject Supporting Docs
-    if (supportingDocsHtml) {
-        document.body.insertAdjacentHTML('beforeend', supportingDocsHtml);
-    }
+    // 3. Inject Clone and Hide Original
+    const attendanceGrid = document.getElementById('attendance-grid');
+    attendanceGrid.appendChild(printClone); // Append clone
+    document.getElementById('attendance-table-container').classList.add('print-hidden'); // Hide original
 
     // --- Modal Confirmation & Restore Logic ---
     const setupModalAndPrint = () => {
@@ -4207,6 +4314,11 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         
         const restoreUI = () => {
             modal.classList.add('hidden');
+            
+            // RESTORE TABLE VISIBILITY
+            if (printClone) printClone.remove(); // Remove clone
+            document.getElementById('attendance-table-container').classList.remove('print-hidden'); // Show original
+
             document.querySelectorAll('.print-hidden').forEach(row => {
                 if (dynamicallyHiddenRows.includes(row) || row.classList.contains('print-empty-row')) {
                     row.classList.remove('print-hidden');
@@ -4215,9 +4327,8 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
             reloadPlanAndCheckExistence(); 
             if (printRefElement) printRefElement.remove();
             
-            // CLEAN UP INJECTED ELEMENTS
             const elementsToRemove = [
-                'agency-header-standalone', // Added cleanup for new header
+                'agency-header-standalone', 
                 'print-details-unified-container', 
                 'print-signatories-container', 
                 'print-supporting-docs-container',
@@ -4234,8 +4345,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
                 timestampDisplay.classList.add('print-hidden');
                 timestampDisplay.textContent = '';
             }
-            const inputs = document.querySelectorAll('#attendance-table-container input');
-            inputs.forEach(input => input.classList.remove('print-read-only'));
             
             window.onafterprint = null; 
             okBtn.removeEventListener('click', handleOk);
@@ -4272,12 +4381,6 @@ function triggerPrint(refNum, printGroup, printFields, signatories, dynamicallyH
         };
     };
     
-    const rowsToRestore = applySequentialPrintNumberingAndHiding(dynamicallyHiddenRows, printedPersonnelIds); 
-    document.querySelectorAll('.print-empty-row').forEach(row => row.classList.add('print-hidden'));
-    
-    const inputs = document.querySelectorAll('#attendance-table-container input');
-    inputs.forEach(input => input.classList.add('print-read-only'));
-
     setupModalAndPrint();
 
     window.print();
