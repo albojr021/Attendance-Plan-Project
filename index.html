@@ -7,460 +7,831 @@
   
   <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css" rel="stylesheet" />
   
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  
   <?!= include('Stylesheet'); ?>
 </head>
-<body class="p-4 md:p-8">
+<body class="p-4 md:p-8 relative">
 
-  <div id="full-screen-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-30 z-[60] flex justify-center items-center hidden">
-    <div class="bg-white p-6 rounded-xl shadow-2xl text-center">
-        <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <p id="overlay-message" class="text-lg font-semibold text-gray-800">Processing...</p>
-    </div>
-  </div>
-  <div id="notification-area" class="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 p-3 rounded-lg text-sm font-semibold z-50 transition-opacity duration-300 opacity-0 min-w-[200px] text-center" style="box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); border: 1px solid #d1d5db;"></div>
-
-  <div id="print-timestamp-display" class="print-only-container print-hidden"></div>
-
-  <div id="loading-alert" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6 loading-pulse" role="alert">
-    <p class="font-bold">Loading data from Google Sheet...</p>
-    <p class="text-sm">This may take a few seconds.</p>
-  </div>
-
-  <h1 class="text-3xl font-extrabold text-gray-800 mb-6 print-hidden">Attendance Plan Monitoring & Planning (Google Sheets Powered)</h1>
-
-  <div class="card print-hidden">
-    <p class="text-lg font-semibold 
-text-gray-700 mb-3">Select Contract Group ID:</p>
-    <select id="contract-select" class="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-blue-500 focus:border-blue-500 transition duration-150 shadow-sm">
-      <option value="">-- Choose Contract Group ID --</option>
-    </select>
-  </div>
-
-  <div id="contract-details-area" class="mt-6 hidden">
-    <h2 class="text-2xl font-bold text-gray-800 mb-4 print-hidden">Contract Details</h2>
-    <div id="contract-details-grid" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3"> 
-      <div class="card p-3 print-hidden"> 
-        <p class="text-sm font-medium text-blue-800">SFC Reference #</p>
-        <p id="sfc-ref" class="text-lg font-extrabold text-blue-900"></p>
-      </div>
-      <div class="card p-3"> 
-        <p class="text-sm font-medium text-blue-800">Prop. / Grp. Code</p>
-        <p id="prop-grp-code" class="text-base font-bold text-blue-900"></p>
-      </div>
-      <div class="card p-3"> 
-        <p class="text-sm font-medium text-blue-800">Sector</p>
-        <p id="sector" class="text-base font-bold text-blue-900"></p>
-      </div>
-      <div class="card p-3">
-        <p class="text-sm font-medium text-blue-800">Payor Company</p>
-        <p id="payor-company" class="text-base font-bold text-blue-900"></p>
-      </div>
-      <div class="card p-3">
-        <p class="text-sm font-medium text-blue-800">Agency</p>
-        <p id="agency" class="text-base font-bold text-blue-900"></p>
-      </div>
-      <div class="card p-3">
-        <p class="text-sm font-medium text-blue-800">Service Type</p>
-        <p id="service-type" class="text-base font-bold text-blue-900"></p>
-      </div>
-      <div class="card p-3 print-hidden"> 
-        <p class="text-sm font-medium text-blue-800">Total Head Count</p>
-        <p id="head-count" class="text-lg font-extrabold text-blue-900"></p>
-      </div>
-      <div class="card p-3"> 
-        <p class="text-sm font-medium text-blue-800">Plan Period</p>
-        <p id="plan-period-display" class="text-base font-bold text-blue-900"></p>
-      </div>
-    </div>
-    
-    <div id="plan-action-area" class="mt-6 card p-4 flex justify-between items-center hidden print-hidden">
-        <h3 id="plan-status-text" class="text-xl font-semibold text-gray-700">Attendance Plan Status: Checking...</h3>
-        <button id="create-plan-btn" class="p-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition duration-150 shadow-lg">Create/Load Plan</button>
-    </div>
-    </div>
-    
-    <datalist id="employee-id-list"></datalist>
-    <datalist id="employee-name-list"></datalist>
-    <datalist id="employee-position-list"></datalist>
-    <datalist id="employee-area-list"></datalist>
-    <datalist id="signatory-master-list"></datalist>
-    
-    <datalist id="section-master-list"></datalist>
-    <datalist id="department-master-list"></datalist>
-    <datalist id="remarks-master-list"></datalist>
-
-    <datalist id="security-designation-list"></datalist>
-    <datalist id="security-place-list"></datalist>
-    <datalist id="security-type-list"></datalist>
-    <datalist id="security-make-list"></datalist>
-    <datalist id="security-caliber-list"></datalist>
-    <datalist id="security-serial-list"></datalist>
-    
-    <div id="planning-area" class="mt-6 hidden">
-    <h2 class="text-2xl font-bold text-gray-800 mb-4 print-hidden">Attendance Plan</h2>
-    
-    <div class="card p-4 flex flex-wrap items-center justify-start space-x-3 mb-4 print-hidden">
-      <label for="month-year-picker" class="text-lg font-semibold text-gray-700 whitespace-nowrap">Select Period:</label>
-      
-      <input type="text" id="month-year-picker" class="p-3 border border-gray-300 rounded-lg text-lg font-bold text-gray-700 w-auto text-center focus:ring-blue-500 focus:border-blue-500 transition duration-150" readonly>
-      
-      <select id="shift-period-select" class="p-3 border border-gray-300 rounded-lg text-gray-700 shadow-sm w-auto">
-      </select>
-      
-    </div>
-
-    <div id="schedule-type-container" class="card p-4 mb-4 print-hidden bg-blue-50 border border-blue-200">
-      <span class="text-lg font-bold text-gray-800 mr-4">Schedule Type (Required):</span>
-      <label class="inline-flex items-center mr-6 cursor-pointer">
-        <input type="radio" name="schedule-compression-type" value="non-compressed" class="form-radio h-5 w-5 text-blue-600" checked onchange="updateScheduleMode(this.value)">
-        <span class="ml-2 text-gray-700 font-medium">Non-Compressed Schedule</span>
-      </label>
-      <label class="inline-flex items-center cursor-pointer">
-        <input type="radio" name="schedule-compression-type" value="compressed" class="form-radio h-5 w-5 text-blue-600" onchange="updateScheduleMode(this.value)">
-        <span class="ml-2 text-gray-700 font-medium">Compressed Schedule</span>
-      </label>
-    </div>
-    <div class="mb-4 flex justify-end space-x-3 print-hidden">
-
-        <button onclick="copyPreviousPlan()" class="p-3 rounded-lg bg-indigo-600 text-white font-extrabold text-lg hover:bg-indigo-700 transition duration-150 shadow-lg flex items-center space-x-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>Copy Employee From Previous Plan</span>
-        </button>
+  <div id="auth-container" class="fixed inset-0 bg-gray-200 z-[100] flex items-center justify-center overflow-y-auto print-hidden">
+    <div class="w-full max-w-3xl bg-white rounded-xl shadow-2xl overflow-hidden m-4">
         
-        <button id="request-unlock-modal-btn" onclick="openUnlockSelectionModal()" class="p-3 rounded-lg bg-purple-600 text-white font-extrabold text-lg hover:bg-purple-700 transition duration-150 shadow-lg flex items-center space-x-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
-            </svg>
-            <span>Request Unlock</span>
-        </button>
-        
-        <button id="open-bulk-delete-btn" class="p-3 rounded-lg bg-red-600 text-white font-extrabold text-lg hover:bg-red-700 transition duration-150 shadow-lg flex items-center space-x-2">
-             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            <span>Bulk Delete</span>
-        </button>
-        
-        <button id="start-bulk-select-btn" class="p-3 rounded-lg bg-yellow-600 text-white font-extrabold text-lg hover:bg-yellow-700 transition duration-150 shadow-lg flex items-center space-x-2">
-             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
-            </svg>
-            <span>Start Bulk Select</span>
-        </button>
-        
-        <button id="print-plan-btn" class="p-3 rounded-lg bg-green-600 text-white font-extrabold text-lg hover:bg-green-700 transition duration-150 shadow-lg flex items-center space-x-2">
-             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m0 0l-1 3H4a2 2 0 00-2 2v2a2 2 0 002 2h16a2 2 0 002-2v-2a2 2 0 00-2-2h-3l-1-3m0-8h.01M16 7h.01M12 21v-4a2 2 0 00-2-2h-4a2 2 0 00-2 2v4h16z" />
-            </svg>
-            <span>Print Plan</span>
-        </button>
-        
-        
-        <button id="save-all-changes-btn" class="p-3 rounded-lg bg-red-600 text-white font-extrabold text-lg hover:bg-red-700 transition duration-150 shadow-lg">Save All Changes to Sheets</button>
-    </div>
-    
-    <div id="legend-area" class="card mb-4 p-4 print-hidden"> 
-      <h3 class="text-lg font-semibold mb-2 text-gray-700">Legend:</h3>
-      <div class="flex flex-wrap gap-4 text-sm">
-        <span class="status-label text-green-700"><span class="w-3 h-3 rounded-full status-work mr-2"></span>Work/Schedule (Time Input)</span>
-        <span class="status-label text-red-700"><span class="w-3 h-3 rounded-full status-rd mr-2"></span>RD = Rest Day</span>
-        <span class="status-label text-blue-700"><span class="w-3 h-3 rounded-full status-rh mr-2"></span>RH = Regular Holiday</span>
-        <span class="status-label text-yellow-700"><span class="w-3 h-3 rounded-full status-sh mr-2"></span>SH = Special Holiday</span>
-        <span class="status-label text-gray-700"><span class="w-3 h-3 rounded-full bg-gray-200 mr-2"></span>BLANK = No Plan Yet</span>
-      </div>
-    </div>
-
-    <div id="attendance-grid" class="attendance-grid card p-0 overflow-x-auto print-grid">
-      <div id="attendance-table-container">
-        </div>
-    </div>
-
-    <p class="text-sm text-gray-500 mt-2 p-4 print-hidden">Click the box (cell) to open status selection or input schedule. **Important: Click 'Save All Changes to Sheets' button to permanently save data.**</p>
-
-  </div>
-  
-  <div id="reliever-personnel-area" class="mt-6 card p-4 hidden">
-    <h3 id="reliever-title" class="text-xl font-bold text-gray-800 mb-4 reliever-title-for-print">Reliever Personnel (FB One Time / FB Recurring)</h3>
-    <div id="reliever-table-container" class="attendance-grid card p-0 overflow-x-auto print-grid">
-        </div>
-  </div>
-
-  <div id="initial-placeholder" class="card mt-6 hidden">
-    <p class="text-center text-gray-500 p-8">Select a Contract Group ID to view details and the attendance plan.</p>
-  </div>
-  
-  <div id="bulk-delete-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
-    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
-        <h3 class="text-xl font-bold mb-4 text-red-700">Bulk Delete Employee Schedules</h3>
-        <p class="text-sm text-gray-600 mb-4">Select the employees whose entire schedule (and master data entry, if applicable) you wish to mark for deletion. Only unlocked entries can be selected.</p>
-        
-        <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-gray-200">
-            <input type="checkbox" id="select-all-delete" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
-            <label for="select-all-delete" class="text-sm font-bold text-gray-700">Select All Unlocked Employees</label>
-        </div>
-        <div class="max-h-80 overflow-y-auto border border-gray-300 rounded-lg p-3 mb-4">
-            <ul id="delete-employee-list-container" class="space-y-2">
-                </ul>
-        </div>
-        
-        <p class="text-sm text-gray-700 mb-4 font-semibold">Selected Employees for Deletion: <span id="delete-selection-count" class="text-red-600">0</span></p>
-
-        <div class="flex justify-end space-x-3">
-            <button id="delete-modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-            <button id="delete-modal-confirm-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50" disabled>Mark for Deletion (0)</button>
-        </div>
-    </div>
-</div>
-  
-  <div id="unlock-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
-    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
-        <h3 class="text-xl font-bold mb-4 text-purple-700">Request Bulk Unlock by Reference #</h3>
-        <p class="text-sm text-gray-600 mb-4">Select the Reference Numbers (Print Versions) that contain the schedules you need to be unlocked by an Admin:</p>
-        
-        <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-gray-200">
-            <input type="checkbox" id="select-all-unlock" class="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
-            <label for="select-all-unlock" class="text-sm font-bold text-gray-700">Select All Locked Reference Numbers</label>
-        </div>
-        <div class="max-h-80 overflow-y-auto border border-gray-300 rounded-lg p-3 mb-4">
-            <ul id="locked-ref-list-container" class="space-y-2">
-                </ul>
-        </div>
-        
-        <p class="text-sm text-gray-700 mb-4 font-semibold">Selected Reference Numbers for Unlock: <span id="unlock-selection-count" class="text-red-600">0</span></p>
-
-        <div class="flex justify-end space-x-3">
-            <button id="unlock-modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-            <button id="unlock-modal-send-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50" disabled>Send Unlock Request (0)</button>
-        </div>
-    </div>
-</div>
-</div>
-<div id="floating-status-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
-    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
-      <h3 class="text-lg font-bold mb-4">Update Schedule/Status</h3>
-      <div id="fixed-status-options-container" class="space-y-2 mb-4">
-        </div>
-      <div class="mb-4">
-        <label for="schedule-start-time" class="block text-sm font-medium text-gray-700 mb-1">Work Schedule (Start - End Time):</label>
-        <div class="flex space-x-2 items-center">
-            <select id="schedule-start-time" class="w-full p-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></select>
-            <span class="text-lg font-bold">-</span>
-            <select id="schedule-end-time" class="w-full p-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></select>
-        </div>
-      </div>
-      <div class="flex justify-end space-x-3">
-        <button id="cancel-status-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-        <button id="save-schedule-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save</button>
-      </div>
-    </div>
-  </div>
-
-<div id="floating-bulk-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
-    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg">
-        <h3 class="text-xl font-bold mb-4">Apply Bulk Details</h3>
-        <p class="text-sm text-gray-600 mb-4">Applying data to <span id="bulk-cell-count" class="font-bold text-blue-600">0</span> selected items.</p>
-
-        <div id="standard-bulk-fields">
-            <div id="bulk-fixed-status-options-container" class="grid grid-cols-2 gap-2 mb-4">
+        <div id="login-form-view" class="p-8">
+            <h2 class="text-3xl font-extrabold text-blue-900 mb-6 text-center">Welcome to Attendance Plan</h2>
+            <form id="login-form" class="space-y-5 max-w-md mx-auto">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700">Email Address</label>
+                    <input type="text" id="login-email" class="w-full p-3 border rounded-lg focus:ring-blue-500 outline-none" required>
                 </div>
-            <div class="border-t pt-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Work Schedule (Start - End Time):</label>
+                <div class="relative">
+                    <label class="block text-sm font-bold text-gray-700">Password</label>
+                    <input type="password" id="login-password" class="w-full p-3 border rounded-lg focus:ring-blue-500 outline-none" required>
+                    <button type="button" class="absolute right-3 top-9 text-gray-500 hover:text-blue-600 toggle-pwd">👁️</button>
+                </div>
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center">
+                        <input type="checkbox" id="remember-me" class="h-4 w-4 text-blue-600 focus:ring-blue-500">
+                        <span class="ml-2 text-sm text-gray-600 font-medium">Remember me</span>
+                    </label>
+                    <a href="#" id="forgot-pwd-link" class="text-sm font-bold text-red-600 hover:underline">Forgot Password?</a>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 shadow-lg">Log In</button>
+                <div class="text-center text-sm font-bold text-gray-400 mt-2">OR</div>
+                <button type="button" id="gmail-login-btn" class="w-full bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 shadow-lg">Log in with Gmail</button>
+            </form>
+            <p class="mt-6 text-center text-sm text-gray-600 font-medium">Don't have an account? <a href="#" id="go-to-register" class="font-bold text-blue-600 hover:underline">Sign up</a></p>
+        </div>
+
+        <div id="register-form-view" class="p-8 hidden">
+            <h2 class="text-3xl font-extrabold text-green-700 mb-6 text-center">Create an Account</h2>
+            <form id="register-form" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700">Full Name</label>
+                        <input type="text" id="reg-name" class="w-full p-3 border rounded-lg focus:ring-green-500" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700">Email Address (Username)</label>
+                        <input type="email" id="reg-email" class="w-full p-3 border rounded-lg focus:ring-green-500" required>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4 border-gray-200">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Property (Check all that apply)</label>
+                        <div id="reg-properties" class="max-h-40 overflow-y-auto border p-2 rounded-lg bg-gray-50 space-y-1 text-sm font-medium"></div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Agency (Check all that apply)</label>
+                        <div id="reg-agencies" class="max-h-40 overflow-y-auto border p-2 rounded-lg bg-gray-50 space-y-1 text-sm font-medium"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4 border-gray-200">
+                    <div class="relative">
+                        <label class="block text-sm font-bold text-gray-700">Password</label>
+                        <input type="password" id="reg-pwd" class="w-full p-3 border rounded-lg focus:ring-green-500" required>
+                        <button type="button" class="absolute right-3 top-9 text-gray-500 hover:text-green-600 toggle-pwd">👁️</button>
+                        <div class="w-full bg-gray-200 h-2 mt-1 rounded"><div id="pwd-strength-bar" class="h-2 rounded w-0 transition-all duration-300"></div></div>
+                        <p id="pwd-feedback" class="text-xs font-bold text-red-500 mt-1"></p>
+                    </div>
+                    <div class="relative">
+                        <label class="block text-sm font-bold text-gray-700">Confirm Password</label>
+                        <input type="password" id="reg-pwd-confirm" class="w-full p-3 border rounded-lg focus:ring-green-500" required>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700">Security Question</label>
+                        <select id="reg-sec-q" class="w-full p-3 border rounded-lg focus:ring-green-500" required>
+                            <option value="">Select a question...</option>
+                            <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                            <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                            <option value="What city were you born in?">What city were you born in?</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700">Security Answer</label>
+                        <input type="text" id="reg-sec-a" class="w-full p-3 border rounded-lg focus:ring-green-500" required>
+                    </div>
+                </div>
+
+                <button type="submit" id="register-submit-btn" class="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 shadow-lg mt-4">Register Account</button>
+            </form>
+            <p class="mt-4 text-center text-sm text-gray-600 font-medium">Already have an account? <a href="#" id="go-to-login" class="font-bold text-green-600 hover:underline">Log in</a></p>
+        </div>
+    </div>
+  </div>
+
+  <div id="main-app-container" class="hidden">
+  
+      <div id="full-screen-overlay" class="fixed inset-0 bg-gray-900 bg-opacity-30 z-[60] flex justify-center items-center hidden">
+        <div class="bg-white p-6 rounded-xl shadow-2xl text-center">
+            <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p id="overlay-message" class="text-lg font-semibold text-gray-800">Processing...</p>
+        </div>
+      </div>
+      
+      <div id="notification-area" class="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 p-3 rounded-lg text-sm font-semibold z-50 transition-opacity duration-300 opacity-0 min-w-[200px] text-center" style="box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); border: 1px solid #d1d5db;"></div>
+    
+      <div id="print-timestamp-display" class="print-only-container print-hidden"></div>
+      
+      <div class="flex justify-end mb-2 print-hidden">
+         <span class="text-gray-600 font-bold mr-4 my-auto" id="logged-in-user-display"></span>
+         <button id="logout-btn" class="bg-red-600 text-white font-bold py-2 px-6 rounded-lg shadow hover:bg-red-700 transition">Logout</button>
+      </div>
+    
+      <div id="loading-alert" class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6 loading-pulse" role="alert">
+        <p class="font-bold">Loading data from Google Sheet...</p>
+        <p class="text-sm">This may take a few seconds.</p>
+      </div>
+    
+      <h1 class="text-3xl font-extrabold text-gray-800 mb-6 print-hidden">Attendance Plan Monitoring & Planning (Google Sheets Powered)</h1>
+    
+      <div class="card print-hidden">
+        <p class="text-lg font-semibold text-gray-700 mb-3">Select Contract Group ID:</p>
+        <select id="contract-select" class="w-full p-3 border border-gray-300 rounded-lg text-gray-700 focus:ring-blue-500 focus:border-blue-500 transition duration-150 shadow-sm">
+          <option value="">-- Choose Contract Group ID --</option>
+        </select>
+      </div>
+    
+      <div id="contract-details-area" class="mt-6 hidden">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4 print-hidden">Contract Details</h2>
+        <div id="contract-details-grid" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3"> 
+          <div class="card p-3 print-hidden"> 
+            <p class="text-sm font-medium text-blue-800">SFC Reference #</p>
+            <p id="sfc-ref" class="text-lg font-extrabold text-blue-900"></p>
+          </div>
+          <div class="card p-3"> 
+            <p class="text-sm font-medium text-blue-800">Prop. / Grp. Code</p>
+            <p id="prop-grp-code" class="text-base font-bold text-blue-900"></p>
+          </div>
+          <div class="card p-3"> 
+            <p class="text-sm font-medium text-blue-800">Sector</p>
+            <p id="sector" class="text-base font-bold text-blue-900"></p>
+          </div>
+          <div class="card p-3">
+            <p class="text-sm font-medium text-blue-800">Payor Company</p>
+            <p id="payor-company" class="text-base font-bold text-blue-900"></p>
+          </div>
+          <div class="card p-3">
+            <p class="text-sm font-medium text-blue-800">Agency</p>
+            <p id="agency" class="text-base font-bold text-blue-900"></p>
+          </div>
+          <div class="card p-3">
+            <p class="text-sm font-medium text-blue-800">Service Type</p>
+            <p id="service-type" class="text-base font-bold text-blue-900"></p>
+          </div>
+          <div class="card p-3 print-hidden"> 
+            <p class="text-sm font-medium text-blue-800">Total Head Count</p>
+            <p id="head-count" class="text-lg font-extrabold text-blue-900"></p>
+          </div>
+          <div class="card p-3"> 
+            <p class="text-sm font-medium text-blue-800">Plan Period</p>
+            <p id="plan-period-display" class="text-base font-bold text-blue-900"></p>
+          </div>
+        </div>
+        
+        <div id="plan-action-area" class="mt-6 card p-4 flex justify-between items-center hidden print-hidden">
+            <h3 id="plan-status-text" class="text-xl font-semibold text-gray-700">Attendance Plan Status: Checking...</h3>
+            <button id="create-plan-btn" class="p-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition duration-150 shadow-lg">Create/Load Plan</button>
+        </div>
+      </div>
+        
+      <datalist id="employee-id-list"></datalist>
+      <datalist id="employee-name-list"></datalist>
+      <datalist id="employee-position-list"></datalist>
+      <datalist id="employee-area-list"></datalist>
+      <datalist id="signatory-master-list"></datalist>
+      
+      <datalist id="section-master-list"></datalist>
+      <datalist id="department-master-list"></datalist>
+      <datalist id="remarks-master-list"></datalist>
+  
+      <datalist id="security-designation-list"></datalist>
+      <datalist id="security-place-list"></datalist>
+      <datalist id="security-type-list"></datalist>
+      <datalist id="security-make-list"></datalist>
+      <datalist id="security-caliber-list"></datalist>
+      <datalist id="security-serial-list"></datalist>
+        
+      <div id="planning-area" class="mt-6 hidden">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4 print-hidden">Attendance Plan</h2>
+        
+        <div class="card p-4 flex flex-wrap items-center justify-start space-x-3 mb-4 print-hidden">
+          <label for="month-year-picker" class="text-lg font-semibold text-gray-700 whitespace-nowrap">Select Period:</label>
+          <input type="text" id="month-year-picker" class="p-3 border border-gray-300 rounded-lg text-lg font-bold text-gray-700 w-auto text-center focus:ring-blue-500 focus:border-blue-500 transition duration-150" readonly>
+          <select id="shift-period-select" class="p-3 border border-gray-300 rounded-lg text-gray-700 shadow-sm w-auto"></select>
+        </div>
+  
+        <div id="schedule-type-container" class="card p-4 mb-4 print-hidden bg-blue-50 border border-blue-200">
+          <span class="text-lg font-bold text-gray-800 mr-4">Schedule Type (Required):</span>
+          <label class="inline-flex items-center mr-6 cursor-pointer">
+            <input type="radio" name="schedule-compression-type" value="non-compressed" class="form-radio h-5 w-5 text-blue-600" checked onchange="updateScheduleMode(this.value)">
+            <span class="ml-2 text-gray-700 font-medium">Non-Compressed Schedule</span>
+          </label>
+          <label class="inline-flex items-center cursor-pointer">
+            <input type="radio" name="schedule-compression-type" value="compressed" class="form-radio h-5 w-5 text-blue-600" onchange="updateScheduleMode(this.value)">
+            <span class="ml-2 text-gray-700 font-medium">Compressed Schedule</span>
+          </label>
+        </div>
+        <div class="mb-4 flex justify-end space-x-3 print-hidden">
+            <button onclick="copyPreviousPlan()" class="p-3 rounded-lg bg-indigo-600 text-white font-extrabold text-lg hover:bg-indigo-700 transition duration-150 shadow-lg flex items-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Copy Employee From Previous Plan</span>
+            </button>
+            <button id="request-unlock-modal-btn" onclick="openUnlockSelectionModal()" class="p-3 rounded-lg bg-purple-600 text-white font-extrabold text-lg hover:bg-purple-700 transition duration-150 shadow-lg flex items-center space-x-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0v4m-5 9h2m-5-3h10a2 2 0 002-2v-6a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                </svg>
+                <span>Request Unlock</span>
+            </button>
+            <button id="open-bulk-delete-btn" class="p-3 rounded-lg bg-red-600 text-white font-extrabold text-lg hover:bg-red-700 transition duration-150 shadow-lg flex items-center space-x-2">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span>Bulk Delete</span>
+            </button>
+            <button id="start-bulk-select-btn" class="p-3 rounded-lg bg-yellow-600 text-white font-extrabold text-lg hover:bg-yellow-700 transition duration-150 shadow-lg flex items-center space-x-2">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
+                </svg>
+                <span>Start Bulk Select</span>
+            </button>
+            <button id="print-plan-btn" class="p-3 rounded-lg bg-green-600 text-white font-extrabold text-lg hover:bg-green-700 transition duration-150 shadow-lg flex items-center space-x-2">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m0 0l-1 3H4a2 2 0 00-2 2v2a2 2 0 002 2h16a2 2 0 002-2v-2a2 2 0 00-2-2h-3l-1-3m0-8h.01M16 7h.01M12 21v-4a2 2 0 00-2-2h-4a2 2 0 00-2 2v4h16z" />
+                </svg>
+                <span>Print Plan</span>
+            </button>
+            <button id="save-all-changes-btn" class="p-3 rounded-lg bg-red-600 text-white font-extrabold text-lg hover:bg-red-700 transition duration-150 shadow-lg">Save All Changes to Sheets</button>
+        </div>
+        
+        <div id="legend-area" class="card mb-4 p-4 print-hidden"> 
+          <h3 class="text-lg font-semibold mb-2 text-gray-700">Legend:</h3>
+          <div class="flex flex-wrap gap-4 text-sm">
+            <span class="status-label text-green-700"><span class="w-3 h-3 rounded-full status-work mr-2"></span>Work/Schedule (Time Input)</span>
+            <span class="status-label text-red-700"><span class="w-3 h-3 rounded-full status-rd mr-2"></span>RD = Rest Day</span>
+            <span class="status-label text-blue-700"><span class="w-3 h-3 rounded-full status-rh mr-2"></span>RH = Regular Holiday</span>
+            <span class="status-label text-yellow-700"><span class="w-3 h-3 rounded-full status-sh mr-2"></span>SH = Special Holiday</span>
+            <span class="status-label text-gray-700"><span class="w-3 h-3 rounded-full bg-gray-200 mr-2"></span>BLANK = No Plan Yet</span>
+          </div>
+        </div>
+    
+        <div id="attendance-grid" class="attendance-grid card p-0 overflow-x-auto print-grid">
+          <div id="attendance-table-container"></div>
+        </div>
+    
+        <p class="text-sm text-gray-500 mt-2 p-4 print-hidden">Click the box (cell) to open status selection or input schedule. **Important: Click 'Save All Changes to Sheets' button to permanently save data.**</p>
+    
+      </div>
+      
+      <div id="reliever-personnel-area" class="mt-6 card p-4 hidden">
+        <h3 id="reliever-title" class="text-xl font-bold text-gray-800 mb-4 reliever-title-for-print">Reliever Personnel (FB One Time / FB Recurring)</h3>
+        <div id="reliever-table-container" class="attendance-grid card p-0 overflow-x-auto print-grid"></div>
+      </div>
+    
+      <div id="initial-placeholder" class="card mt-6 hidden">
+        <p class="text-center text-gray-500 p-8">Select a Contract Group ID to view details and the attendance plan.</p>
+      </div>
+      
+      <div id="bulk-delete-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
+            <h3 class="text-xl font-bold mb-4 text-red-700">Bulk Delete Employee Schedules</h3>
+            <p class="text-sm text-gray-600 mb-4">Select the employees whose entire schedule (and master data entry, if applicable) you wish to mark for deletion. Only unlocked entries can be selected.</p>
+            <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-gray-200">
+                <input type="checkbox" id="select-all-delete" class="h-4 w-4 text-red-600 border-gray-300 rounded focus:ring-red-500">
+                <label for="select-all-delete" class="text-sm font-bold text-gray-700">Select All Unlocked Employees</label>
+            </div>
+            <div class="max-h-80 overflow-y-auto border border-gray-300 rounded-lg p-3 mb-4">
+                <ul id="delete-employee-list-container" class="space-y-2"></ul>
+            </div>
+            <p class="text-sm text-gray-700 mb-4 font-semibold">Selected Employees for Deletion: <span id="delete-selection-count" class="text-red-600">0</span></p>
+            <div class="flex justify-end space-x-3">
+                <button id="delete-modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button id="delete-modal-confirm-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50" disabled>Mark for Deletion (0)</button>
+            </div>
+        </div>
+    </div>
+      
+    <div id="unlock-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
+            <h3 class="text-xl font-bold mb-4 text-purple-700">Request Bulk Unlock by Reference #</h3>
+            <p class="text-sm text-gray-600 mb-4">Select the Reference Numbers (Print Versions) that contain the schedules you need to be unlocked by an Admin:</p>
+            <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-gray-200">
+                <input type="checkbox" id="select-all-unlock" class="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500">
+                <label for="select-all-unlock" class="text-sm font-bold text-gray-700">Select All Locked Reference Numbers</label>
+            </div>
+            <div class="max-h-80 overflow-y-auto border border-gray-300 rounded-lg p-3 mb-4">
+                <ul id="locked-ref-list-container" class="space-y-2"></ul>
+            </div>
+            <p class="text-sm text-gray-700 mb-4 font-semibold">Selected Reference Numbers for Unlock: <span id="unlock-selection-count" class="text-red-600">0</span></p>
+            <div class="flex justify-end space-x-3">
+                <button id="unlock-modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button id="unlock-modal-send-btn" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50" disabled>Send Unlock Request (0)</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="floating-status-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-4">Update Schedule/Status</h3>
+            <div id="fixed-status-options-container" class="space-y-2 mb-4"></div>
+            <div class="mb-4">
+                <label for="schedule-start-time" class="block text-sm font-medium text-gray-700 mb-1">Work Schedule (Start - End Time):</label>
                 <div class="flex space-x-2 items-center">
-                    <select id="bulk-start-time" class="w-full p-2 border rounded-lg focus:ring-blue-500"></select>
+                    <select id="schedule-start-time" class="w-full p-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></select>
                     <span class="text-lg font-bold">-</span>
-                    <select id="bulk-end-time" class="w-full p-2 border rounded-lg focus:ring-blue-500"></select>
+                    <select id="schedule-end-time" class="w-full p-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500"></select>
                 </div>
-                <p class="text-xs text-gray-500 mt-1">Leave blank to clear schedule or use fixed status buttons.</p>
             </div>
-        </div>
-
-        <div id="security-bulk-fields" class="hidden space-y-3 border-t pt-2">
-             <p class="text-xs font-bold text-blue-600 uppercase tracking-wide">Security Details Update</p>
-             
-             <div>
-                <label class="block text-xs font-bold text-gray-700">Time of Shift:</label>
-                <select id="bulk-sec-time-shift" class="w-full p-2 border border-gray-300 rounded text-sm bg-gray-50 focus:ring-blue-500">
-                    </select>
-             </div>
-
-             <div class="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded border">
-                <div class="col-span-2 text-xs font-bold text-gray-500 uppercase border-b pb-1 mb-1">Firearm Nomenclature</div>
-                
-                <div>
-                    <label class="block text-[10px] font-bold text-gray-500">Type</label>
-                    <input type="text" id="bulk-sec-fa-type" list="security-type-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. PISTOL">
-                </div>
-                 <div>
-                    <label class="block text-[10px] font-bold text-gray-500">Make</label>
-                    <input type="text" id="bulk-sec-fa-make" list="security-make-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. GLOCK">
-                </div>
-                 <div class="col-span-2"> 
-                    <label class="block text-[10px] font-bold text-gray-500">Caliber</label>
-                    <input type="text" id="bulk-sec-fa-caliber" list="security-caliber-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. 9MM">
-                </div>
-             </div>
-             <p class="text-xs text-orange-600 italic mt-2">* Leave fields blank if you don't want to update them.</p>
-        </div>
-
-        <div class="flex justify-end space-x-3 mt-6">
-            <button id="bulk-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-            <button id="bulk-save-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Apply Changes</button>
+            <div class="flex justify-end space-x-3">
+                <button id="cancel-status-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button id="save-schedule-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save</button>
+            </div>
         </div>
     </div>
-</div>
-
-<div id="print-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
-    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
-        <h3 class="text-xl font-bold mb-4 text-blue-700">Select Schedules for Printing</h3>
-        <p class="text-sm text-gray-600 mb-4">Choose the employees with saved schedules that you wish to include in the printout (Total printable: <span id="total-printable-count" class="font-semibold text-blue-600">0</span>):</p>
-        
-        <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-gray-200">
-            <input type="checkbox" id="select-all-print" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-            <label for="select-all-print" class="text-sm font-bold text-gray-700">Select All Printable Schedules</label>
-        </div>
-        <div class="max-h-80 overflow-y-auto border border-gray-300 rounded-lg p-3 mb-4">
-            <ul id="printable-employee-list-container" class="space-y-2">
-                </ul>
-        </div>
-        
-        <p class="text-sm text-gray-700 mb-4 font-semibold">Selected for Print: <span id="print-selection-count" class="text-red-600">0</span></p>
-
-        <div class="flex justify-end space-x-3">
-            <button id="print-select-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-            <button id="print-select-confirm-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50" disabled>Proceed to Print Setup (0 Selected)</button>
+    
+    <div id="floating-bulk-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg">
+            <h3 class="text-xl font-bold mb-4">Apply Bulk Details</h3>
+            <p class="text-sm text-gray-600 mb-4">Applying data to <span id="bulk-cell-count" class="font-bold text-blue-600">0</span> selected items.</p>
+            <div id="standard-bulk-fields">
+                <div id="bulk-fixed-status-options-container" class="grid grid-cols-2 gap-2 mb-4"></div>
+                <div class="border-t pt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Work Schedule (Start - End Time):</label>
+                    <div class="flex space-x-2 items-center">
+                        <select id="bulk-start-time" class="w-full p-2 border rounded-lg focus:ring-blue-500"></select>
+                        <span class="text-lg font-bold">-</span>
+                        <select id="bulk-end-time" class="w-full p-2 border rounded-lg focus:ring-blue-500"></select>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Leave blank to clear schedule or use fixed status buttons.</p>
+                </div>
+            </div>
+            <div id="security-bulk-fields" class="hidden space-y-3 border-t pt-2">
+                <p class="text-xs font-bold text-blue-800 bg-blue-100 p-2 rounded">Security Settings</p>
+                <div id="bulk-sec-time-shift-container">
+                    <label class="block text-xs font-bold text-gray-700">Time of Shift</label>
+                    <select id="bulk-sec-time-shift" class="w-full p-2 border border-gray-300 rounded text-sm bg-gray-50 focus:ring-blue-500"></select>
+                </div>
+                <div class="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded border">
+                    <div class="col-span-2 text-xs font-bold text-gray-500 uppercase border-b pb-1 mb-1">Firearm Nomenclature</div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-500">Type</label>
+                        <input type="text" id="bulk-sec-fa-type" list="security-type-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. PISTOL">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-500">Make</label>
+                        <input type="text" id="bulk-sec-fa-make" list="security-make-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. GLOCK">
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-bold text-gray-500">Caliber</label>
+                        <input type="text" id="bulk-sec-fa-caliber" list="security-caliber-list" class="w-full p-1 border rounded text-sm uppercase" placeholder="e.g. 9MM">
+                    </div>
+                </div>
+                <p class="text-xs text-orange-600 italic mt-2">* Leave fields blank if you don't want to update them.</p>
+            </div>
+            <div class="flex justify-end space-x-3 mt-6">
+                <button id="bulk-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold">Cancel Selection</button>
+                <button id="bulk-save-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">Apply & Save</button>
+            </div>
         </div>
     </div>
-</div>
-
-<div id="print-setup-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
-    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto">
-        <h3 class="text-xl font-bold mb-4 text-blue-700">Print Preparation & Signatories</h3>
-        <p class="text-gray-700 mb-4">Please complete the required details before proceeding to print.</p>
-        
-        <div class="mb-6 space-y-3">
-            <div id="standard-print-fields">
-                <label for="remarks-input" class="block text-sm font-medium text-gray-700 mb-1 mt-3">Remarks: (Optional)</label>
-                <textarea id="remarks-input" list="remarks-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., SCHEDULE FOR TEMPORARY PERSONNEL ONLY"></textarea>
+    
+    <div id="print-selection-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-xl">
+            <h3 class="text-xl font-bold mb-4 text-blue-700">Select Employees to Print</h3>
+            <p class="text-sm text-gray-600 mb-4">Choose the employees whose schedules you want to include in this print batch. (Only unlocked rows with actual schedules are shown).</p>
+            <div class="flex items-center space-x-2 pb-3 mb-3 border-b border-gray-200">
+                <input type="checkbox" id="select-all-print" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <label for="select-all-print" class="text-sm font-bold text-gray-700">Select All Printable Employees</label>
             </div>
-
-            <label for="sub-property-input" class="block text-sm font-medium text-gray-700 mb-1">Sub Property Name (Required):</label>
-            <input type="text" id="sub-property-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., TOWER 1, ANNEX BUILDING">
-
-            <label for="section-input" class="block text-sm font-medium text-gray-700 mb-1">Section: (Required)</label>
-            <input type="text" id="section-input" list="section-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., ADMINISTRATION, OPERATIONS" required>
-
-            <label for="department-input" class="block text-sm font-medium text-gray-700 mb-1">Department: (Required)</label>
-            <input type="text" id="department-input" list="department-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., SECURITY, ENGINEERING" required>
-
-            <div id="security-print-fields" class="hidden">
-                 <div class="bg-blue-50 p-3 rounded border border-blue-200 mb-3">
-                     <p class="text-xs font-bold text-blue-800 uppercase mb-2">Agency Header Details</p>
-                     
-                     <label for="agency-name-input" class="block text-xs font-medium text-gray-700 mb-1">Agency Name:</label>
-                     <input type="text" id="agency-name-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 mb-2 font-bold" placeholder="Agency Name">
-
-                     <label for="agency-address-input" class="block text-xs font-medium text-gray-700 mb-1">Address (Col G):</label>
-                     <input type="text" id="agency-address-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 mb-2" placeholder="Auto-filled from dvSupplierPayee">
-
-                     <div class="grid grid-cols-2 gap-2">
-                         <div>
-                             <label for="agency-tel-input" class="block text-xs font-medium text-gray-700 mb-1">Telephone No: (Optional)</label>
-                             <input type="text" id="agency-tel-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500" placeholder="e.g. 123-4567">
-                         </div>
-                         <div>
-                             <label for="agency-email-input" class="block text-xs font-medium text-gray-700 mb-1">Email Add: (Optional)</label>
-                             <input type="text" id="agency-email-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500" placeholder="e.g. email@agency.com">
-                         </div>
-                     </div>
-                 </div>
-                 <label for="serial-no-input" class="block text-sm font-medium text-gray-700 mb-1 mt-3">Serial No.: (Required)</label>
-                 <input type="text" id="serial-no-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Enter Serial No.">
-
-                 <label for="to-input" class="block text-sm font-medium text-gray-700 mb-1 mt-3">To: (Required)</label>
-                 <input type="text" id="to-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Addressee (e.g., ALL SECURITY GUARDS)">
-
-                 <label for="security-references-input" class="block text-sm font-medium text-gray-700 mb-1 mt-3">References (Editable):</label>
-                 <textarea id="security-references-input" rows="4" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-xs" placeholder="Enter References..."></textarea>
+            <div class="max-h-80 overflow-y-auto border border-gray-300 rounded-lg p-3 mb-4">
+                <ul id="printable-employee-list-container" class="space-y-2"></ul>
             </div>
-        </div>
-
-        <h4 class="text-lg font-bold mb-3 text-gray-800 border-t pt-4">Signatories (Name & Designation Validation Applies)</h4>
-
-        <div class="grid grid-cols-2 gap-4 mb-4">
-            <div>
-                <label for="signatory-prepared-by" class="block text-sm font-medium text-gray-700 mb-1">Prepared By: (Required - Personnel Name)</label>
-                <input type="text" id="signatory-prepared-by" list="employee-name-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="PERSONNEL NAME" required>
-                <p class="text-xs text-gray-500 mt-1">Personnel Name (from Employee List)</p>
-                
-                <label for="signatory-prepared-by-designation" class="block text-sm font-medium text-gray-700 mt-3 mb-1">Designation/Position:</label>
-                <input type="text" id="signatory-prepared-by-designation" 
-                       class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" 
-                       placeholder="POSITION (Editable)">
+            <p class="text-sm text-gray-700 mb-4 font-semibold">
+                Selected for Print: <span id="print-selection-count" class="text-blue-600">0</span> / <span id="total-printable-count">0</span>
+            </p>
+            <div class="flex justify-end space-x-3">
+                <button id="print-select-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button id="print-select-confirm-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50" disabled>Proceed to Print Setup</button>
             </div>
-
-            <div>
-                <label for="signatory-approved-by" class="block text-sm font-medium text-gray-700 mb-1">Approved By: (Required - Signatory Name)</label>
-                <input type="text" id="signatory-approved-by" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="SIGNATORY NAME" required>
-                <p class="text-xs text-gray-500 mt-1">Signatory Name (from Master List)</p>
-
-                <label for="signatory-approved-by-designation" class="block text-sm font-medium text-gray-700 mt-3 mb-1">Designation:</label>
-                <input type="text" id="signatory-approved-by-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="DESIGNATION (Editable)">
-            </div>
-        </div>
-
-        <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Checked By: (At least one required)</label>
-            <div class="grid grid-cols-3 gap-x-2 gap-y-2">
-                <div>
-                    <input type="text" id="signatory-checked-by-0" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 1 (Name)" required>
-                    <input type="text" id="signatory-checked-by-0-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
-                </div>
-                <div>
-                    <input type="text" id="signatory-checked-by-1" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 2 (Name)">
-                    <input type="text" id="signatory-checked-by-1-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
-                </div>
-                <div>
-                    <input type="text" id="signatory-checked-by-2" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 3 (Name)">
-                    <input type="text" id="signatory-checked-by-2-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
-                </div>
-                <div>
-                    <input type="text" id="signatory-checked-by-3" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 4 (Name)">
-                    <input type="text" id="signatory-checked-by-3-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
-                </div>
-                <div>
-                    <input type="text" id="signatory-checked-by-4" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 5 (Name)">
-                    <input type="text" id="signatory-checked-by-4-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
-                </div>
-            </div>
-            <p class="text-xs text-gray-500 mt-1">Signatory names (from Master List). At least one field (Checked By 1) must be filled.</p>
-        </div>
-
-        <div class="flex justify-end space-x-3">
-            <button id="print-setup-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
-            <button id="print-setup-confirm-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Proceed to Print</button>
         </div>
     </div>
-</div>
-<div id="print-confirm-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
-    <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
-        <h3 class="text-xl font-bold mb-4 text-blue-700 flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            Print Verification
-        </h3>
-        <p class="text-gray-700 mb-6" id="print-confirm-message">
-            We need to verify if the document was successfully printed. Did you proceed with printing the document?
-        </p>
-        <div class="flex justify-end space-x-3">
-            <button id="confirm-print-cancel-btn" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-semibold">Cancel (Discard Log)</button>
-            <button id="confirm-print-ok-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">Confirm Print (Log)</button>
+    
+    <div id="print-setup-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-start p-4 overflow-y-auto print-hidden">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-3xl my-8">
+            <h3 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">Print Configuration</h3>
+            <div id="standard-print-fields" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Sub Property</label>
+                    <input type="text" id="sub-property-input" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Section</label>
+                    <input type="text" id="section-input" list="section-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Department</label>
+                    <input type="text" id="department-input" list="department-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Remarks</label>
+                    <input type="text" id="remarks-input" list="remarks-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 uppercase">
+                </div>
+            </div>
+            <div id="security-print-fields" class="hidden space-y-6 mb-6">
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <h4 class="text-sm font-bold text-blue-800 mb-3">Security Dispatch Header Information</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">To (Addressee)</label>
+                            <input type="text" id="to-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 text-sm uppercase">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Serial No.</label>
+                            <input type="text" id="serial-no-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 text-sm uppercase">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs font-bold text-gray-700 mb-1">References</label>
+                            <textarea id="security-references-input" rows="3" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 text-sm"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <h4 class="text-sm font-bold text-gray-800 mb-3">Agency Information (Overridable)</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Agency Name</label>
+                            <input type="text" id="agency-name-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 text-sm uppercase">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Agency Address</label>
+                            <input type="text" id="agency-address-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Telephone No.</label>
+                            <input type="text" id="agency-tel-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Email Address</label>
+                            <input type="text" id="agency-email-input" class="w-full p-2 border border-gray-300 rounded focus:ring-blue-500 text-sm">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="border-t pt-4 mb-6">
+                <h4 class="text-lg font-bold text-gray-800 mb-3">Signatories</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Prepared By (Required)</label>
+                        <input type="text" id="signatory-prepared-by" list="employee-name-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Name" required>
+                        <input type="text" id="signatory-prepared-by-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Approved By (Required)</label>
+                        <input type="text" id="signatory-approved-by" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Name" required>
+                        <input type="text" id="signatory-approved-by-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation" required>
+                    </div>
+                </div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">Checked By: (At least one required)</label>
+                <div class="grid grid-cols-3 gap-x-2 gap-y-2">
+                    <div>
+                        <input type="text" id="signatory-checked-by-0" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 1 (Name)" required>
+                        <input type="text" id="signatory-checked-by-0-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                    </div>
+                    <div>
+                        <input type="text" id="signatory-checked-by-1" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 2 (Name)">
+                        <input type="text" id="signatory-checked-by-1-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                    </div>
+                    <div>
+                        <input type="text" id="signatory-checked-by-2" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 3 (Name)">
+                        <input type="text" id="signatory-checked-by-2-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                    </div>
+                    <div>
+                        <input type="text" id="signatory-checked-by-3" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 4 (Name)">
+                        <input type="text" id="signatory-checked-by-3-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                    </div>
+                    <div>
+                        <input type="text" id="signatory-checked-by-4" list="signatory-master-list" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Checked By 5 (Name)">
+                        <input type="text" id="signatory-checked-by-4-designation" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 mt-1" placeholder="Designation">
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Signatory names (from Master List). At least one field (Checked By 1) must be filled.</p>
+            </div>
+            <div class="flex justify-end space-x-3">
+                <button id="print-setup-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button id="print-setup-confirm-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Proceed to Print</button>
+            </div>
         </div>
     </div>
-</div>
+    
+    <div id="print-confirm-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+        <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
+            <h3 class="text-xl font-bold mb-4 text-blue-700 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> Print Verification
+            </h3>
+            <p class="text-gray-700 mb-6" id="print-confirm-message">We need to verify if the document was successfully printed. Did you proceed with printing the document?</p>
+            <div class="flex justify-end space-x-3">
+                <button id="confirm-print-cancel-btn" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 font-semibold">Cancel (Discard Log)</button>
+                <button id="confirm-print-ok-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">Confirm Print (Log)</button>
+            </div>
+        </div>
+    </div>
+    
+  </div>
+
   <?!= include('JavaScript'); ?>
+
+  <script>
+    let regDataCache = { properties: [], agencies: [] };
+    let idleTime = 0;
+    const IDLE_LIMIT = 10 * 60; // 10 minutes
+
+    document.addEventListener("DOMContentLoaded", () => {
+        // Toggle Views
+        document.getElementById('go-to-register').onclick = (e) => {
+            e.preventDefault();
+            document.getElementById('login-form-view').classList.add('hidden');
+            document.getElementById('register-form-view').classList.remove('hidden');
+            loadRegData();
+        };
+
+        document.getElementById('go-to-login').onclick = (e) => {
+            e.preventDefault();
+            document.getElementById('register-form-view').classList.add('hidden');
+            document.getElementById('login-form-view').classList.remove('hidden');
+        };
+
+        // Eye Icon Toggle
+        document.querySelectorAll('.toggle-pwd').forEach(btn => {
+            btn.onclick = function() {
+                const input = this.previousElementSibling;
+                input.type = input.type === 'password' ? 'text' : 'password';
+            };
+        });
+
+        // Password Strength
+        const pwdInput = document.getElementById('reg-pwd');
+        const pwdBar = document.getElementById('pwd-strength-bar');
+        const pwdFeedback = document.getElementById('pwd-feedback');
+
+        pwdInput.addEventListener('input', function() {
+            let val = this.value;
+            let strength = 0;
+            if (val.length >= 8) strength++;
+            if (/[A-Z]/.test(val)) strength++;
+            if (/[0-9]/.test(val)) strength++;
+            if (/[^A-Za-z0-9]/.test(val)) strength++;
+            
+            pwdBar.className = 'h-2 rounded transition-all duration-300';
+            if (val.length === 0) {
+                pwdBar.style.width = '0%';
+                pwdFeedback.textContent = '';
+            } else if (strength <= 1) {
+                pwdBar.style.width = '25%';
+                pwdBar.classList.add('bg-red-500');
+                pwdFeedback.textContent = 'Weak: Add letters, numbers, symbols, and uppercase.';
+            } else if (strength === 2 || strength === 3) {
+                pwdBar.style.width = '60%';
+                pwdBar.classList.add('bg-yellow-500');
+                pwdFeedback.textContent = 'Medium: Good, but can be stronger.';
+                pwdFeedback.classList.replace('text-red-500', 'text-yellow-600');
+            } else {
+                pwdBar.style.width = '100%';
+                pwdBar.classList.add('bg-green-500');
+                pwdFeedback.textContent = 'Strong password!';
+                pwdFeedback.classList.replace('text-red-500', 'text-green-600');
+            }
+        });
+
+        // Load Prefilled Logic
+        const savedEmail = localStorage.getItem('authEmail');
+        const savedPwd = localStorage.getItem('authPwd');
+        if(savedEmail && savedPwd) {
+            document.getElementById('login-email').value = savedEmail;
+            document.getElementById('login-password').value = savedPwd;
+            document.getElementById('remember-me').checked = true;
+        }
+
+        // Check Existing Session
+        const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+        if (token) {
+            Swal.fire({ title: 'Resuming Session...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            google.script.run.withSuccessHandler(res => {
+                if(res.valid) {
+                    Swal.close();
+                    loginSuccess({ token: token, allowedContracts: res.allowedContracts, name: res.name });
+                } else {
+                    Swal.close();
+                    executeLogout();
+                }
+            }).verifySession(token);
+        }
+
+        // Idle Timer Setup
+        document.onmousemove = () => idleTime = 0;
+        document.onkeypress = () => idleTime = 0;
+        document.onclick = () => idleTime = 0;
+        document.onscroll = () => idleTime = 0;
+
+        setInterval(() => {
+            if(document.getElementById('auth-container').classList.contains('hidden')) {
+                idleTime++;
+                if (idleTime % 120 === 0) { 
+                    const tk = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+                    if(tk) google.script.run.verifySession(tk);
+                }
+                if (idleTime >= IDLE_LIMIT) {
+                    executeLogout("You have been auto-logged out due to 10 minutes of inactivity.");
+                }
+            }
+        }, 1000);
+    });
+
+    // Load Registration Dynamic Data (Property and Agency only)
+    function loadRegData() {
+        if(regDataCache.properties.length > 0) return;
+        Swal.fire({ title: 'Loading...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        google.script.run.withSuccessHandler(data => {
+            regDataCache = data;
+            document.getElementById('reg-properties').innerHTML = data.properties.map(p => 
+                `<label class="flex items-start"><input type="checkbox" class="prop-chk mt-1 mr-2" value="${p}"> <span class="leading-tight">${p}</span></label>`
+            ).join('');
+            document.getElementById('reg-agencies').innerHTML = data.agencies.map(a => 
+                `<label class="flex items-start"><input type="checkbox" class="agency-chk mt-1 mr-2" value="${a}"> <span class="leading-tight">${a}</span></label>`
+            ).join('');
+            Swal.close();
+        }).getRegistrationFormData();
+    }
+
+    // Handlers
+    document.getElementById('register-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const pwd = document.getElementById('reg-pwd').value;
+        if(pwd.length < 8) return Swal.fire('Error', 'Password must be at least 8 characters.', 'error');
+        if(pwd !== document.getElementById('reg-pwd-confirm').value) return Swal.fire('Error', 'Passwords do not match.', 'error');
+        
+        const selectedProps = Array.from(document.querySelectorAll('.prop-chk:checked')).map(c => c.value);
+        const selectedAgencies = Array.from(document.querySelectorAll('.agency-chk:checked')).map(c => c.value);
+        
+        if(selectedProps.length === 0) return Swal.fire('Error', 'Please select at least one Property.', 'error');
+        if(selectedAgencies.length === 0) return Swal.fire('Error', 'Please select at least one Agency.', 'error');
+
+        const userData = {
+            name: document.getElementById('reg-name').value,
+            email: document.getElementById('reg-email').value,
+            password: pwd,
+            securityQuestion: document.getElementById('reg-sec-q').value,
+            securityAnswer: document.getElementById('reg-sec-a').value,
+            properties: selectedProps,
+            agencies: selectedAgencies
+        };
+
+        Swal.fire({ title: 'Registering...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        google.script.run.withSuccessHandler(res => {
+            if(res.success) {
+                Swal.fire('Success', res.message, 'success').then(() => {
+                    document.getElementById('go-to-login').click();
+                });
+            } else {
+                Swal.fire('Error', res.message, 'error');
+            }
+        }).registerUser(userData);
+    });
+
+    document.getElementById('login-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        Swal.fire({ title: 'Logging in...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        const email = document.getElementById('login-email').value;
+        const pwd = document.getElementById('login-password').value;
+        
+        google.script.run.withSuccessHandler(res => {
+            if(res.success) {
+                if(document.getElementById('remember-me').checked) {
+                    localStorage.setItem('authEmail', email);
+                    localStorage.setItem('authPwd', pwd);
+                } else {
+                    localStorage.removeItem('authEmail');
+                    localStorage.removeItem('authPwd');
+                }
+                Swal.close();
+                loginSuccess(res);
+            } else {
+                Swal.fire('Error', res.message, 'error');
+            }
+        }).loginUser(email, pwd);
+    });
+
+    document.getElementById('gmail-login-btn').addEventListener('click', () => {
+        Swal.fire({ title: 'Connecting to Gmail...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        google.script.run.withSuccessHandler(res => {
+            if(res.success) {
+                Swal.close();
+                loginSuccess(res);
+            } else {
+                Swal.fire('Authentication Failed', res.message, 'error');
+            }
+        }).loginWithGmail();
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', () => {
+        Swal.fire({
+            title: 'Confirm Logout',
+            text: "Are you sure you want to log out?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Yes, log out!'
+        }).then((result) => {
+            if (result.isConfirmed) executeLogout("Successfully logged out.");
+        });
+    });
+
+    // Forgot Password Flow
+    document.getElementById('forgot-pwd-link').addEventListener('click', async (e) => {
+        e.preventDefault();
+        const { value: email } = await Swal.fire({
+            title: 'Forgot Password',
+            input: 'email',
+            inputLabel: 'Enter your registered email address',
+            showCancelButton: true
+        });
+
+        if (email) {
+            Swal.fire({ title: 'Checking...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            google.script.run.withSuccessHandler(async (res) => {
+                if (!res.success) return Swal.fire('Error', res.message, 'error');
+                
+                const { value: answer } = await Swal.fire({
+                    title: 'Security Verification',
+                    input: 'text',
+                    inputLabel: res.question,
+                    showCancelButton: true
+                });
+
+                if (answer) {
+                    Swal.fire({ title: 'Sending OTP...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    google.script.run.withSuccessHandler(async (otpRes) => {
+                        if(!otpRes.success) return Swal.fire('Error', otpRes.message, 'error');
+                        
+                        const { value: formValues } = await Swal.fire({
+                            title: 'Reset Password',
+                            html: '<input id="swal-otp" class="swal2-input" placeholder="6-digit OTP">' +
+                                  '<input id="swal-newpwd" type="password" class="swal2-input" placeholder="New Password">',
+                            focusConfirm: false,
+                            preConfirm: () => [document.getElementById('swal-otp').value, document.getElementById('swal-newpwd').value]
+                        });
+
+                        if (formValues) {
+                            Swal.fire({ title: 'Updating...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                            google.script.run.withSuccessHandler(resetRes => {
+                                if(resetRes.success) Swal.fire('Success', resetRes.message, 'success');
+                                else Swal.fire('Error', resetRes.message, 'error');
+                            }).resetPassword(email, formValues[0], formValues[1]);
+                        }
+                    }).sendRecoveryOtp(email, answer);
+                }
+            }).checkSecurityQuestion(email);
+        }
+    });
+
+    // Core Logic
+    function loginSuccess(data) {
+        if(document.getElementById('remember-me').checked) localStorage.setItem('authToken', data.token);
+        else sessionStorage.setItem('authToken', data.token);
+
+        document.getElementById('auth-container').classList.add('hidden');
+        document.getElementById('main-app-container').classList.remove('hidden');
+        document.getElementById('logged-in-user-display').textContent = `User: ${data.name}`;
+        
+        filterContractDropdown(data.allowedContracts);
+    }
+
+    function executeLogout(reason = '') {
+        const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+        if(token) google.script.run.logoutUser(token);
+        localStorage.removeItem('authToken');
+        sessionStorage.removeItem('authToken');
+        
+        if(reason) Swal.fire('Logged Out', reason, 'info');
+        
+        document.getElementById('main-app-container').classList.add('hidden');
+        document.getElementById('auth-container').classList.remove('hidden');
+        
+        // Reset app state
+        if(typeof currentContract !== 'undefined') currentContract = null;
+        document.getElementById('planning-area').classList.add('hidden');
+        document.getElementById('contract-details-area').classList.add('hidden');
+        document.getElementById('initial-placeholder').classList.remove('hidden');
+    }
+
+    function filterContractDropdown(allowed) {
+        let checkExist = setInterval(() => {
+            if (window.contractList && window.contractList.length > 0) {
+                clearInterval(checkExist);
+                window.contractList = window.contractList.filter(c => allowed.includes(c.id));
+                const select = document.getElementById('contract-select');
+                select.innerHTML = '<option value="">-- Choose Contract Group ID --</option>';
+                window.contractList.forEach(contract => {
+                    const option = document.createElement('option');
+                    option.value = contract.sfcRef;
+                    option.textContent = `${contract.id} - ${contract.status} (Ref#: ${contract.sfcRef})`;
+                    select.appendChild(option);
+                });
+                if(typeof $ !== 'undefined' && $('#contract-select').hasClass('select2-hidden-accessible')) {
+                    $('#contract-select').trigger('change');
+                }
+            }
+        }, 500);
+    }
+  </script>
 </body>
 </html>
