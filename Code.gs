@@ -6,6 +6,7 @@ const SPREADSHEET_ID = '1qheN_KURc-sOKSngpzVxLvfkkc8StzGv-1gMvGJZdsc'; // Source
 const TARGET_SPREADSHEET_ID = '16HS0KIr3xV4iFvEUixWSBGWfAA9VPtTpn5XhoBeZdk4'; // Target Database
 const FILE_201_ID = '1hk4UX4tBFh2-_udnPrlii5j07G4MT0Sl007ZEBCWOc8'; // 201 File Master
 const PDF_FOLDER_ID = '1_CfNZlLDfWW5UBxRDubbDxeN5vZdtNs2';
+const USERS_DB_ID = '1dBO8ThI7FEKb24D9sPVWokfXLuWUx5aCQvisrT9wBvI';
 
 // Sheet Names
 const CONTRACTS_SHEET_NAME = 'RefSeries';
@@ -18,6 +19,7 @@ const UNLOCK_LOG_SHEET_NAME = 'UnlockRequestLog';
 const SECURITY_PLAN_SHEET_NAME = 'SecurityPlan_Details';
 const FILE_201_SHEET_NAME = ['MEG', 'MALL'];
 const BLACKLIST_SHEET_NAMES = ['MEG', 'MALL'];
+const USERS_TAB_NAME = 'AP-Users';
 
 // Headers & Columns
 const REFSERIES_HEADER_ROW = 8;
@@ -2629,4 +2631,290 @@ function processAdminUnlockFromUrl(params) {
       }
   }
   return HtmlService.createHtmlOutput('<h1>Invalid Action</h1>');
+}
+
+// ============================================================================
+// 10. AUTHENTICATION & REGISTRATION SYSTEM
+// ============================================================================
+
+function hashPassword(password) {
+  const rawHash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password);
+  let txtHash = '';
+  for (let i = 0; i < rawHash.length; i++) {
+    let hashVal = rawHash[i];
+    if (hashVal < 0) { hashVal += 256; }
+    if (hashVal.toString(16).length == 1) { txtHash += '0'; }
+    txtHash += hashVal.toString(16);
+  }
+  return txtHash;
+}
+
+function getRegistrationFormData() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONTRACTS_SHEET_NAME);
+  const data = sheet.getDataRange().getDisplayValues();
+  const headers = data[REFSERIES_HEADER_ROW - 1]; 
+  
+  const propColIdx = headers.findIndex(h => h.trim() === 'PROP OR GRP CODE');
+  const propNameIdx = headers.findIndex(h => h.trim() === 'TOWNSHIP/ PROPERTY/ GROUP NAME');
+  const agencyIdx = headers.findIndex(h => h.trim() === 'SUPPLIER');
+  
+  const properties = new Set();
+  const agencies = new Set();
+
+  for (let i = REFSERIES_HEADER_ROW; i < data.length; i++) {
+    const row = data[i];
+    const propCode = propColIdx > -1 ? row[propColIdx] : '';
+    const propName = propNameIdx > -1 ? row[propNameIdx] : '';
+    const combinedProp = (propCode && propName) ? `${propCode} - ${propName}` : (propCode || propName);
+    const agency = agencyIdx > -1 ? row[agencyIdx] : '';
+    
+    if (combinedProp) properties.add(combinedProp);
+    if (agency) agencies.add(agency);
+  }
+  
+  return {
+    properties: Array.from(properties).sort(),
+    agencies: Array.from(agencies).sort()
+  };
+}
+
+function getAllowedContracts(userProperties, userAgencies) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONTRACTS_SHEET_NAME);
+  const data = sheet.getDataRange().getDisplayValues();
+  const headers = data[REFSERIES_HEADER_ROW - 1];
+
+  const propColIdx = headers.findIndex(h => h.trim() === 'PROP OR GRP CODE');
+  const propNameIdx = headers.findIndex(h => h.trim() === 'TOWNSHIP/ PROPERTY/ GROUP NAME');
+  const agencyIdx = headers.findIndex(h => h.trim() === 'SUPPLIER');
+  const contractIdIdx = headers.findIndex(h => h.trim() === 'Contract Group ID');
+
+  const allowedContracts = new Set();
+
+  for (let i = REFSERIES_HEADER_ROW; i < data.length; i++) {
+    const row = data[i];
+    if (!row[contractIdIdx]) continue;
+
+    const propCode = propColIdx > -1 ? row[propColIdx] : '';
+    const propName = propNameIdx > -1 ? row[propNameIdx] : '';
+    const combinedProp = (propCode && propName) ? `${propCode} - ${propName}` : (propCode || propName);
+    const agency = agencyIdx > -1 ? row[agencyIdx] : '';
+
+    if (userProperties.has(combinedProp) && userAgencies.has(agency)) {
+      allowedContracts.add(row[contractIdIdx]);
+    }
+  }
+  return Array.from(allowedContracts);
+}
+
+function registerUser(userData) {
+  const ss = SpreadsheetApp.openById(USERS_DB_ID);
+  let sheet = ss.getSheetByName(USERS_TAB_NAME);
+  
+  const data = sheet.getDataRange().getValues();
+  const emailExists = data.some((row, index) => index > 0 && row[2].toString().toLowerCase() === userData.email.toLowerCase());
+  
+  if (emailExists) {
+    return { success: false, message: 'Email already registered.' };
+  }
+  
+  const hashedPassword = hashPassword(userData.password);
+  const timestamp = new Date();
+  const rowsToAppend = [];
+  
+  userData.properties.forEach(prop => {
+      userData.agencies.forEach(agency => {
+          rowsToAppend.push([
+              timestamp, userData.name, userData.email, prop, agency,
+              hashedPassword, userData.securityQuestion, userData.securityAnswer, '', ''
+          ]);
+      });
+  });
+  
+  if (rowsToAppend.length > 0) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, 10).setValues(rowsToAppend);
+  }
+  
+  return { success: true, message: 'Registration Successful!' };
+}
+
+function loginUser(email, password) {
+  const ss = SpreadsheetApp.openById(USERS_DB_ID);
+  const sheet = ss.getSheetByName(USERS_TAB_NAME);
+  const data = sheet.getDataRange().getValues();
+  const hashedPassword = hashPassword(password);
+  
+  let validUser = false;
+  let userName = '';
+  let userProperties = new Set();
+  let userAgencies = new Set();
+  
+  let token = Utilities.getUuid();
+  let currentTime = new Date().getTime();
+  let rowsToUpdate = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2].toString().toLowerCase() === email.toLowerCase() && data[i][5] === hashedPassword) {
+      validUser = true;
+      userName = data[i][1];
+      if(data[i][3]) userProperties.add(data[i][3]);
+      if(data[i][4]) userAgencies.add(data[i][4]);
+      rowsToUpdate.push(i + 1); 
+    }
+  }
+  
+  if (validUser) {
+    rowsToUpdate.forEach(row => {
+      sheet.getRange(row, 9).setValue(token);
+      sheet.getRange(row, 10).setValue(currentTime);
+    });
+    
+    const allowedContracts = getAllowedContracts(userProperties, userAgencies);
+    return { success: true, token: token, name: userName, allowedContracts: allowedContracts };
+  }
+  return { success: false, message: 'Invalid username o password.' };
+}
+
+function loginWithGmail() {
+  const activeEmail = Session.getActiveUser().getEmail();
+  if(!activeEmail) return { success: false, message: 'Walang active na Google Session.'};
+  
+  const ss = SpreadsheetApp.openById(USERS_DB_ID);
+  const sheet = ss.getSheetByName(USERS_TAB_NAME);
+  const data = sheet.getDataRange().getValues();
+  
+  let validUser = false;
+  let userName = '';
+  let userProperties = new Set();
+  let userAgencies = new Set();
+  
+  let token = Utilities.getUuid();
+  let currentTime = new Date().getTime();
+  let rowsToUpdate = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2].toString().toLowerCase() === activeEmail.toLowerCase()) {
+      validUser = true;
+      userName = data[i][1];
+      if(data[i][3]) userProperties.add(data[i][3]);
+      if(data[i][4]) userAgencies.add(data[i][4]);
+      rowsToUpdate.push(i + 1);
+    }
+  }
+  
+  if (validUser) {
+    rowsToUpdate.forEach(row => {
+      sheet.getRange(row, 9).setValue(token);
+      sheet.getRange(row, 10).setValue(currentTime);
+    });
+    
+    const allowedContracts = getAllowedContracts(userProperties, userAgencies);
+    return { success: true, token: token, name: userName, allowedContracts: allowedContracts, email: activeEmail };
+  }
+  return { success: false, message: `Ang email na ${activeEmail} ay hindi pa rehistrado.` };
+}
+
+function verifySession(token) {
+  if (!token) return { valid: false };
+  const ss = SpreadsheetApp.openById(USERS_DB_ID);
+  const sheet = ss.getSheetByName(USERS_TAB_NAME);
+  const data = sheet.getDataRange().getValues();
+  const currentTime = new Date().getTime();
+  
+  let valid = false;
+  let userName = '';
+  let userProperties = new Set();
+  let userAgencies = new Set();
+  let rowsToUpdate = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][8] === token) {
+      let lastActive = parseInt(data[i][9], 10);
+      if (currentTime - lastActive <= 600000) { // 10 minutes idle limit
+        valid = true;
+        userName = data[i][1];
+        if(data[i][3]) userProperties.add(data[i][3]);
+        if(data[i][4]) userAgencies.add(data[i][4]);
+        rowsToUpdate.push(i + 1);
+      }
+    }
+  }
+  
+  if (valid) {
+    rowsToUpdate.forEach(row => sheet.getRange(row, 10).setValue(currentTime));
+    const allowedContracts = getAllowedContracts(userProperties, userAgencies);
+    return { valid: true, name: userName, allowedContracts: allowedContracts };
+  }
+  return { valid: false };
+}
+
+function logoutUser(token) {
+  const ss = SpreadsheetApp.openById(USERS_DB_ID);
+  const sheet = ss.getSheetByName(USERS_TAB_NAME);
+  const data = sheet.getDataRange().getValues();
+  let rowsToUpdate = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][8] === token) rowsToUpdate.push(i + 1);
+  }
+  
+  rowsToUpdate.forEach(row => {
+    sheet.getRange(row, 9).setValue('');
+    sheet.getRange(row, 10).setValue('');
+  });
+  return true;
+}
+
+function checkSecurityQuestion(email) {
+  const ss = SpreadsheetApp.openById(USERS_DB_ID);
+  const sheet = ss.getSheetByName(USERS_TAB_NAME);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2].toString().toLowerCase() === email.toLowerCase()) {
+      return { success: true, question: data[i][6] };
+    }
+  }
+  return { success: false, message: 'Email address not found.' };
+}
+
+function sendRecoveryOtp(email, answer) {
+  const ss = SpreadsheetApp.openById(USERS_DB_ID);
+  const sheet = ss.getSheetByName(USERS_TAB_NAME);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2].toString().toLowerCase() === email.toLowerCase() && data[i][7].toString().toLowerCase() === answer.toLowerCase()) {
+      let otp = Math.floor(100000 + Math.random() * 900000); 
+      CacheService.getScriptCache().put(email.toLowerCase() + '_otp', otp.toString(), 600); 
+      MailApp.sendEmail(email, 'Attendance Plan Password Recovery', `Ang iyong One Time Password (OTP) ay: ${otp}\n\nIto ay valid sa loob ng 10 minuto.`);
+      return { success: true, message: 'OTP is sent to your email.' };
+    }
+  }
+  return { success: false, message: 'Incorrect Security Answer.' };
+}
+
+function resetPassword(email, otp, newPassword) {
+  const cachedOtp = CacheService.getScriptCache().get(email.toLowerCase() + '_otp');
+  if (!cachedOtp || cachedOtp !== otp.toString()) {
+    return { success: false, message: 'Invalid o expired OTP.' };
+  }
+  
+  const ss = SpreadsheetApp.openById(USERS_DB_ID);
+  const sheet = ss.getSheetByName(USERS_TAB_NAME);
+  const data = sheet.getDataRange().getValues();
+  const hashedPassword = hashPassword(newPassword);
+  
+  let updated = false;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][2].toString().toLowerCase() === email.toLowerCase()) {
+      sheet.getRange(i + 1, 6).setValue(hashedPassword);
+      updated = true;
+    }
+  }
+  
+  if (updated) {
+    CacheService.getScriptCache().remove(email.toLowerCase() + '_otp');
+    return { success: true, message: 'Ang iyong password ay matagumpay na na-update!' };
+  }
+  return { success: false, message: 'Nabigong i-update ang password.' };
 }
